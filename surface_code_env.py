@@ -5,6 +5,7 @@ This module contains the implementation of the surface code's environment
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle, Polygon, Patch
+import time
 
 class SurfaceCode:
     def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1):
@@ -29,6 +30,7 @@ class SurfaceCode:
         self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice[:,:,0], 
                                        self.syndrome_lattice[:,:,1],self.data_mask, 
                                        self.action_history[:,:,0], self.action_history[:,:,1]])
+        self.hidden_syndrome_lattice = self.syndrome_lattice.copy()
 
 
     def _assign_qubit_coordinates(self):
@@ -161,7 +163,7 @@ class SurfaceCode:
         if action[2] == 1:
             if self.visible_state[action[0],action[1],5] == 0:
                 self.next_visible_state[action[0],action[1],5] = 1
-                # Update hidden_state
+                self._update_hidden_syndrome_lattice(action)
                 
 
             else:
@@ -169,7 +171,7 @@ class SurfaceCode:
         elif action[2] == 1:
             if self.visible_state[action[0],action[1],6] == 0:
                 self.next_visible_state[action[0],action[1],6] = 1
-                # Update hidden state
+                self._update_hidden_syndrome_lattice(action)
             else:
                 done = True
 
@@ -181,8 +183,10 @@ class SurfaceCode:
 
 
         # 2. Discount and finish episode if action is repeated
-        if self.action_history[action[0], action[1], action[2]] == 1:
+        if self.action_history[action[0], action[1], action[2]-1] == 1:
             reward -= 1
+        else:
+            self.hidden_state[action[0], action[1], action[2]-1] *= -1
 
         # 3. Big reward if all syndromes are +1 and no logical error
         
@@ -194,6 +198,33 @@ class SurfaceCode:
 
         return self.next_visible_state, reward, done
     
+
+    def _update_hidden_syndrome_lattice(self, action):
+        coords_action = np.array([2*action[0]+1, 2*action[1]+1])
+        
+        candidate_support_stabs = [coords_action + np.array((i,j)) for i in [+1,-1] for j in [+1,-1]]
+        candidate_support_stabs = np.array(candidate_support_stabs)
+        if action[2] == 1:
+            # Check which of the 4 coordinates are Z stabilizers
+            is_z_stab = self.z_mask[candidate_support_stabs[:,0], candidate_support_stabs[:,1]] == 1
+
+            # Extract only the valid Z stabilizer coordinates
+            support_z_stabs = candidate_support_stabs[is_z_stab]
+
+            # Flip those qubits
+            for (x, y) in support_z_stabs:
+                self.hidden_syndrome_lattice[x,y,1] *= -1
+        
+        elif action[2] == 2:
+            # Check which of the 4 coordinates are X stabilizers
+            is_x_stab = self.x_mask[candidate_support_stabs[:,0], candidate_support_stabs[:,1]] == 1
+
+            # Extract only the valid X stabilizer coordinates
+            support_x_stabs = candidate_support_stabs[is_x_stab]
+
+            # Flip those qubits
+            for (x, y) in support_x_stabs:
+                self.hidden_syndrome_lattice[x,y,0] *= -1
 
     def _is_logically_correct(self):
         """
@@ -323,13 +354,13 @@ class SurfaceCode:
         # --------------------------
         # X-stabilizers (Purple for -1)
         for (i, j) in self.x_stabs_coord:
-            s = self.syndrome_lattice[i, j, 0] # X Syndrome
+            s = self.hidden_syndrome_lattice[i, j, 0] # X Syndrome
             color = COLOR_SYND_X_BAD if s == -1 else COLOR_SYND_OK
             ax.add_patch(Circle((j, i), 0.18, facecolor=color, edgecolor=EDGE_COLOR, linewidth=0.9, zorder=4))
 
         # Z-stabilizers (Red for -1)
         for (i, j) in self.z_stabs_coord:
-            s = self.syndrome_lattice[i, j, 1] # Z Syndrome
+            s = self.hidden_syndrome_lattice[i, j, 1] # Z Syndrome
             color = COLOR_SYND_Z_BAD if s == -1 else COLOR_SYND_OK
             ax.add_patch(Circle((j, i), 0.18, facecolor=color, edgecolor=EDGE_COLOR, linewidth=0.9, zorder=4))
 
@@ -388,3 +419,23 @@ if __name__ == '__main__':
         p_phys = 0.2
     )
     env.render()
+    for _ in range(4):
+    
+        #time.sleep(2)
+        #action = [1,1,1]
+
+        print("\nEnter an action in the format: i j type")
+        print("Example: 1 1 1  (X correction on qubit (1,1))")
+        print("         2 3 2  (Z correction on qubit (2,3))")
+
+        # Ask the user for an action
+        user_input = input("Action: ")
+
+        # Convert to list of integers
+        action = list(map(int, user_input.split()))
+        if action[2] == 0:
+                break
+        env.step(action)
+        #time.sleep(2)
+        env.render()
+
