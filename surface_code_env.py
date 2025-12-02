@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle, Polygon, Patch
 import gymnasium as gym
 
-class SurfaceCode(gym.Env):
+class SurfaceCodeEnv(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 1}
 
     def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1, include_masks=True, max_n_steps=100):
+
+        super().__init__()
 
         if d % 2 == 0:
             raise ValueError("The code distance for the rotated surface code must be odd.")
@@ -182,7 +184,8 @@ class SurfaceCode(gym.Env):
         return support
     
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
         
         self.hidden_state, self.syndrome_lattice = self._simulate_errors()
         self.action_history.fill(0)
@@ -200,6 +203,7 @@ class SurfaceCode(gym.Env):
         self.cumulative_reward = 0
         
         return self.visible_state, {}
+    
         
     def step(self, action):
         '''
@@ -263,8 +267,10 @@ class SurfaceCode(gym.Env):
         self.n_steps += 1
         if self.n_steps == self.max_n_steps:
             truncated = True
+
+        done = terminated or truncated
         
-        return self.visible_state, reward, terminated, truncated, {}
+        return self.visible_state, reward, done, {}
     
 
     def _decode_action(self, action):
@@ -551,10 +557,11 @@ class SurfaceCode(gym.Env):
 
 
 if __name__ == '__main__':
-    env = SurfaceCode(
+    env = SurfaceCodeEnv(
         d = 5,
         p_phys = 0.2,
-        error_model='depolarizing'
+        error_model='depolarizing',
+        include_masks=False
     )
     env.render()
     done = False
@@ -569,8 +576,7 @@ if __name__ == '__main__':
         # Convert to an array
         i, j, t = list(map(int, user_input.split()))
         action_int = env._encode_action(i, j, t)
-        next_state, reward, terminated, truncated, _ = env.step(action_int)
-        done = terminated or truncated
+        next_state, reward, done, _ = env.step(action_int)
         if done:
             break
         print(f"\n Current reward = {reward}. Cumulative reward = {env.cumulative_reward}")
