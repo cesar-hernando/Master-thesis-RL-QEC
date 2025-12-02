@@ -14,7 +14,7 @@ The single main class implementing a quantum environment simulator for the rotat
 
 **Lattice Representation**:
 - Uses a `(2d+1) × (2d+1)` coordinate grid where `d` is the code distance (must be odd)
-- Data qubits: positioned at odd coordinates `(i,j)` where `i,j ∈ {1,3,5,...,2d-1}`
+- Data qubits: positioned at odd coordinates `(i,j)` where `i,j ∈ {0,1,3,5,...,2d-1}`
 - X-stabilizers: syndrome measurements for bit-flip (X) errors
 - Z-stabilizers: syndrome measurements for phase-flip (Z) errors
 - Boundary conditions: special handling at lattice edges (i=0, i=2d, j=0, j=2d)
