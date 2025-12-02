@@ -8,7 +8,7 @@ from matplotlib.patches import Rectangle, Circle, Polygon, Patch
 import time
 
 class SurfaceCode:
-    def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1):
+    def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1, include_masks=True):
 
         if d % 2 == 0:
             raise ValueError("The code distance for the rotated surface code must be odd.")
@@ -18,6 +18,7 @@ class SurfaceCode:
         self.p_meas = p_meas
         self.error_model = error_model
         self.volume_depth = volume_depth
+        self.include_masks = include_masks
         self._initialize_environment()
 
 
@@ -27,10 +28,18 @@ class SurfaceCode:
         self.data_mask, self.x_mask, self.z_mask = self._create_masks()
         self.hidden_state, self.syndrome_lattice = self._simulate_errors()
         self.action_history = np.zeros((2*self.d+1, 2*self.d+1, 2))
-        self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice[:,:,0], 
-                                       self.syndrome_lattice[:,:,1],self.data_mask, 
-                                       self.action_history[:,:,0], self.action_history[:,:,1]])
+
+        if self.include_masks:
+            self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice[:,:,0], 
+                                        self.syndrome_lattice[:,:,1],self.data_mask, 
+                                        self.action_history[:,:,0], self.action_history[:,:,1]])
+        else:
+            self.visible_state = np.stack([self.syndrome_lattice[:,:,0], self.syndrome_lattice[:,:,1], 
+                                        self.action_history[:,:,0], self.action_history[:,:,1]]) 
+             
         self.hidden_syndrome_lattice = self.syndrome_lattice.copy()
+
+        self.cumulative_reward = 0
 
 
     def _assign_qubit_coordinates(self):
@@ -95,8 +104,19 @@ class SurfaceCode:
                 support = self._obtain_support_qubits(i, j)
                 syndrome_lattice_z[i,j] = np.prod(hidden_state_x[support[:,0], support[:,1]])
 
-        elif self.error_model == 'depolarizing':
+        elif self.error_model == 'Z':
+            hidden_state_z = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
+            hidden_state_x = np.ones((self.d, self.d))
             
+            # In the phase flip model, Z stabilizers are not triggered 
+            syndrome_lattice_z[self.z_stabs_coord[:, 0], self.z_stabs_coord[:, 1]] = 1
+
+            # Trigger X stabilizers if an odd number of support data qubits are phase-flipped
+            for i, j in self.x_stabs_coord:
+                support = self._obtain_support_qubits(i, j)
+                syndrome_lattice_x[i,j] = np.prod(hidden_state_z[support[:,0], support[:,1]])
+
+        elif self.error_model == 'depolarizing':
             # Randomly choose I,X,Y,Z according to probabilities
             choices = np.random.choice(
                 [0, 1, 2, 3],      # 0=I, 1=X, 2=Z, 3=Y
@@ -113,12 +133,12 @@ class SurfaceCode:
             # Trigger X stabilizers if an odd number of support data qubits are phase-flipped
             for i, j in self.x_stabs_coord:
                 support = self._obtain_support_qubits(i, j)
-                syndrome_lattice_x[i,j] = np.prod(hidden_state_x[support[:,0], support[:,1]])
+                syndrome_lattice_x[i,j] = np.prod(hidden_state_z[support[:,0], support[:,1]])
 
-            # Trigger X stabilizers if an odd number of support data qubits are bit-flipped
-            for i, j in self.x_stabs_coord:
+            # Trigger Z stabilizers if an odd number of support data qubits are bit-flipped
+            for i, j in self.z_stabs_coord:
                 support = self._obtain_support_qubits(i, j)
-                syndrome_lattice_z[i,j] = np.prod(hidden_state_z[support[:,0], support[:,1]])
+                syndrome_lattice_z[i,j] = np.prod(hidden_state_x[support[:,0], support[:,1]])
         
         # Stack the hidden states and syndrome lattices into single tensors
         hidden_state = np.stack([hidden_state_x, hidden_state_z], axis=-1)
@@ -148,9 +168,17 @@ class SurfaceCode:
     def reset(self):
         
         self.hidden_state, self.syndrome_lattice = self._simulate_errors()
-        self.hidden_state, self.syndrome_lattice = self._simulate_errors()
         self.action_history = np.zeros((2*self.d+1, 2*self.d+1, 2))
-        self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice,self.data_mask, self.action_history])
+        if self.include_masks:
+            self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice,
+                                           self.data_mask, self.action_history])
+        else:
+            self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice,
+                                           self.data_mask, self.action_history])
+        
+        self.hidden_syndrome_lattice = self.syndrome_lattice.copy()
+
+        self.cumulative_reward = 0
         
         return self.visible_state
         
@@ -158,45 +186,61 @@ class SurfaceCode:
         '''
         Assume that action = [i,j,*] where * can be 0 (identity), 1 (X) or 2 (Z)
         '''
+
         done = False
-        self.next_visible_state = np.copy(self.visible_state)
-        if action[2] == 1:
-            if self.visible_state[action[0],action[1],5] == 0:
-                self.next_visible_state[action[0],action[1],5] = 1
-                self._update_hidden_syndrome_lattice(action)
-                
-
-            else:
-                done = True
-        elif action[2] == 1:
-            if self.visible_state[action[0],action[1],6] == 0:
-                self.next_visible_state[action[0],action[1],6] = 1
-                self._update_hidden_syndrome_lattice(action)
-            else:
-                done = True
-
-        # REWARD SYSTEM: 
         reward = 0
 
-        # 1. Discount every step to make the decoder efficient
-        reward -= 0.1
-
-
-        # 2. Discount and finish episode if action is repeated
-        if self.action_history[action[0], action[1], action[2]-1] == 1:
-            reward -= 1
+        if self.include_masks:
+            action_x_channel = 5
+            action_z_channel = 6
         else:
-            self.hidden_state[action[0], action[1], action[2]-1] *= -1
+            action_x_channel = 2
+            action_z_channel = 3
 
-        # 3. Big reward if all syndromes are +1 and no logical error
-        
-        # 4. Big discount if logical error
+        # Update action history
+        if action[2] == 1:
+            # Update X channel
+            if self.visible_state[action[0], action[1], action_x_channel] == 0:
+                self.visible_state[action[0], action[1], action_x_channel] = 1
+                self.hidden_state[action[0], action[1], action[2]-1] *= -1
+                self._update_hidden_syndrome_lattice(action)  
+                # Discount a little bit in every step to make the agent efficient
+                reward -= 0.1
+            else:
+                # Discount and finish episode if action is repeated
+                reward -= 1
+                done = True
 
-        # New errors appearing?
+        elif action[2] == 2:
+            # Update Z channel
+            if self.visible_state[action[0], action[1], action_z_channel] == 0:
+                self.visible_state[action[0], action[1], action_z_channel] = 1
+                self.hidden_state[action[0], action[1], action[2]-1] *= -1
+                self._update_hidden_syndrome_lattice(action)
+                # Discount a little bit in every step to make the agent efficient
+                reward -= 1
+            else:
+                # Discount and finish episode if action is repeated
+                reward -= 10
+                done = True
 
-        self.visible_state = np.copy(self.next_visible_state)
+        else:
+            # Identity action
+            done = True  
+            self._measure_logical_qubit()
+            # TODO- Complete the logic   
+            
+        # 3. Reward if all syndromes are +1 and no logical error
+        if np.all(self.hidden_syndrome_lattice) == 1 and self._is_logically_correct():
+            # If additionally, the surface code is free of physical errors, extra reward
+            reward += 20
+            if np.all(self.hidden_state) == 1:
+                reward += 80
 
-        return self.next_visible_state, reward, done
+        self.cumulative_reward += reward
+        # New errors appearing? For now, just static case
+
+        return self.visible_state, reward, done
     
 
     def _update_hidden_syndrome_lattice(self, action):
@@ -226,6 +270,7 @@ class SurfaceCode:
             for (x, y) in support_x_stabs:
                 self.hidden_syndrome_lattice[x,y,0] *= -1
 
+
     def _is_logically_correct(self):
         """
         Returns True if the current hidden_state does NOT contain
@@ -240,26 +285,29 @@ class SurfaceCode:
 
         d = self.d
 
-        # Check for Logical Z error (vertical chain of X flips) 
-        # If any column has odd number of X-errors -> logical Z
+        # Check for Logical X error (vertical chain of X flips) 
+        # If any column has odd number of X-errors -> logical X
         for col in range(d):
             if np.sum(hx[:, col]) == -d:   
-                return False                # logical Z occurred
+                return False   
 
-        # Check for Logical X error (horizontal chain of Z flips) 
-        # If any row has odd number of Z-errors -> logical X
+        # Check for Logical Z error (horizontal chain of Z flips) 
+        # If any row has odd number of Z-errors -> logical Z
         for row in range(d):
-            if np.sum(hz[row, :]) == -d:   # 
-                return False                # logical X occurred
+            if np.sum(hz[row, :]) == -d:
+                return False     
 
         # If none found -> no logical error
         return True
+    
 
+    def _measure_logical_qubit(self):
+        pass
 
 
     def render(self, figsize=8):
         
-        # --- Color palette ---
+        # Color palette
         COLOR_X_PLAQ = "#ffd8a8"        # light orange
         COLOR_Z_PLAQ = "#a5d8ff"        # light blue
         COLOR_SYND_OK = "white"
@@ -268,8 +316,6 @@ class SurfaceCode:
         COLOR_DATA_OK = "black"
         COLOR_DATA_ERR = "#ffcc00"      # gold
         EDGE_COLOR = "black"            
-        X_BOUNDARY_EDGE_COLOR = "#ff8c00" # Orange for X boundary links
-        Z_BOUNDARY_EDGE_COLOR = "#007bff" # Blue for Z boundary links
         BG_COLOR = "#d9dedb"            
 
         L = 2 * self.d + 1  # lattice size in coordinates
@@ -278,17 +324,15 @@ class SurfaceCode:
         ax.set_aspect("equal")
         ax.set_title(f"Rotated Surface Code (d={self.d})", fontsize=16, pad=12)
 
-        # coordinate system: we will treat (i,j) as (y,x) when plotting
+        # Coordinate system: we will treat (i,j) as (y,x) when plotting
         ax.set_xlim(-0.6, L - 0.4)
         ax.set_ylim(-0.6, L - 0.4)
         ax.invert_yaxis()      
         ax.axis("off")
         ax.add_patch(Rectangle((-0.6, -0.6), L+0.2, L+0.2, facecolor=BG_COLOR, zorder=0))
 
-        # --- Coordinate Sets and Maps ---
+        # Coordinate Sets and Maps 
         data_qubit_set = set(map(tuple, self.data_qubits_coord.tolist()))
-        stab_coords = np.vstack([self.x_stabs_coord, self.z_stabs_coord])
-        stab_set = set(map(tuple, stab_coords.tolist()))
         
         # Map stab coordinates to their type for easy lookup
         stab_type = {}
@@ -297,9 +341,9 @@ class SurfaceCode:
         for i, j in self.z_stabs_coord:
             stab_type[(i, j)] = 'Z'
 
-        # --------------------------
-        # 1) Draw colored plaquettes (Interior squares and boundary triangles)
-        # --------------------------
+        ########################################################################
+        # 1) Draw colored plaquettes (Interior squares and boundary triangles) #
+        ########################################################################
         
         # Z-plaquettes (light blue)
         for (i, j) in self.z_stabs_coord:
@@ -318,6 +362,7 @@ class SurfaceCode:
 
                 tri = Polygon(verts, facecolor=COLOR_Z_PLAQ, linewidth=1.6, zorder=2)
                 ax.add_patch(tri)
+
         # X-plaquettes (light orange)
         for (i, j) in self.x_stabs_coord:
             # Check if stabilizer is strictly interior: 2 <= i,j <= 2d-2
@@ -336,9 +381,9 @@ class SurfaceCode:
                 tri = Polygon(verts, facecolor=COLOR_X_PLAQ, linewidth=1.6, zorder=2)
                 ax.add_patch(tri)
 
-        # --------------------------
-        # 2) Draw Edges 
-        # --------------------------
+        ###########################
+        # 2) Draw Edges           #
+        ###########################
         
         for (i, j) in data_qubit_set:
             # Edges between adjacent data qubits (Black links)
@@ -349,9 +394,10 @@ class SurfaceCode:
             if (i+2, j) in data_qubit_set:
                 ax.plot([j, j], [i, i+2], color=EDGE_COLOR, linewidth=1.6, zorder=2)
             
-        # --------------------------
-        # 3) Draw syndrome nodes (white, red, or purple) at stabilizer centers
-        # --------------------------
+        #########################################################################
+        # 3) Draw syndrome nodes (white, red, or purple) at stabilizer centers  #
+        #########################################################################
+
         # X-stabilizers (Purple for -1)
         for (i, j) in self.x_stabs_coord:
             s = self.hidden_syndrome_lattice[i, j, 0] # X Syndrome
@@ -364,9 +410,10 @@ class SurfaceCode:
             color = COLOR_SYND_Z_BAD if s == -1 else COLOR_SYND_OK
             ax.add_patch(Circle((j, i), 0.18, facecolor=color, edgecolor=EDGE_COLOR, linewidth=0.9, zorder=4))
 
-        # --------------------------
-        # 4) Draw data qubits (black or gold)
-        # --------------------------
+        ########################################
+        # 4) Draw data qubits (black or gold)  #
+        ########################################
+
         for (i, j) in self.data_qubits_coord:
             ii = (i - 1) // 2
             jj = (j - 1) // 2
@@ -391,9 +438,9 @@ class SurfaceCode:
                 ax.text(j, i + 0.02, label, ha="center", va="center",
                         fontsize=10, fontweight="bold", color="black", zorder=7)
 
-        # --------------------------
-        # 5) Legend 
-        # --------------------------
+        ############################
+        # 5) Legend                # 
+        ############################
         
         legend_items = [
             Patch(facecolor=COLOR_X_PLAQ, edgecolor=EDGE_COLOR, label="X Plaquette (Orange, Interior)"),
@@ -408,6 +455,28 @@ class SurfaceCode:
         ax.legend(handles=legend_items, loc="upper right", bbox_to_anchor=(1.4, 1.0),
                   frameon=True, fontsize=8)
         
+        ########################################
+        # 6) Add message if the board is clear #
+        ########################################
+
+        if np.all(self.hidden_state == 1):
+            # Add message indicating that all the errors have been corrected
+            fig.text(
+                0.5, 0.93,
+                "ALL ERRORS CORRECTED!",
+                ha="center", va="center",
+                fontsize=26, fontweight="bold",
+                color="lime",
+                bbox=dict(
+                    facecolor="black",
+                    edgecolor="none",
+                    boxstyle="round,pad=0.4",
+                    alpha=0.85
+                ),
+                zorder=1000  # ensures it's on top
+            )
+
+        
         plt.tight_layout()
         plt.show()
 
@@ -416,14 +485,11 @@ class SurfaceCode:
 if __name__ == '__main__':
     env = SurfaceCode(
         d = 5,
-        p_phys = 0.2
+        p_phys = 0.2,
+        error_model='depolarizing'
     )
     env.render()
-    for _ in range(4):
-    
-        #time.sleep(2)
-        #action = [1,1,1]
-
+    for _ in range(15):
         print("\nEnter an action in the format: i j type")
         print("Example: 1 1 1  (X correction on qubit (1,1))")
         print("         2 3 2  (Z correction on qubit (2,3))")
@@ -433,9 +499,9 @@ if __name__ == '__main__':
 
         # Convert to list of integers
         action = list(map(int, user_input.split()))
+
         if action[2] == 0:
                 break
         env.step(action)
-        #time.sleep(2)
         env.render()
 
