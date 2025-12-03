@@ -8,7 +8,7 @@ from matplotlib.patches import Rectangle, Circle, Polygon, Patch
 import gymnasium as gym
 
 class SurfaceCodeEnv(gym.Env):
-    metadata = {"render_modes": ["human"], "render_fps": 1}
+    metadata = {"render_modes": ["human"], "render_fps": 2}
 
     def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1, include_masks=True, max_n_steps=100):
 
@@ -36,6 +36,11 @@ class SurfaceCodeEnv(gym.Env):
             dtype=np.int8
         )
 
+        # Initialize render variables
+        self._render_fig = None
+        self._render_ax = None
+
+        # Initialize the environment
         self._initialize_environment()
 
 
@@ -347,120 +352,112 @@ class SurfaceCodeEnv(gym.Env):
         return False
 
 
-    def render(self, figsize=8):
-        
+    def render(self, mode="human", wait_time=None, figsize=(13, 7), play_mode=False):
+        """
+        Render the surface code lattice in real-time.
+
+        Parameters
+        ----------
+        mode : str
+            Gym render mode (currently only "human" is supported)
+        wait_time : float or None
+            Time in seconds to wait after rendering. If None, uses render_fps in metadata.
+        figsize : int
+            Size of the figure
+        """
+
+        if play_mode:
+            fig, ax = plt.subplots(figsize=figsize)
+            ax.set_aspect("equal")
+            ax.set_title(f"Rotated Surface Code (d={self.d})", fontsize=16, pad=12)
+        else:
+            # Initialize figure and axes once
+            if not hasattr(self, "_render_fig") or self._render_fig is None:
+                self._render_fig, self._render_ax = plt.subplots(figsize=figsize)
+                self._render_ax.set_aspect("equal")
+                self._render_ax.axis("off")
+            ax = self._render_ax
+            ax.clear()
+
         # Color palette
-        COLOR_X_PLAQ = "#ffd8a8"        # light orange
-        COLOR_Z_PLAQ = "#a5d8ff"        # light blue
+        COLOR_X_PLAQ = "#ffd8a8"
+        COLOR_Z_PLAQ = "#a5d8ff"
         COLOR_SYND_OK = "white"
-        COLOR_SYND_Z_BAD = "#b00000"    # bright dark red (for Z syndromes)
-        COLOR_SYND_X_BAD = "#7e307e"    # deep purple (for X syndromes)
+        COLOR_SYND_Z_BAD = "#b00000"
+        COLOR_SYND_X_BAD = "#7e307e"
         COLOR_DATA_OK = "black"
-        COLOR_DATA_ERR = "#ffcc00"      # gold
-        EDGE_COLOR = "black"            
-        BG_COLOR = "#d9dedb"            
+        COLOR_DATA_ERR = "#ffcc00"
+        EDGE_COLOR = "black"
+        BG_COLOR = "#d9dedb"
 
-        L = 2 * self.d + 1  # lattice size in coordinates
+        L = 2 * self.d + 1
 
-        fig, ax = plt.subplots(figsize=(figsize, figsize))
-        ax.set_aspect("equal")
-        ax.set_title(f"Rotated Surface Code (d={self.d})", fontsize=16, pad=12)
-
-        # Coordinate system: we will treat (i,j) as (y,x) when plotting
+        # Background
         ax.set_xlim(-0.6, L - 0.4)
         ax.set_ylim(-0.6, L - 0.4)
-        ax.invert_yaxis()      
-        ax.axis("off")
+        ax.invert_yaxis()
         ax.add_patch(Rectangle((-0.6, -0.6), L+0.2, L+0.2, facecolor=BG_COLOR, zorder=0))
 
-        # Coordinate Sets and Maps 
         data_qubit_set = set(map(tuple, self.data_qubits_coord.tolist()))
-        
-        # Map stab coordinates to their type for easy lookup
-        stab_type = {}
-        for i, j in self.x_stabs_coord:
-            stab_type[(i, j)] = 'X'
-        for i, j in self.z_stabs_coord:
-            stab_type[(i, j)] = 'Z'
 
-        ########################################################################
-        # 1) Draw colored plaquettes (Interior squares and boundary triangles) #
-        ########################################################################
-        
-        # Z-plaquettes (light blue)
+        ###########################
+        # 1) Draw plaquettes      #
+        ###########################
         for (i, j) in self.z_stabs_coord:
-            # Check if stabilizer is strictly interior: 2 <= i,j <= 2d-2
             is_interior = (i > 0 and i < 2*self.d and j > 0 and j < 2*self.d)
             if is_interior:
-                # Draw full 1x1 square for interior Z stabilizers
-                ax.add_patch(Rectangle((j-1, i-1), 2.0, 2.0,
-                                    facecolor=COLOR_Z_PLAQ, edgecolor=EDGE_COLOR, linewidth=1.6, 
-                                    alpha=0.8,zorder=2))
-            else:     
-                if j == 0:         # left, pointing right
-                    verts = [(j, i), (j+1, i+1), (j+1, i-1)]
-                elif j == 2*self.d:       # right, pointing left
-                    verts = [(j, i), (j-1, i+1), (j-1, i-1)]
-
-                tri = Polygon(verts, facecolor=COLOR_Z_PLAQ, linewidth=1.6, zorder=2)
-                ax.add_patch(tri)
-
-        # X-plaquettes (light orange)
-        for (i, j) in self.x_stabs_coord:
-            # Check if stabilizer is strictly interior: 2 <= i,j <= 2d-2
-            is_interior = (i > 0 and i < 2*self.d and j > 0 and j < 2*self.d)
-            if is_interior:
-                # Draw full 1x1 square for interior X stabilizers
-                ax.add_patch(Rectangle((j-1, i-1), 2.0, 2.0,
-                                    facecolor=COLOR_X_PLAQ, edgecolor=EDGE_COLOR, linewidth=1.6, 
-                                    alpha=0.8, zorder=2))
+                ax.add_patch(Rectangle((j-1, i-1), 2, 2, facecolor=COLOR_Z_PLAQ, edgecolor=EDGE_COLOR, linewidth=1.6, alpha=0.8, zorder=2))
             else:
-                if i == 0:         # left, pointing right
+                if j == 0:
+                    verts = [(j, i), (j+1, i+1), (j+1, i-1)]
+                elif j == 2*self.d:
+                    verts = [(j, i), (j-1, i+1), (j-1, i-1)]
+                else:
+                    continue
+                ax.add_patch(Polygon(verts, facecolor=COLOR_Z_PLAQ, linewidth=1.6, zorder=2))
+
+        for (i, j) in self.x_stabs_coord:
+            is_interior = (i > 0 and i < 2*self.d and j > 0 and j < 2*self.d)
+            if is_interior:
+                ax.add_patch(Rectangle((j-1, i-1), 2, 2, facecolor=COLOR_X_PLAQ, edgecolor=EDGE_COLOR, linewidth=1.6, alpha=0.8, zorder=2))
+            else:
+                if i == 0:
                     verts = [(j, i), (j+1, i+1), (j-1, i+1)]
-                elif i == 2*self.d:       # right, pointing left
+                elif i == 2*self.d:
                     verts = [(j, i), (j+1, i-1), (j-1, i-1)]
-
-                tri = Polygon(verts, facecolor=COLOR_X_PLAQ, linewidth=1.6, zorder=2)
-                ax.add_patch(tri)
+                else:
+                    continue
+                ax.add_patch(Polygon(verts, facecolor=COLOR_X_PLAQ, linewidth=1.6, zorder=2))
 
         ###########################
-        # 2) Draw Edges           #
+        # 2) Draw edges           #
         ###########################
-        
         for (i, j) in data_qubit_set:
-            # Edges between adjacent data qubits (Black links)
-            # Right neighbor (i, j+2)
             if (i, j+2) in data_qubit_set:
                 ax.plot([j, j+2], [i, i], color=EDGE_COLOR, linewidth=1.6, zorder=2)
-            # Down neighbor (i+2, j)
             if (i+2, j) in data_qubit_set:
                 ax.plot([j, j], [i, i+2], color=EDGE_COLOR, linewidth=1.6, zorder=2)
-            
-        #########################################################################
-        # 3) Draw syndrome nodes (white, red, or purple) at stabilizer centers  #
-        #########################################################################
 
-        # X-stabilizers (Purple for -1)
+        ###########################
+        # 3) Draw syndrome nodes  #
+        ###########################
         for (i, j) in self.x_stabs_coord:
-            s = self.hidden_syndrome_lattice[i, j, 0] # X Syndrome
+            s = self.hidden_syndrome_lattice[i, j, 0]
             color = COLOR_SYND_X_BAD if s == -1 else COLOR_SYND_OK
             ax.add_patch(Circle((j, i), 0.18, facecolor=color, edgecolor=EDGE_COLOR, linewidth=0.9, zorder=4))
 
-        # Z-stabilizers (Red for -1)
         for (i, j) in self.z_stabs_coord:
-            s = self.hidden_syndrome_lattice[i, j, 1] # Z Syndrome
+            s = self.hidden_syndrome_lattice[i, j, 1]
             color = COLOR_SYND_Z_BAD if s == -1 else COLOR_SYND_OK
             ax.add_patch(Circle((j, i), 0.18, facecolor=color, edgecolor=EDGE_COLOR, linewidth=0.9, zorder=4))
 
-        ########################################
-        # 4) Draw data qubits (black or gold)  #
-        ########################################
-
+        ###########################
+        # 4) Draw data qubits     #
+        ###########################
         for (i, j) in self.data_qubits_coord:
-            ii = (i - 1) // 2
-            jj = (j - 1) // 2
-            hx = int(self.hidden_state[ii, jj, 0])  # X indicator: -1 => X present
-            hz = int(self.hidden_state[ii, jj, 1])  # Z indicator: -1 => Z present
+            ii, jj = (i-1)//2, (j-1)//2
+            hx = int(self.hidden_state[ii, jj, 0])
+            hz = int(self.hidden_state[ii, jj, 1])
 
             if hx == 1 and hz == 1:
                 face = COLOR_DATA_OK
@@ -475,52 +472,46 @@ class SurfaceCodeEnv(gym.Env):
                     label = "Y"
 
             ax.add_patch(Circle((j, i), 0.16, facecolor=face, edgecolor=EDGE_COLOR, linewidth=0.8, zorder=6))
-
             if label is not None:
-                ax.text(j, i + 0.02, label, ha="center", va="center",
-                        fontsize=10, fontweight="bold", color="black", zorder=7)
+                ax.text(j, i + 0.02, label, ha="center", va="center", fontsize=10, 
+                        fontweight="bold", color="black", zorder=7)
 
-        ############################
-        # 5) Legend                # 
-        ############################
-        
+        ###########################
+        # 5) Legend               #
+        ###########################
         legend_items = [
             Patch(facecolor=COLOR_X_PLAQ, edgecolor=EDGE_COLOR, label="X Plaquette (Orange, Interior)"),
             Patch(facecolor=COLOR_Z_PLAQ, edgecolor=EDGE_COLOR, label="Z Plaquette (Blue, Interior)"),
-            Circle((0, 0), 0.12, facecolor=COLOR_SYND_OK, edgecolor=EDGE_COLOR, label="Syndrome = +1 (White)"),
-            Circle((0, 0), 0.12, facecolor=COLOR_SYND_Z_BAD, edgecolor=EDGE_COLOR, label="Z Syndrome = -1 (Red)"),
-            Circle((0, 0), 0.12, facecolor=COLOR_SYND_X_BAD, edgecolor=EDGE_COLOR, label="X Syndrome = -1 (Purple)"),
-            Circle((0, 0), 0.12, facecolor=COLOR_DATA_OK, edgecolor=EDGE_COLOR, label="Data Qubit (No Error)"),
-            Circle((0, 0), 0.12, facecolor=COLOR_DATA_ERR, edgecolor=EDGE_COLOR, label="Data Qubit (Error: X/Z/Y)"),
+            Circle((0, 0), 0.12, facecolor=COLOR_SYND_OK, edgecolor=EDGE_COLOR, label="Syndrome = +1"),
+            Circle((0, 0), 0.12, facecolor=COLOR_SYND_Z_BAD, edgecolor=EDGE_COLOR, label="Z Syndrome = -1"),
+            Circle((0, 0), 0.12, facecolor=COLOR_SYND_X_BAD, edgecolor=EDGE_COLOR, label="X Syndrome = -1"),
+            Circle((0, 0), 0.12, facecolor=COLOR_DATA_OK, edgecolor=EDGE_COLOR, label="Data Qubit OK"),
+            Circle((0, 0), 0.12, facecolor=COLOR_DATA_ERR, edgecolor=EDGE_COLOR, label="Data Qubit Error"),
         ]
+        ax.legend(handles=legend_items, loc="upper right", bbox_to_anchor=(1.4, 1.0), frameon=True, fontsize=8)
 
-        ax.legend(handles=legend_items, loc="upper right", bbox_to_anchor=(1.4, 1.0),
-                  frameon=True, fontsize=8)
-        
-        ########################################
-        # 6) Add message if the board is clear #
-        ########################################
-
+        ###########################
+        # 6) All-corrected message#
+        ###########################
         if np.all(self.hidden_state == 1):
-            # Add message indicating that all the errors have been corrected
-            fig.text(
-                0.5, 0.93,
-                "ALL ERRORS CORRECTED!",
-                ha="center", va="center",
-                fontsize=26, fontweight="bold",
-                color="lime",
-                bbox=dict(
-                    facecolor="black",
-                    edgecolor="none",
-                    boxstyle="round,pad=0.4",
-                    alpha=0.85
-                ),
-                zorder=1000  # ensures it's on top
-            )
+            ax.text(L/2, -L/2, "ALL ERRORS CORRECTED!", ha="center", va="center", fontsize=20, 
+                    fontweight="bold", color="lime", bbox=dict(facecolor="black", edgecolor="none", 
+                    boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
 
-        
+        ###########################
+        # 7) Show and pause       #
+        ###########################
+
         plt.tight_layout()
-        plt.show()
+        if play_mode:
+            plt.show()
+        else:
+            self._render_fig.canvas.draw()
+            self._render_fig.canvas.flush_events()
+
+            if wait_time is None:
+                wait_time = 1.0 / self.metadata.get("render_fps", 2)
+            plt.pause(wait_time)
 
 
     def _encode_action(self, i, j, t):
@@ -559,7 +550,7 @@ class SurfaceCodeEnv(gym.Env):
 if __name__ == '__main__':
     env = SurfaceCodeEnv(
         d = 5,
-        p_phys = 0.2,
+        p_phys = 0.1,
         error_model='depolarizing',
         include_masks=False
     )
@@ -580,5 +571,5 @@ if __name__ == '__main__':
         if done:
             break
         print(f"\n Current reward = {reward}. Cumulative reward = {env.cumulative_reward}")
-        env.render()
+        env.render(play_mode=True)
 
