@@ -8,9 +8,9 @@ from matplotlib.patches import Rectangle, Circle, Polygon, Patch
 import gymnasium as gym
 
 class SurfaceCodeEnv(gym.Env):
-    metadata = {"render_modes": ["human"], "render_fps": 2}
+    metadata = {"render_modes": ["human"], "render_fps": 5}
 
-    def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1, include_masks=True, max_n_steps=100):
+    def __init__(self, d, p_phys, p_meas=0, error_model='X', volume_depth=1, include_masks=False, max_n_steps=100):
 
         super().__init__()
 
@@ -32,8 +32,7 @@ class SurfaceCodeEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=-1, 
             high=1,
-            shape=(2*d+1,2*d+1,n_channels),
-            dtype=np.int8
+            shape=(2*d+1,2*d+1,n_channels)
         )
 
         # Initialize render variables
@@ -49,7 +48,7 @@ class SurfaceCodeEnv(gym.Env):
         self.data_qubits_coord, self.x_stabs_coord, self.z_stabs_coord = self._assign_qubit_coordinates()
         self.data_mask, self.x_mask, self.z_mask = self._create_masks()
         self.hidden_state, self.syndrome_lattice = self._simulate_errors()
-        self.action_history = np.zeros((2*self.d+1, 2*self.d+1, 2), dtype=np.int8)
+        self.action_history = np.zeros((2*self.d+1, 2*self.d+1, 2))
 
         if self.include_masks:
             self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice[:,:,0], 
@@ -61,7 +60,6 @@ class SurfaceCodeEnv(gym.Env):
              
         self.hidden_syndrome_lattice = self.syndrome_lattice.copy()
 
-        self.max_n_steps = 0
         self.cumulative_reward = 0
         self.n_steps = 0
 
@@ -99,9 +97,9 @@ class SurfaceCodeEnv(gym.Env):
 
     def _create_masks(self):
 
-        data_mask = np.zeros((2*self.d+1, 2*self.d+1), dtype=np.int8)
-        x_mask = np.zeros((2*self.d+1, 2*self.d+1), dtype=np.int8)
-        z_mask = np.zeros((2*self.d+1, 2*self.d+1), dtype=np.int8)
+        data_mask = np.zeros((2*self.d+1, 2*self.d+1))
+        x_mask = np.zeros((2*self.d+1, 2*self.d+1))
+        z_mask = np.zeros((2*self.d+1, 2*self.d+1))
 
         data_mask[1:2*self.d:2, 1:2*self.d:2] = 1
         x_mask[self.x_stabs_coord[:, 0], self.x_stabs_coord[:, 1]] = 1
@@ -113,12 +111,12 @@ class SurfaceCodeEnv(gym.Env):
     def _simulate_errors(self):
 
         # Initialize syndrome lattice
-        syndrome_lattice_x = np.zeros((2*self.d+1, 2*self.d+1), dtype=np.int8)
-        syndrome_lattice_z = np.zeros((2*self.d+1, 2*self.d+1), dtype = np.int8)
+        syndrome_lattice_x = np.zeros((2*self.d+1, 2*self.d+1))
+        syndrome_lattice_z = np.zeros((2*self.d+1, 2*self.d+1))
 
         if self.error_model == 'X':
             hidden_state_x = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
-            hidden_state_z = np.ones((self.d, self.d), dtype=np.int8)
+            hidden_state_z = np.ones((self.d, self.d))
             
             # In the bit flip model, X stabilizers are not triggered 
             syndrome_lattice_x[self.x_stabs_coord[:, 0], self.x_stabs_coord[:, 1]] = 1
@@ -130,7 +128,7 @@ class SurfaceCodeEnv(gym.Env):
 
         elif self.error_model == 'Z':
             hidden_state_z = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
-            hidden_state_x = np.ones((self.d, self.d), dtype=np.int8)
+            hidden_state_x = np.ones((self.d, self.d))
             
             # In the phase flip model, Z stabilizers are not triggered 
             syndrome_lattice_z[self.z_stabs_coord[:, 0], self.z_stabs_coord[:, 1]] = 1
@@ -149,8 +147,8 @@ class SurfaceCodeEnv(gym.Env):
             )
 
             # For the X (Z) channel, fill in a -1 if there is an X (Z) or Y error 
-            hidden_state_x = np.ones((self.d, self.d), dtype=np.int8)
-            hidden_state_z = np.ones((self.d, self.d), dtype=np.int8)
+            hidden_state_x = np.ones((self.d, self.d))
+            hidden_state_z = np.ones((self.d, self.d))
             hidden_state_x[(choices == 1) | (choices == 3)] = -1   # X or Y
             hidden_state_z[(choices == 2) | (choices == 3)] = -1   # Z or Y
 
@@ -193,7 +191,7 @@ class SurfaceCodeEnv(gym.Env):
         super().reset(seed=seed)
         
         self.hidden_state, self.syndrome_lattice = self._simulate_errors()
-        self.action_history.fill(0)
+        self.action_history = np.zeros((2*self.d+1, 2*self.d+1, 2))
         if self.include_masks:
             self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice[:,:,0], 
                                         self.syndrome_lattice[:,:,1],self.data_mask, 
@@ -221,46 +219,50 @@ class SurfaceCodeEnv(gym.Env):
 
         # Decode action from integer to array
         action = self._decode_action(action)
+        
+        # Update action history unless action is the identity or repeated
+        if action[2] == 2:
+            # Identity action
+            reward -= 50
+            terminated = True
 
-        # Update action history
-        if action[2] == 0:
+        elif action[2] == 0:
             # Update X channel
-            if self.action_history[action[0], action[1], 0] == 0:
-                self.action_history[action[0], action[1], 0] = 1
-                self.hidden_state[action[0], action[1], 0] *= -1
+            if int(self.action_history[int(2*action[0]+1), int(2*action[1]+1), 0]) == 0:
+                self.action_history[int(2*action[0]+1), int(2*action[1]+1), 0] = 1
+                self.hidden_state[int(action[0]), int(action[1]), 0] *= -1
                 self._update_hidden_syndrome_lattice(action)  
                 # Discount a little bit in every step to make the agent efficient
-                reward -= 1
+                reward += 1
             else:
+                print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
                 # Discount and finish episode if action is repeated
-                reward -= 1
+                reward -= 30
                 terminated = True
 
         elif action[2] == 1:
             # Update Z channel
-            if self.action_history[action[0], action[1], 1] == 0:
-                self.action_history[action[0], action[1], 1] = 1
-                self.hidden_state[action[0], action[1], 1] *= -1
+            if int(self.action_history[int(2*action[0]+1), int(2*action[1]+1), 1]) == 0:
+                self.action_history[int(2*action[0]+1), int(2*action[1]+1), 1] = 1
+                self.hidden_state[int(action[0]), int(action[1]), 1] *= -1
                 self._update_hidden_syndrome_lattice(action)
                 # Discount a little bit in every step to make the agent efficient
-                reward -= 1
+                reward += 1
             else:
+                print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
                 # Discount and finish episode if action is repeated
-                reward -= 10
+                reward -= 30
                 terminated = True
 
-        elif action[2] == 2:
-            # Identity action
-            terminated = True     
-
+             
         if not terminated:    
             # 3. Reward if all syndromes are +1 and no logical error
             logical_error = self._detect_logical_error()
             if np.all(self.hidden_syndrome_lattice) == 1 and not(logical_error):
                 # If additionally, the surface code is free of physical errors, extra reward
-                reward += 20
+                reward += 100
                 if np.all(self.hidden_state) == 1:
-                    reward += 80
+                    reward += 150
             elif logical_error:
                 reward -= 100
                 terminated = True
@@ -273,9 +275,17 @@ class SurfaceCodeEnv(gym.Env):
         if self.n_steps == self.max_n_steps:
             truncated = True
 
-        done = terminated or truncated
-        
-        return self.visible_state, reward, done, {}
+
+        if not(terminated) and not(truncated):
+            if self.include_masks:
+                self.visible_state = np.stack([self.x_mask, self.z_mask, self.syndrome_lattice[:,:,0], 
+                                            self.syndrome_lattice[:,:,1],self.data_mask, 
+                                            self.action_history[:,:,0], self.action_history[:,:,1]], axis=-1)
+            else:
+                self.visible_state = np.stack([self.syndrome_lattice[:,:,0], self.syndrome_lattice[:,:,1], 
+                                            self.action_history[:,:,0], self.action_history[:,:,1]], axis=-1)
+     
+        return self.visible_state, reward, terminated, truncated, {}
     
 
     def _decode_action(self, action):
@@ -292,13 +302,15 @@ class SurfaceCodeEnv(gym.Env):
         j = action % self.d
         i = action // self.d
 
-        return i, j, t
+        action = np.array([i, j, t])
+
+        return action
 
     def _update_hidden_syndrome_lattice(self, action):
         coords_action = np.array([2*action[0]+1, 2*action[1]+1])
         
         candidate_support_stabs = [coords_action + np.array((i,j)) for i in [+1,-1] for j in [+1,-1]]
-        candidate_support_stabs = np.array(candidate_support_stabs, dtype=np.int8)
+        candidate_support_stabs = np.array(candidate_support_stabs)
         if action[2] == 0:
             # Check which of the 4 coordinates are Z stabilizers
             is_z_stab = self.z_mask[candidate_support_stabs[:,0], candidate_support_stabs[:,1]] == 1
@@ -511,7 +523,8 @@ class SurfaceCodeEnv(gym.Env):
 
             if wait_time is None:
                 wait_time = 1.0 / self.metadata.get("render_fps", 2)
-            plt.pause(wait_time)
+            elif wait_time != 0:
+                plt.pause(wait_time)
 
 
     def _encode_action(self, i, j, t):
