@@ -22,7 +22,7 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
     for i in range(n_episodes):
         print(f"\n Episode {i} started")
         # Reset the environment
-        state, _ = env.reset()
+        state, _ = eval_env.reset()
         done = False
         cumulative_reward = 0
         while not done:
