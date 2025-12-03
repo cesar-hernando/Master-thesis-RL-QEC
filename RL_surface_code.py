@@ -56,7 +56,7 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 if __name__ == '__main__':
 
     rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
-    training_steps = 10_000
+    training_steps = 100_000
     mode = "test"   # change to "test" after training
     n_test_episodes = 20
 

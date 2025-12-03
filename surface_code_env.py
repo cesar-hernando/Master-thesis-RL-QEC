@@ -235,7 +235,7 @@ class SurfaceCodeEnv(gym.Env):
                 # Discount a little bit in every step to make the agent efficient
                 reward += 1
             else:
-                print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
+                #print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
                 # Discount and finish episode if action is repeated
                 reward -= 30
                 terminated = True
@@ -249,7 +249,7 @@ class SurfaceCodeEnv(gym.Env):
                 # Discount a little bit in every step to make the agent efficient
                 reward += 1
             else:
-                print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
+                #print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
                 # Discount and finish episode if action is repeated
                 reward -= 30
                 terminated = True
