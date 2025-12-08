@@ -56,16 +56,15 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 if __name__ == '__main__':
 
     rl_algorithm = 'random' # 'random' or 'DQN' or 'PPO'
-    training_steps = 1_000_000
+    training_steps = 100_000
     mode = "test"   # change to "test" after training
     n_test_episodes = 20
-    policy_kwargs = dict(net_arch=[256, 512, 256])
 
     # Initialize the environment with preferred settings
     env = SurfaceCodeEnv(
         d=5,
         p_phys=0.1,
-        error_model='depolarizing',
+        error_model='X',
         include_masks=False,
         max_n_steps=1000
     )
