@@ -366,10 +366,10 @@ class SurfaceCodeEnv(gym.Env):
         # Decode action from integer to array
         action = self._decode_action(action)
         
-        # Update action history unless action is the identity or repeated
+        # Update action history unless action is the identity
         if action[2] == 2:
             # Identity action
-            reward -= 50
+            reward -= 30
             terminated = True
 
         elif action[2] == 0:
@@ -402,8 +402,9 @@ class SurfaceCodeEnv(gym.Env):
         if not terminated:    
             # Reward if all syndromes are +1 and no logical error
             logical_error = self._detect_logical_error()
-            if np.all(self.hidden_syndrome_lattice) == 1 and not(logical_error):
+            if not(np.any(self.hidden_syndrome_lattice == -1)) and not(logical_error):
                 reward += 150
+                terminated = True
         
             elif logical_error:
                 reward -= 100
@@ -418,41 +419,53 @@ class SurfaceCodeEnv(gym.Env):
             truncated = True
 
         # Update the visible state
-        if not(terminated) and not(truncated):
-            self._stack_syndrome_and_history()
+        self._stack_syndrome_and_history()
      
         return self.visible_state, reward, terminated, truncated, {}
     
 
     def _decode_action(self, action):
         """
-        Decode an integer action into its corresponding (i, j, t) representation.
-            i : row index of the data qubit
-            j : column index of the data qubit
-            t : type of Pauli operation (0 = X, 1 = Z, 2 = identity)      
+        Decode an integer action into (i, j, t), adapting to the error model:
+            - If error_model == 'X': only X actions allowed (t=0)
+            - If error_model == 'Z': only Z actions allowed (t=1)
+            - If depolarizing: both X and Z allowed (t=0 or 1)
+            - Identity is always the last action
         """
-        # total number of non-identity actions
-        non_id_actions = self.d * self.d * 2
 
-        # identity is the last action
-        if action == non_id_actions:
-            return None, None, 2  # 2 = identity
+        d = self.d
 
-        # decode real actions
+        # Identity is always last
+        if action == self.num_actions - 1:
+            return None, None, 2  # identity
+
+        if self.error_model == 'X':
+            # actions = d*d qubits + identity
+            i = action // d
+            j = action % d
+            t = 0  # always X
+            return np.array([i, j, t])
+
+        if self.error_model == 'Z':
+            i = action // d
+            j = action % d
+            t = 1  # always Z
+            return np.array([i, j, t])
+
+        # Depolarizing case
         t = action % 2          # 0 = X, 1 = Z
         action //= 2
-        j = action % self.d
-        i = action // self.d
+        j = action % d
+        i = action // d
 
-        action = np.array([i, j, t])
+        return np.array([i, j, t])
 
-        return action
 
     def _update_hidden_syndrome_lattice(self, action):
         """
         Update the hidden syndrome lattice based on the action taken.
         """
-        
+
         coords_action = np.array([2*action[0]+1, 2*action[1]+1])
         
         candidate_support_stabs = [coords_action + np.array((i,j)) for i in [+1,-1] for j in [+1,-1]]
@@ -651,11 +664,16 @@ class SurfaceCodeEnv(gym.Env):
         ###########################
         # 6) All-corrected message#
         ###########################
-        if np.all(self.hidden_state == 1):
+        logical_error = self._detect_logical_error()
+        if not(np.any(self.hidden_syndrome_lattice == -1)) and not(logical_error):
             ax.text(L/2, -L/2, "ALL ERRORS CORRECTED!", ha="center", va="center", fontsize=20, 
                     fontweight="bold", color="lime", bbox=dict(facecolor="black", edgecolor="none", 
                     boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
-
+        elif logical_error:
+            ax.text(L/2, -L/2, "LOGICAL ERROR OCCURRED!", ha="center", va="center", fontsize=20, 
+                    fontweight="bold", color="red", bbox=dict(facecolor="black", edgecolor="none", 
+                    boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
+        
         ###########################
         # 7) Show and pause       #
         ###########################
@@ -675,33 +693,40 @@ class SurfaceCodeEnv(gym.Env):
 
     def _encode_action(self, i, j, t):
         """
-        Encode a qubit action into a single integer for the environment.
+        Encode a qubit action into an integer index depending on the error model.
 
         Parameters
         ----------
-        i : int
-            Row index of the data qubit (0 <= i < d)
-        j : int
-            Column index of the data qubit (0 <= j < d)
+        i, j : int
+            Data qubit coordinates (0 <= i,j < d)
         t : int
-            Action type:
-                0 = X
-                1 = Z
-                2 = Identity
+            0 = X, 1 = Z, 2 = Identity
 
         Returns
         -------
-        action : int
-            Integer representing the action in the environment's Discrete space
+        int
+            Integer action for the environment's Discrete space.
         """
-        # Identity is the last action
+
+        d = self.d
+
+        # Identity action is always last
         if t == 2:
-            return self.d * self.d * 2
+            return self.num_actions - 1
 
-        # Compute integer action
-        action = i * self.d * 2 + j * 2 + t
+        if self.error_model == "X":
+            # Only X allowed so t must be 0
+            assert t == 0, "Encoding Z action in X-only model."
+            return i * d + j
 
-        return action
+        if self.error_model == "Z":
+            # Only Z allowed so t must be 1
+            assert t == 1, "Encoding X action in Z-only model."
+            return i * d + j
+
+        # Depolarizing case
+        return (i * d + j) * 2 + t
+
 
 
 
@@ -710,7 +735,7 @@ if __name__ == '__main__':
     env = SurfaceCodeEnv(
         d = 5,
         p_phys = 0.1,
-        error_model='depolarizing',
+        error_model='Z',
         include_masks=False
     )
     env.render(play_mode=True)
@@ -726,8 +751,8 @@ if __name__ == '__main__':
         # Convert to an array
         i, j, t = list(map(int, user_input.split()))
         action_int = env._encode_action(i, j, t)
-        next_state, reward, done, _ = env.step(action_int)
-        if done:
+        next_state, reward, terminated, truncated, _ = env.step(action_int)
+        if terminated or truncated:
             break
         print(f"\n Current reward = {reward}. Cumulative reward = {env.cumulative_reward}")
         env.render(play_mode=True)

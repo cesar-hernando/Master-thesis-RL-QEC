@@ -30,14 +30,14 @@ class RewardTrackerCallback(BaseCallback):
         return True
     
 
-def plot_learning(mean_rewards):
+def plot_learning(mean_rewards, distance, error_model):
     plt.figure(figsize=(8,4))
     plt.plot(mean_rewards)
     plt.title("Learning Curve (mean reward per 1000 steps)")
     plt.xlabel("x 1000 steps")
     plt.ylabel("Mean reward")
     plt.grid()
-    plt.savefig('./plots/learning_curve.png')
+    plt.savefig(f'./plots/learning_curve_d{distance}_{error_model}.png')
     plt.show()
     
 
