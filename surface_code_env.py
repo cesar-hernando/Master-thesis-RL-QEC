@@ -233,7 +233,7 @@ class SurfaceCodeEnv(gym.Env):
                 self.hidden_state[int(action[0]), int(action[1]), 0] *= -1
                 self._update_hidden_syndrome_lattice(action)  
                 # Discount a little bit in every step to make the agent efficient
-                reward += 1
+                reward -= -0.01
             else:
                 #print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
                 # Discount and finish episode if action is repeated
@@ -247,7 +247,7 @@ class SurfaceCodeEnv(gym.Env):
                 self.hidden_state[int(action[0]), int(action[1]), 1] *= -1
                 self._update_hidden_syndrome_lattice(action)
                 # Discount a little bit in every step to make the agent efficient
-                reward += 1
+                reward -= 0.01
             else:
                 #print(f"Action repeated. Coordinates: ({action[0], action[1]}) ")
                 # Discount and finish episode if action is repeated
@@ -260,9 +260,8 @@ class SurfaceCodeEnv(gym.Env):
             logical_error = self._detect_logical_error()
             if np.all(self.hidden_syndrome_lattice) == 1 and not(logical_error):
                 # If additionally, the surface code is free of physical errors, extra reward
-                reward += 100
-                if np.all(self.hidden_state) == 1:
-                    reward += 150
+                reward += 150
+        
             elif logical_error:
                 reward -= 100
                 terminated = True
@@ -567,7 +566,7 @@ if __name__ == '__main__':
         error_model='depolarizing',
         include_masks=False
     )
-    env.render()
+    env.render(play_mode=True)
     done = False
     for _ in range(30):
         print("\nEnter an action in the format: i j type")

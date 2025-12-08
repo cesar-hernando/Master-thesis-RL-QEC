@@ -55,16 +55,17 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 
 if __name__ == '__main__':
 
-    rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
-    training_steps = 100_000
+    rl_algorithm = 'random' # 'random' or 'DQN' or 'PPO'
+    training_steps = 1_000_000
     mode = "test"   # change to "test" after training
     n_test_episodes = 20
+    policy_kwargs = dict(net_arch=[256, 512, 256])
 
     # Initialize the environment with preferred settings
     env = SurfaceCodeEnv(
         d=5,
         p_phys=0.1,
-        error_model='X',
+        error_model='depolarizing',
         include_masks=False,
         max_n_steps=1000
     )
@@ -76,20 +77,21 @@ if __name__ == '__main__':
     model = DQN(
             policy="MlpPolicy",
             env=env,
-            learning_rate=1e-4,
-            buffer_size=10_000,
+            learning_rate=5e-5,
+            buffer_size=50_000,
             batch_size=32,
-            learning_starts=500,
+            learning_starts=1_000,
             train_freq=1,
             gradient_steps=1,
-            gamma=0.97,
+            gamma=0.99,
             tau=1.0,
-            target_update_interval=1000,
-            exploration_fraction=0.25,
+            target_update_interval=1_000,
+            exploration_fraction=0.4,
             exploration_initial_eps=1.0,
             exploration_final_eps=0.05,
             verbose=1,
-            tensorboard_log="./logs/"
+            tensorboard_log="./logs/",
+            policy_kwargs=policy_kwargs
             )
 
 

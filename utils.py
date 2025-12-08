@@ -37,7 +37,7 @@ def plot_learning(mean_rewards):
     plt.xlabel("x 1000 steps")
     plt.ylabel("Mean reward")
     plt.grid()
-    plt.savefig('./learning_curve.png')
+    plt.savefig('./plots/learning_curve.png')
     plt.show()
     
 
