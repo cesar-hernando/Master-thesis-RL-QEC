@@ -18,14 +18,16 @@ from surface_code_env import SurfaceCodeEnv
 def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 
     print("\nAgent evaluation started!")
+    success_rate = 0
     cumulative_rewards = []
     n_steps_list = []
     for i in range(n_episodes):
         # Reset the environment
         state, _ = eval_env.reset()
-        done = False
         cumulative_reward = 0
         n_steps = 0
+        done = False
+        eval_env.render(wait_time=1.0)
         while not done:
             if rl_algorithm == 'random':
                 # Sample a random action from the action space
@@ -41,8 +43,10 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
             state = next_state
             done = terminated or truncated
             cumulative_reward += reward
+            if eval_env.status == 1: # success
+                success_rate += 1
             # Render the current state
-            eval_env.render(wait_time=1.5)
+            eval_env.render(wait_time=1.0)
         
         print(f"Ep. {i}: Cumulative reward = {cumulative_reward}. Steps = {n_steps}")
         cumulative_rewards.append(cumulative_reward)
@@ -52,11 +56,14 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 
     mean_cum_reward = np.mean(cumulative_rewards)
     std_cum_reward = np.std(cumulative_rewards)
-    print(f"Mean cumulative reward = {mean_cum_reward} ± {std_cum_reward}\n" )
+    print(f"Mean cumulative reward = {mean_cum_reward} ± {std_cum_reward}" )
 
     mean_n_steps = np.mean(n_steps_list)
     std_n_steps = np.std(n_steps_list)
-    print(f"Mean number of steps = {mean_n_steps} ± {std_n_steps}\n" )
+    print(f"Mean number of steps = {mean_n_steps} ± {std_n_steps}" )
+    
+    print(f"The RL agent succeeded {success_rate*100/n_episodes}%\n")
+
 
 
 
@@ -67,7 +74,7 @@ if __name__ == '__main__':
     include_masks = False
     max_n_steps = 100
     rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
-    training_steps = 300_000
+    training_steps = 500_000
     mode = "test"   # change to "test" after training
     n_test_episodes = 20
     policy_kwargs = dict(net_arch=[128, 128])

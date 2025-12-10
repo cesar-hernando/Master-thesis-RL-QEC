@@ -5,6 +5,7 @@ This module contains the implementation of the surface code's environment
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle, Polygon, Patch
+import time
 import gymnasium as gym
 
 class SurfaceCodeEnv(gym.Env):
@@ -47,13 +48,13 @@ class SurfaceCodeEnv(gym.Env):
 
         # Determine number of actions and observation channels
         if error_model == 'depolarizing':
-            self.num_actions = d*d*2 + 1
+            self.num_actions = d*d*2
             if include_masks:
                 n_channels = 7
             else:
                 n_channels = 4
         elif error_model in ['X', 'Z']:
-            self.num_actions = d*d + 1
+            self.num_actions = d*d
             if include_masks:
                 n_channels = 4
             else:
@@ -101,7 +102,7 @@ class SurfaceCodeEnv(gym.Env):
         # Initialize cumulative reward and step counter
         self.cumulative_reward = 0
         self.n_steps = 0
-        self.status = 0  # 0=ongoing, 1=success, 2=failure
+        self.status = 0  # 0=ongoing, 1=success, 2=failure, 3=repeated action
 
 
     def _assign_qubit_coordinates(self):
@@ -189,7 +190,10 @@ class SurfaceCodeEnv(gym.Env):
 
         # Simulate errors based on the specified error model
         if self.error_model == 'X':
-            hidden_state_x = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
+            while True: # Ensure at least one error
+                hidden_state_x = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
+                if np.any(hidden_state_x == -1):
+                    break
             hidden_state_z = np.ones((self.d, self.d))
             
             # In the bit flip model, X stabilizers are not triggered 
@@ -201,7 +205,10 @@ class SurfaceCodeEnv(gym.Env):
                 syndrome_lattice_z[i,j] = np.prod(hidden_state_x[support[:,0], support[:,1]])
 
         elif self.error_model == 'Z':
-            hidden_state_z = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
+            while True: # Ensure at least one error
+                hidden_state_z = np.random.choice([-1,1], size=(self.d, self.d), p=[self.p_phys,1-self.p_phys])
+                if np.any(hidden_state_z == -1):
+                    break
             hidden_state_x = np.ones((self.d, self.d))
             
             # In the phase flip model, Z stabilizers are not triggered 
@@ -213,12 +220,15 @@ class SurfaceCodeEnv(gym.Env):
                 syndrome_lattice_x[i,j] = np.prod(hidden_state_z[support[:,0], support[:,1]])
 
         elif self.error_model == 'depolarizing':
-            # Randomly choose I,X,Y,Z according to probabilities
-            choices = np.random.choice(
-                [0, 1, 2, 3],      # 0=I, 1=X, 2=Z, 3=Y
-                size=(self.d, self.d),
-                p=[1 - self.p_phys, self.p_phys/3, self.p_phys/3, self.p_phys/3]
-            )
+            while True: # Ensure at least one error
+                # Randomly choose I,X,Y,Z according to probabilities
+                choices = np.random.choice(
+                    [0, 1, 2, 3],      # 0=I, 1=X, 2=Z, 3=Y
+                    size=(self.d, self.d),
+                    p=[1 - self.p_phys, self.p_phys/3, self.p_phys/3, self.p_phys/3]
+                )
+                if np.any(choices != 0):
+                    break
 
             # For the X (Z) channel, fill in a -1 if there is an X (Z) or Y error 
             hidden_state_x = np.ones((self.d, self.d))
@@ -335,7 +345,7 @@ class SurfaceCodeEnv(gym.Env):
         self.hidden_syndrome_lattice = self.syndrome_lattice.copy()
         self.n_steps = 0
         self.cumulative_reward = 0
-        self.status = 0  # 0=ongoing, 1=success, 2=failure
+        self.status = 0  # 0=ongoing, 1=success, 2=failure, 3=repeated action
         
         return self.visible_state, {}
     
@@ -375,55 +385,45 @@ class SurfaceCodeEnv(gym.Env):
         action = self._decode_action(action)
         row, col, t = action
 
-        ####################################################################################
-        # 2. Update action history unless action is the identity, and apply the action to  #
-        # hidden data qubits state and the hidden syndrome lattice accordingly             #
-        ####################################################################################
-        if t != 2:
-            if self.action_history[2*row+1, 2*col+1, t] == 0:
-                self.action_history[2*row+1, 2*col+1, t] = 1
-                self.hidden_state[row, col, t] *= -1
-                old_n_syndromes = self.n_syndromes
-                self._update_hidden_syndrome_lattice(action)
-                # Discount a little bit in every step to make the agent efficient
-                reward -= 0.1
-                # Give a small reward for every syndrome removed
-                reward += (old_n_syndromes - self.n_syndromes) * 10.0
-            else:
-                # Discount and finish episode if action is repeated
-                reward -= 30
-                terminated = True
-                self.cumulative_reward += reward
-                self.n_steps += 1
-                reward /= scale_factor
-                return self.visible_state, reward, terminated, truncated, {}
+        ########################################################################
+        # 2. Update action history and apply the action to                     #
+        # hidden data qubits state and the hidden syndrome lattice accordingly #
+        ########################################################################
+        if self.action_history[2*row+1, 2*col+1, t] == 0:
+            self.action_history[2*row+1, 2*col+1, t] = 1
+            self.hidden_state[row, col, t] *= -1
+            old_n_syndromes = self.n_syndromes
+            self._update_hidden_syndrome_lattice(action)
+            # Discount a little bit in every step to make the agent efficient
+            reward -= 0.1
+            # Give a small reward for every syndrome removed
+            reward += (old_n_syndromes - self.n_syndromes) * 10.0
+        else:
+            # Discount and finish episode if action is repeated
+            reward -= 100
+            terminated = True
+            self.status = 3  # repeated action
+            self.cumulative_reward += reward
+            self.n_steps += 1
+            reward /= scale_factor
+            return self.visible_state, reward, terminated, truncated, {}
 
         #######################################################
         # 3. Check for logical errors, and punish if detected #
         # #####################################################
-        logical_error = self._detect_logical_error()
-        stabs_violated = np.any(self.hidden_syndrome_lattice == -1)     
-        if not(stabs_violated) and logical_error:
-            reward -= 150
+        if not(np.any(self.hidden_syndrome_lattice == -1)):
             terminated = True
-            self.status = 2  # failure
-
-        ###########################################################################
-        # 4. If identity action, check if the state is logically equivalent to 0, #
-        # or equivalently, if all syndromes are +1 and no logical error           #
-        ###########################################################################
-        elif t == 2:
-            terminated = True # Episode ends when identity action is taken
-            if not(stabs_violated):
+            if self._detect_logical_error():
+                # Punish for logical error
+                reward -= 100
+                self.status = 2  # failure
+            else:
                 # Reward for correctly using identity action when there are no syndromes
                 reward += 100
                 self.status = 1  # success
-            else:
-                # Punish for using identity action when there are still syndromes
-                reward -= 30
             
         ###############################################################
-        # 5. Scale the reward, update cumulative reward, step counter and visible state #
+        # 4. Scale the reward, update cumulative reward, step counter and visible state #
         ###############################################################   
         reward /= scale_factor # To avoid exploding gradients
         self.cumulative_reward += reward
@@ -446,14 +446,9 @@ class SurfaceCodeEnv(gym.Env):
             - If error_model == 'X': only X actions allowed (t=0)
             - If error_model == 'Z': only Z actions allowed (t=1)
             - If depolarizing: both X and Z allowed (t=0 or 1)
-            - Identity is always the last action
         """
 
         d = self.d
-
-        # Identity is always last
-        if action == self.num_actions - 1:
-            return None, None, 2  # identity
 
         if self.error_model == 'X':
             # actions = d*d qubits + identity
@@ -486,7 +481,7 @@ class SurfaceCodeEnv(gym.Env):
         
         candidate_support_stabs = [coords_action + np.array((i,j)) for i in [+1,-1] for j in [+1,-1]]
         candidate_support_stabs = np.array(candidate_support_stabs)
-        if action[2] == 0:
+        if action[2] == 0: # X action
             # Check which of the 4 coordinates are Z stabilizers
             is_z_stab = self.z_mask[candidate_support_stabs[:,0], candidate_support_stabs[:,1]] == 1
 
@@ -497,7 +492,7 @@ class SurfaceCodeEnv(gym.Env):
             for (x, y) in support_z_stabs:
                 self.hidden_syndrome_lattice[x,y,1] *= -1
         
-        elif action[2] == 1:
+        else: # Z action
             # Check which of the 4 coordinates are X stabilizers
             is_x_stab = self.x_mask[candidate_support_stabs[:,0], candidate_support_stabs[:,1]] == 1
 
@@ -551,6 +546,9 @@ class SurfaceCodeEnv(gym.Env):
         figsize : int
             Size of the figure
         """
+
+        # Start timer for stable FPS
+        t_start = time.time()
 
         if play_mode:
             fig, ax = plt.subplots(figsize=figsize)
@@ -679,20 +677,34 @@ class SurfaceCodeEnv(gym.Env):
         ############################
         # 6) All-corrected message #
         ############################
-        if self.status == 2: # logical error occurred
-            ax.text(L/2, -L/2, "LOGICAL ERROR OCCURRED!", ha="center", va="center", fontsize=20, 
-                    fontweight="bold", color="red", bbox=dict(facecolor="black", edgecolor="none", 
-                    boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
-        elif self.status == 1: # all errors corrected
-            ax.text(L/2, -L/2, "ALL ERRORS CORRECTED!", ha="center", va="center", fontsize=20, 
-                    fontweight="bold", color="lime", bbox=dict(facecolor="black", edgecolor="none", 
-                    boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
+        # FIX: Use transform=ax.transAxes to place text relative to the figure center (0.5, 0.5)
+        # instead of data coordinates. This prevents the plot from rescaling to fit text.
         
+        msg = None
+        color = None
+        
+        if self.status == 2: # logical error
+            msg = "LOGICAL ERROR OCCURRED!"
+            color = "red"
+        elif self.status == 1: # success
+            msg = "ALL ERRORS CORRECTED!"
+            color = "lime"
+        elif self.status == 3: # repeated
+            msg = "REPEATED ACTION TAKEN!"
+            color = "orange"
+            
+        if msg:
+            ax.text(0.5, 1, msg, 
+                    ha="center", va="center", fontsize=20, fontweight="bold", color=color, 
+                    transform=ax.transAxes, # <--- KEY FIX FOR RESCALING
+                    bbox=dict(facecolor="black", edgecolor="none", boxstyle="round,pad=0.4", alpha=0.85), 
+                    zorder=1000)
+
         ###########################
         # 7) Show and pause       #
         ###########################
+        # REMOVED: plt.tight_layout() (It causes the jumping effect)
 
-        plt.tight_layout()
         if play_mode:
             plt.show()
         else:
@@ -701,8 +713,13 @@ class SurfaceCodeEnv(gym.Env):
 
             if wait_time is None:
                 wait_time = 1.0 / self.metadata.get("render_fps", 2)
-            elif wait_time != 0:
-                plt.pause(wait_time)
+            
+            # FIX: Calculate remaining time to maintain constant FPS
+            if wait_time != 0:
+                t_draw = time.time() - t_start
+                t_pause = wait_time - t_draw
+                # Pause must be > 0. A tiny value allows the GUI event loop to spin.
+                plt.pause(max(0.001, t_pause))
 
 
     def _encode_action(self, i, j, t):
@@ -714,7 +731,7 @@ class SurfaceCodeEnv(gym.Env):
         i, j : int
             Data qubit coordinates (0 <= i,j < d)
         t : int
-            0 = X, 1 = Z, 2 = Identity
+            0 = X, 1 = Z
 
         Returns
         -------
@@ -723,10 +740,6 @@ class SurfaceCodeEnv(gym.Env):
         """
 
         d = self.d
-
-        # Identity action is always last
-        if t == 2:
-            return self.num_actions - 1
 
         if self.error_model == "X":
             # Only X allowed so t must be 0
