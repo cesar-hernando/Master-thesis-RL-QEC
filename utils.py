@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from stable_baselines3.common.callbacks import BaseCallback
 import base64
 from pathlib import Path
@@ -30,14 +31,72 @@ class RewardTrackerCallback(BaseCallback):
         return True
     
 
-def plot_learning(mean_rewards, distance, error_model):
-    plt.figure(figsize=(8,4))
-    plt.plot(mean_rewards)
-    plt.title("Learning Curve (mean reward per 1000 steps)")
-    plt.xlabel("x 1000 steps")
-    plt.ylabel("Mean reward")
-    plt.grid()
-    plt.savefig(f'./plots/learning_curve_d{distance}_{error_model}.png')
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+def plot_learning(mean_rewards, distance, error_model, smoothing_weight=0.05):
+    """
+    Plots the learning curve looking like a professional RL paper.
+    Following the user's instructions, this plots the raw data with alpha=0.2
+    and the smoothed trend line on top with alpha=1.
+    
+    Parameters
+    ----------
+    mean_rewards : list or np.array
+        The list of mean rewards to plot.
+    distance : int
+        Code distance (d).
+    error_model : str
+        Error model name.
+    smoothing_weight : float
+        The alpha parameter for exponential smoothing.
+        Set very low (e.g., 0.05) for strong smoothing.
+    """
+    
+    raw_rewards = np.array(mean_rewards)
+    
+    # 1. Calculate Heavy Exponential Moving Average (EMA) for the trend line
+    smoothed_rewards = []
+    last = raw_rewards[0]
+    for val in raw_rewards:
+        # S_t = alpha * Y_t + (1 - alpha) * S_{t-1}
+        smoothed_val = smoothing_weight * val + (1 - smoothing_weight) * last
+        smoothed_rewards.append(smoothed_val)
+        last = smoothed_val
+    smoothed_rewards = np.array(smoothed_rewards)
+        
+    plt.figure(figsize=(10, 6))
+    
+    # Use a nice color scheme (e.g., a deep blue/purple)
+    main_color = '#1f77b4' 
+
+    # 2. Plot the raw data first with low alpha
+    # This creates the background "shade" effect from the noisy data itself.
+    plt.plot(raw_rewards, color=main_color, alpha=0.2, linewidth=1, label='Raw Data')
+
+    # 3. Plot the smoothed trend line on top with alpha=1 (default)
+    # This creates the clear, main trend line.
+    plt.plot(smoothed_rewards, color=main_color, linewidth=2.5, alpha=1.0, label='Smoothed Trend (EMA)')
+
+    plt.title(f"Learning Curve (d={distance}, {error_model})", fontsize=14)
+    plt.xlabel("Steps (x 1000)", fontsize=12)
+    plt.ylabel("Mean Reward", fontsize=12)
+    plt.legend(loc='best')
+    
+    # Add a subtle grid
+    plt.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.7)
+    plt.minorticks_on()
+    plt.grid(True, which='minor', linestyle=':', linewidth=0.5, alpha=0.3)
+    
+    # Ensure directory exists
+    if not os.path.exists('./plots'):
+        os.makedirs('./plots')
+        
+    # Save high-resolution plot
+    save_path = f'./plots/learning_curve_d{distance}_{error_model}_smooth_overlay.png'
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"Plot saved to {save_path}")
     plt.show()
     
 

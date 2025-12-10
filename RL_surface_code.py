@@ -17,7 +17,7 @@ from surface_code_env import SurfaceCodeEnv
 
 def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 
-    print("\nRandom agent evaluation started!")
+    print("\nAgent evaluation started!")
     cumulative_rewards = []
     n_steps_list = []
     for i in range(n_episodes):
@@ -61,16 +61,16 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 
 
 if __name__ == '__main__':
-    distance = 5
+    distance = 3
     error_model = 'X'
     p_phys = 0.1
     include_masks = False
-    max_n_steps = 1000
+    max_n_steps = 100
     rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
-    training_steps = 500_000
+    training_steps = 300_000
     mode = "test"   # change to "test" after training
     n_test_episodes = 20
-    policy_kwargs = dict(net_arch=[256, 512, 256])
+    policy_kwargs = dict(net_arch=[128, 128])
 
     # Initialize the environment with preferred settings
     env = SurfaceCodeEnv(
@@ -88,16 +88,16 @@ if __name__ == '__main__':
     model = DQN(
             policy="MlpPolicy",
             env=env,
-            learning_rate=5e-5,
+            learning_rate=1e-4,
             buffer_size=50_000,
-            batch_size=32,
-            learning_starts=1_000,
-            train_freq=1,
+            batch_size=64,
+            learning_starts=3_000,
+            train_freq=4,
             gradient_steps=1,
             gamma=0.99,
             tau=1.0,
-            target_update_interval=1_000,
-            exploration_fraction=0.2,
+            target_update_interval=2_000,
+            exploration_fraction=0.5,
             exploration_initial_eps=1.0,
             exploration_final_eps=0.05,
             verbose=1,

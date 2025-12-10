@@ -101,6 +101,7 @@ class SurfaceCodeEnv(gym.Env):
         # Initialize cumulative reward and step counter
         self.cumulative_reward = 0
         self.n_steps = 0
+        self.status = 0  # 0=ongoing, 1=success, 2=failure
 
 
     def _assign_qubit_coordinates(self):
@@ -239,6 +240,9 @@ class SurfaceCodeEnv(gym.Env):
         hidden_state = np.stack([hidden_state_x, hidden_state_z], axis=-1)
         syndrome_lattice = np.stack([syndrome_lattice_x, syndrome_lattice_z], axis=-1)
 
+        # Count number of syndromes triggered
+        self.n_syndromes = np.sum(syndrome_lattice == -1)
+
         return hidden_state, syndrome_lattice
     
 
@@ -331,6 +335,7 @@ class SurfaceCodeEnv(gym.Env):
         self.hidden_syndrome_lattice = self.syndrome_lattice.copy()
         self.n_steps = 0
         self.cumulative_reward = 0
+        self.status = 0  # 0=ongoing, 1=success, 2=failure
         
         return self.visible_state, {}
     
@@ -362,63 +367,74 @@ class SurfaceCodeEnv(gym.Env):
         reward = 0
         terminated = False
         truncated = False
+        scale_factor = 100.0  # To avoid exploding gradients
 
-        # Decode action from integer to array
+        ####################################################################################
+        #  1. Decode action from integer to array (row and col in data qubits coordinates) #
+        ####################################################################################
         action = self._decode_action(action)
-        
-        # Update action history unless action is the identity
-        if action[2] == 2:
-            # Identity action
-            reward -= 30
-            terminated = True
+        row, col, t = action
 
-        elif action[2] == 0:
-            # Update X channel
-            if int(self.action_history[int(2*action[0]+1), int(2*action[1]+1), 0]) == 0:
-                self.action_history[int(2*action[0]+1), int(2*action[1]+1), 0] = 1
-                self.hidden_state[int(action[0]), int(action[1]), 0] *= -1
-                self._update_hidden_syndrome_lattice(action)  
-                # Discount a little bit in every step to make the agent efficient
-                reward -= -0.01
-            else:
-                # Discount and finish episode if action is repeated
-                reward -= 30
-                terminated = True
-
-        elif action[2] == 1:
-            # Update Z channel
-            if int(self.action_history[int(2*action[0]+1), int(2*action[1]+1), 1]) == 0:
-                self.action_history[int(2*action[0]+1), int(2*action[1]+1), 1] = 1
-                self.hidden_state[int(action[0]), int(action[1]), 1] *= -1
+        ####################################################################################
+        # 2. Update action history unless action is the identity, and apply the action to  #
+        # hidden data qubits state and the hidden syndrome lattice accordingly             #
+        ####################################################################################
+        if t != 2:
+            if self.action_history[2*row+1, 2*col+1, t] == 0:
+                self.action_history[2*row+1, 2*col+1, t] = 1
+                self.hidden_state[row, col, t] *= -1
+                old_n_syndromes = self.n_syndromes
                 self._update_hidden_syndrome_lattice(action)
                 # Discount a little bit in every step to make the agent efficient
-                reward -= 0.01
+                reward -= 0.1
+                # Give a small reward for every syndrome removed
+                reward += (old_n_syndromes - self.n_syndromes) * 10.0
             else:
                 # Discount and finish episode if action is repeated
                 reward -= 30
                 terminated = True
+                self.cumulative_reward += reward
+                self.n_steps += 1
+                reward /= scale_factor
+                return self.visible_state, reward, terminated, truncated, {}
 
-             
-        if not terminated:    
-            # Reward if all syndromes are +1 and no logical error
-            logical_error = self._detect_logical_error()
-            if not(np.any(self.hidden_syndrome_lattice == -1)) and not(logical_error):
-                reward += 150
-                terminated = True
-        
-            elif logical_error:
-                reward -= 100
-                terminated = True
+        #######################################################
+        # 3. Check for logical errors, and punish if detected #
+        # #####################################################
+        logical_error = self._detect_logical_error()
+        stabs_violated = np.any(self.hidden_syndrome_lattice == -1)     
+        if not(stabs_violated) and logical_error:
+            reward -= 150
+            terminated = True
+            self.status = 2  # failure
 
-            self.cumulative_reward += reward
-            # New errors appearing? For now, just static case
+        ###########################################################################
+        # 4. If identity action, check if the state is logically equivalent to 0, #
+        # or equivalently, if all syndromes are +1 and no logical error           #
+        ###########################################################################
+        elif t == 2:
+            terminated = True # Episode ends when identity action is taken
+            if not(stabs_violated):
+                # Reward for correctly using identity action when there are no syndromes
+                reward += 100
+                self.status = 1  # success
+            else:
+                # Punish for using identity action when there are still syndromes
+                reward -= 30
+            
+        ###############################################################
+        # 5. Scale the reward, update cumulative reward, step counter and visible state #
+        ###############################################################   
+        reward /= scale_factor # To avoid exploding gradients
+        self.cumulative_reward += reward
 
-        # Increase by one the number of steps and check if the episode should be truncated 
+        # New errors appearing? For now, just static case
+
+        # Check if the episode should be truncated 
         self.n_steps += 1
         if self.n_steps == self.max_n_steps:
             truncated = True
 
-        # Update the visible state
         self._stack_syndrome_and_history()
      
         return self.visible_state, reward, terminated, truncated, {}
@@ -492,35 +508,34 @@ class SurfaceCodeEnv(gym.Env):
             for (x, y) in support_x_stabs:
                 self.hidden_syndrome_lattice[x,y,0] *= -1
 
+            self.n_syndromes = np.sum(self.hidden_syndrome_lattice == -1)
+
 
     def _detect_logical_error(self):
         """
-        Returns True if the current hidden_state contains
-        a logical X or logical Z error.
-
-        hidden_state[:,:,0] = X-component  (+1 or -1)
-        hidden_state[:,:,1] = Z-component  (+1 or -1)
+        Detects logical errors by checking commutation with fixed logical operators.
+        Assumes hidden_state uses {-1, 1} representation.
         """
 
-        hx = self.hidden_state[:, :, 0]   # X (bit) errors indicate Z-type logical operators
-        hz = self.hidden_state[:, :, 1]   # Z (phase) errors indicate X-type logical operators
+        hx = self.hidden_state[:, :, 0] 
+        hz = self.hidden_state[:, :, 1] 
 
-        d = self.d
+        #############################################################
+        # 1. Check for Logical X Error (Vertical X Chain)           #
+        # A vertical chain crosses every row.                       #
+        # We must check the parity along a HORIZONTAL line (Row 0). #
+        ############################################################# 
+        x_errors_on_row_0 = np.sum(hx[0, :] == -1)
+        logical_x_error = (x_errors_on_row_0 % 2 != 0)
+        ##############################################################
+        # 2. Check for Logical Z Error (Horizontal Z Chain)          #
+        # A horizontal chain crosses every column.                   #
+        # We must check the parity along a VERTICAL line (Column 0). #
+        ##############################################################
+        z_errors_on_col_0 = np.sum(hz[:, 0] == -1)
+        logical_z_error = (z_errors_on_col_0 % 2 != 0)
 
-        # Check for Logical X error (vertical chain of X flips) 
-        # If any column has odd number of X-errors -> logical X
-        for col in range(d):
-            if np.sum(hx[:, col]) == -d:   
-                return True   
-
-        # Check for Logical Z error (horizontal chain of Z flips) 
-        # If any row has odd number of Z-errors -> logical Z
-        for row in range(d):
-            if np.sum(hz[row, :]) == -d:
-                return True     
-
-        # If none found -> no logical error
-        return False
+        return logical_z_error or logical_x_error
 
 
     def render(self, mode="human", wait_time=None, figsize=(13, 7), play_mode=False):
@@ -661,17 +676,16 @@ class SurfaceCodeEnv(gym.Env):
         ]
         ax.legend(handles=legend_items, loc="upper right", bbox_to_anchor=(1.4, 1.0), frameon=True, fontsize=8)
 
-        ###########################
-        # 6) All-corrected message#
-        ###########################
-        logical_error = self._detect_logical_error()
-        if not(np.any(self.hidden_syndrome_lattice == -1)) and not(logical_error):
-            ax.text(L/2, -L/2, "ALL ERRORS CORRECTED!", ha="center", va="center", fontsize=20, 
-                    fontweight="bold", color="lime", bbox=dict(facecolor="black", edgecolor="none", 
-                    boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
-        elif logical_error:
+        ############################
+        # 6) All-corrected message #
+        ############################
+        if self.status == 2: # logical error occurred
             ax.text(L/2, -L/2, "LOGICAL ERROR OCCURRED!", ha="center", va="center", fontsize=20, 
                     fontweight="bold", color="red", bbox=dict(facecolor="black", edgecolor="none", 
+                    boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
+        elif self.status == 1: # all errors corrected
+            ax.text(L/2, -L/2, "ALL ERRORS CORRECTED!", ha="center", va="center", fontsize=20, 
+                    fontweight="bold", color="lime", bbox=dict(facecolor="black", edgecolor="none", 
                     boxstyle="round,pad=0.4", alpha=0.85), zorder=1000)
         
         ###########################
@@ -752,8 +766,8 @@ if __name__ == '__main__':
         i, j, t = list(map(int, user_input.split()))
         action_int = env._encode_action(i, j, t)
         next_state, reward, terminated, truncated, _ = env.step(action_int)
-        if terminated or truncated:
-            break
         print(f"\n Current reward = {reward}. Cumulative reward = {env.cumulative_reward}")
         env.render(play_mode=True)
+        if terminated or truncated:
+            break
 
