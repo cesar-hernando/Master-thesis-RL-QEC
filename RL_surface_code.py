@@ -69,9 +69,9 @@ def evaluate(rl_algorithm, eval_env, n_episodes=1, model=None):
 
 if __name__ == '__main__':
     distance = 3
-    error_model = 'X'
+    error_model = 'X'  # 'X' or 'Z' or 'depolarizing'
     p_phys = 0.1
-    include_masks = False
+    include_masks = True
     max_n_steps = 100
     rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
     training_steps = 500_000

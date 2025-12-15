@@ -1,5 +1,5 @@
 '''
-This module contains the implementation of the surface code's environment
+This module contains the implementation of the surface code's Gym environment
 '''
 
 import numpy as np
@@ -418,7 +418,7 @@ class SurfaceCodeEnv(gym.Env):
                 reward -= 100
                 self.status = 2  # failure
             else:
-                # Reward for correctly using identity action when there are no syndromes
+                # Reward for correctly decoding
                 reward += 100
                 self.status = 1  # success
             
@@ -451,7 +451,7 @@ class SurfaceCodeEnv(gym.Env):
         d = self.d
 
         if self.error_model == 'X':
-            # actions = d*d qubits + identity
+            # actions = d*d qubits
             i = action // d
             j = action % d
             t = 0  # always X
@@ -503,7 +503,7 @@ class SurfaceCodeEnv(gym.Env):
             for (x, y) in support_x_stabs:
                 self.hidden_syndrome_lattice[x,y,0] *= -1
 
-            self.n_syndromes = np.sum(self.hidden_syndrome_lattice == -1)
+        self.n_syndromes = np.sum(self.hidden_syndrome_lattice == -1)
 
 
     def _detect_logical_error(self):
@@ -769,8 +769,8 @@ if __name__ == '__main__':
     done = False
     for _ in range(30):
         print("\nEnter an action in the format: i j type")
-        print("Example: 1 1 1  (X correction on qubit (1,1))")
-        print("         2 3 2  (Z correction on qubit (2,3))")
+        print("Example: 1 1 0  (X correction on qubit (1,1))")
+        print("         2 3 1  (Z correction on qubit (2,3))")
 
         # Ask the user for an action
         user_input = input("Action: ")
