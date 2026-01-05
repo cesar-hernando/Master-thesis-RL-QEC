@@ -5,9 +5,72 @@ from stable_baselines3.common.callbacks import BaseCallback
 import base64
 from pathlib import Path
 from IPython import display as ipythondisplay
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecEnvWrapper
 from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
 import gymnasium as gym
 
+
+class SB3Env(VecEnvWrapper):
+    """
+    SB3 environment builder + wrapper:
+      - builds DummyVecEnv from env_cls/env_kwargs
+      - optional Monitor
+      - optional transpose (HWC -> CHW) for CNNPolicy
+    Works even if your obs space is [-1, 1] (unlike VecTransposeImage).
+    """
+
+    def __init__(self, env_cls, env_kwargs: dict, *, n_envs=1, seed=None,
+                 use_monitor=True, transpose_for_cnn=True):
+        self.transpose_for_cnn = transpose_for_cnn
+
+        def make_thunk(rank):
+            def _init():
+                e = env_cls(**env_kwargs)
+                if seed is not None:
+                    e.reset(seed=seed + rank)
+                if use_monitor:
+                    e = Monitor(e)
+                return e
+            return _init
+
+        venv = DummyVecEnv([make_thunk(i) for i in range(int(n_envs))])
+        super().__init__(venv)
+
+        # If using CNNPolicy, change obs space from (H,W,C) -> (C,H,W)
+        if self.transpose_for_cnn:
+            obs_space = self.venv.observation_space
+            if not isinstance(obs_space, gym.spaces.Box) or len(obs_space.shape) != 3:
+                raise AssertionError(f"Expected Box(H,W,C), got {obs_space}")
+
+            H, W, C = obs_space.shape
+            low = float(np.min(obs_space.low))
+            high = float(np.max(obs_space.high))
+            self.observation_space = gym.spaces.Box(
+                low=low, high=high, shape=(C, H, W), dtype=obs_space.dtype
+            )
+
+    def reset(self):
+        obs = self.venv.reset()  # (n_env, H, W, C)
+        if self.transpose_for_cnn:
+            obs = obs.transpose(0, 3, 1, 2)  # (n_env, C, H, W)
+        return obs
+
+    def step_wait(self):
+        obs, rewards, dones, infos = self.venv.step_wait()
+
+        if self.transpose_for_cnn:
+            # transpose current obs: (n_env,H,W,C) -> (n_env,C,H,W)
+            obs = obs.transpose(0, 3, 1, 2)
+
+            # transpose terminal_observation inside infos (SB3 needs it for replay buffer)
+            for i, info in enumerate(infos):
+                if isinstance(info, dict) and "terminal_observation" in info:
+                    term_obs = info["terminal_observation"]  # (H,W,C)
+                    if term_obs is not None:
+                        info["terminal_observation"] = term_obs.transpose(2, 0, 1)  # -> (C,H,W)
+
+        return obs, rewards, dones, infos
 
 class RewardTrackerCallback(BaseCallback):
     def __init__(self, verbose=0):

@@ -65,7 +65,8 @@ class SurfaceCodeEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=-1, 
             high=1,
-            shape=(2*d+1,2*d+1,n_channels)
+            shape=(2*d+1,2*d+1,n_channels),
+            dtype=np.float32
         )
 
         # Initialize render variables
@@ -347,7 +348,7 @@ class SurfaceCodeEnv(gym.Env):
         self.cumulative_reward = 0
         self.status = 0  # 0=ongoing, 1=success, 2=failure, 3=repeated action
         
-        return self.visible_state, {}
+        return self.visible_state.astype(np.float32), {}
     
         
     def step(self, action):
@@ -437,7 +438,7 @@ class SurfaceCodeEnv(gym.Env):
 
         self._stack_syndrome_and_history()
      
-        return self.visible_state, reward, terminated, truncated, {}
+        return self.visible_state.astype(np.float32), reward, terminated, truncated, {}
     
 
     def _decode_action(self, action):
@@ -522,6 +523,7 @@ class SurfaceCodeEnv(gym.Env):
         ############################################################# 
         x_errors_on_row_0 = np.sum(hx[0, :] == -1)
         logical_x_error = (x_errors_on_row_0 % 2 != 0)
+        
         ##############################################################
         # 2. Check for Logical Z Error (Horizontal Z Chain)          #
         # A horizontal chain crosses every column.                   #
@@ -760,7 +762,7 @@ class SurfaceCodeEnv(gym.Env):
 
 if __name__ == '__main__':
     env = SurfaceCodeEnv(
-        d = 5,
+        d = 3,
         p_phys = 0.1,
         error_model='Z',
         include_masks=False
