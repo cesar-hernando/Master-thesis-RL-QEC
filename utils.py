@@ -94,10 +94,6 @@ class RewardTrackerCallback(BaseCallback):
         return True
     
 
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-
 def plot_learning(mean_rewards, distance, error_model, smoothing_weight=0.05):
     """
     Plots the learning curve looking like a professional RL paper.
