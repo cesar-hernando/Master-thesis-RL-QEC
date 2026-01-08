@@ -81,9 +81,9 @@ if __name__ == '__main__':
     max_n_steps = 100
     rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
     training_steps = 3_000_000
-    mode = "test"   # change to "test" after training
+    mode = "train"   # change to "test" after training
     n_test_episodes = 20 # 10_000 for average score, 20 for render demo
-    render = True  # whether to render the environment during evaluation
+    render = False  # whether to render the environment during evaluation
     wait_time = 1.0  # time between steps when rendering
     verbose = False # whether to print detailed info during evaluation
 
@@ -142,7 +142,7 @@ if __name__ == '__main__':
         plot_learning(mean_rewards, distance, error_model)
 
         # 6. Save the trained model
-        model.save(f"./dqn_surface_code_d{distance}_{error_model}")
+        model.save(f"./dqn_surface_code_d{distance}_{error_model}_penalize_rep")
 
     elif mode == "test":
         # 1. Load traiededned model instead of creating a new one

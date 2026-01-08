@@ -401,7 +401,7 @@ class SurfaceCodeEnv(gym.Env):
             reward += (old_n_syndromes - self.n_syndromes) * 10.0
         else:
             # Discount and finish episode if action is repeated
-            reward -= 100
+            reward -= 500
             terminated = True
             self.status = 3  # repeated action
             self.cumulative_reward += reward
@@ -523,7 +523,7 @@ class SurfaceCodeEnv(gym.Env):
         ############################################################# 
         x_errors_on_row_0 = np.sum(hx[0, :] == -1)
         logical_x_error = (x_errors_on_row_0 % 2 != 0)
-        
+
         ##############################################################
         # 2. Check for Logical Z Error (Horizontal Z Chain)          #
         # A horizontal chain crosses every column.                   #
