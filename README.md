@@ -2,34 +2,6 @@
 
 This repository contains the code for a Master's thesis project that investigates Reinforcement Learning (RL) methods for decoding quantum errors in the rotated surface code. The codebase provides a simulated environment for the rotated surface code lattice, visualization utilities, RL experiment scripts and logs.
 
----
-
-## Quick start 🔧
-
-Prerequisites:
-- Python 3.8+ (tested on 3.11)
-- numpy
-- matplotlib
-- gym (or gymnasium) — for Gym-style environment APIs used by some files
-- torch (optional, if running RL training scripts that use PyTorch)
-
-Install minimal dependencies (example):
-```powershell
-python -m pip install numpy matplotlib gym torch
-```
-
-Run the environment visualization:
-```powershell
-python surface_code_env.py
-```
-
-Run a training or experiment script (example):
-```powershell
-python RL_surface_code.py
-```
-
----
-
 ## Project structure 
 
 - `surface_code_env.py` — Core rotated surface code environment. Implements lattice geometry, error simulation, syndrome computation, an RL-style observation space and a `render()` visualization.
@@ -39,8 +11,6 @@ python RL_surface_code.py
 - `logs/` — TensorBoard event directories for experiments (e.g. `DQN_1/`, `DQN_2/` ...).
 - `plots/` — Saved static visualizations produced by experiments.
 - `README.md` — This file.
-
----
 
 ## Core ideas & architecture 
 
