@@ -1,4 +1,4 @@
-# Master Thesis: Reinforcement Learning for Quantum Error Correction (RL-QEC) ✅
+# Master Thesis: Reinforcement Learning for Quantum Error Correction (RL-QEC) 
 
 This repository contains the code for a Master's thesis project that investigates Reinforcement Learning (RL) methods for decoding quantum errors in the rotated surface code. The codebase provides a simulated environment for the rotated surface code lattice, visualization utilities, RL experiment scripts and logs.
 
