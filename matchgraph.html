@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.138.0/build/three.module.js",
+        "three-orbitcontrols": "https://unpkg.com/three@0.138.0/examples/jsm/controls/OrbitControls.js",
+        "three-gltf-loader": "https://unpkg.com/three@0.138.0/examples/jsm/loaders/GLTFLoader.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <a download="model.gltf" id="stim-3d-viewer-download-link" href="data:text/plain;base64,eyJhY2Nlc3NvcnMiOlt7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo5LCJtYXgiOlswLDAuNDAwMDAwMDA1OTYwNDY0LDAuNDAwMDAwMDA1OTYwNDY0XSwibWluIjpbMCwtMC40MDAwMDAwMDU5NjA0NjQsLTAuNDAwMDAwMDA1OTYwNDY0XSwibmFtZSI6ImNpcmNsZV9sb29wIiwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo5LCJtYXgiOlswLjQwMDAwMDAwNTk2MDQ2NCwwLDAuNDAwMDAwMDA1OTYwNDY0XSwibWluIjpbLTAuNDAwMDAwMDA1OTYwNDY0LDAsLTAuNDAwMDAwMDA1OTYwNDY0XSwibmFtZSI6ImNpcmNsZV9sb29wIiwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo5LCJtYXgiOlswLjQwMDAwMDAwNTk2MDQ2NCwwLjQwMDAwMDAwNTk2MDQ2NCwwXSwibWluIjpbLTAuNDAwMDAwMDA1OTYwNDY0LC0wLjQwMDAwMDAwNTk2MDQ2NCwwXSwibmFtZSI6ImNpcmNsZV9sb29wIiwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjMsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo5LCJtYXgiOlswLDAuNDAwMDAwMDA1OTYwNDY0LDAuNDAwMDAwMDA1OTYwNDY0XSwibWluIjpbMCwtMC40MDAwMDAwMDU5NjA0NjQsLTAuNDAwMDAwMDA1OTYwNDY0XSwibmFtZSI6ImNpcmNsZV9sb29wIiwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjQsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo5LCJtYXgiOlswLjQwMDAwMDAwNTk2MDQ2NCwwLDAuNDAwMDAwMDA1OTYwNDY0XSwibWluIjpbLTAuNDAwMDAwMDA1OTYwNDY0LDAsLTAuNDAwMDAwMDA1OTYwNDY0XSwibmFtZSI6ImNpcmNsZV9sb29wIiwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjUsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo5LCJtYXgiOlswLjQwMDAwMDAwNTk2MDQ2NCwwLjQwMDAwMDAwNTk2MDQ2NCwwXSwibWluIjpbLTAuNDAwMDAwMDA1OTYwNDY0LC0wLjQwMDAwMDAwNTk2MDQ2NCwwXSwibmFtZSI6ImNpcmNsZV9sb29wIiwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjYsImJ5dGVPZmZzZXQiOjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxMzAsIm1heCI6WzI3LjM3MDQyNjE3Nzk3ODUsMTguNjY2NjY3OTM4MjMyNCwxNi4yNzYwNjk2NDExMTMzXSwibWluIjpbLTAuNjY2NjY2OTg0NTU4MTA1LDYsLTcuMjc2MDY4Njg3NDM4OTZdLCJuYW1lIjoiYnVmX3NjYXR0ZXJlZF9saW5lcyIsInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3Ijo3LCJieXRlT2Zmc2V0IjowLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NTIsIm1heCI6WzE4LjY2NjY2NzkzODIzMjQsNiwxNi4yNzYwNjk2NDExMTMzXSwibWluIjpbLTkuMzcwNDI1MjI0MzA0MiwtMC42NjY2NjY5ODQ1NTgxMDUsLTcuMjc2MDY4Njg3NDM4OTZdLCJuYW1lIjoiYnVmX3JlZF9zY2F0dGVyZWRfbGluZXMiLCJ0eXBlIjoiVkVDMyJ9XSwiYXNzZXQiOnsidmVyc2lvbiI6IjIuMCJ9LCJidWZmZXJWaWV3cyI6W3siYnVmZmVyIjowLCJieXRlTGVuZ3RoIjoxMDgsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjoxLCJieXRlTGVuZ3RoIjoxMDgsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjoyLCJieXRlTGVuZ3RoIjoxMDgsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjozLCJieXRlTGVuZ3RoIjoxMDgsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjo0LCJieXRlTGVuZ3RoIjoxMDgsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjo1LCJieXRlTGVuZ3RoIjoxMDgsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjo2LCJieXRlTGVuZ3RoIjoxNTYwLCJieXRlT2Zmc2V0IjowLCJuYW1lIjoiYnVmX3NjYXR0ZXJlZF9saW5lcyIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjo3LCJieXRlTGVuZ3RoIjo2MjQsImJ5dGVPZmZzZXQiOjAsIm5hbWUiOiJidWZfcmVkX3NjYXR0ZXJlZF9saW5lcyIsInRhcmdldCI6MzQ5NjJ9XSwiYnVmZmVycyI6W3siYnl0ZUxlbmd0aCI6MTA4LCJuYW1lIjoiY2lyY2xlX2xvb3AiLCJ1cmkiOiJkYXRhOmFwcGxpY2F0aW9uL29jdGV0LXN0cmVhbTtiYXNlNjQsQUFBQUFNM016RDRBQUFBQUFBQUFBTVBRa0Q3RDBKQStBQUFBQVBJd2xyTE56TXcrQUFBQUFNUFFrTDdEMEpBK0FBQUFBTTNNekw3eU1CYXpBQUFBQU1IUWtMN0UwSkMrQUFBQUFQTGtvekhOek15K0FBQUFBTWJRa0Q2LzBKQytBQUFBQU0zTXpENEFBQUFBIn0seyJieXRlTGVuZ3RoIjoxMDgsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInVyaSI6ImRhdGE6YXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtO2Jhc2U2NCxBQUFBQUFBQUFBRE56TXcrdzlDUVBnQUFBQUREMEpBK3pjek1QZ0FBQUFEeU1KYXl3OUNRUGdBQUFBREQwSkMrOGpBV3N3QUFBQUROek15K3hOQ1F2Z0FBQUFEQjBKQyt6Y3pNdmdBQUFBRHk1S014djlDUXZnQUFBQURHMEpBK0FBQUFBQUFBQUFETnpNdysifSx7ImJ5dGVMZW5ndGgiOjEwOCwibmFtZSI6ImNpcmNsZV9sb29wIiwidXJpIjoiZGF0YTphcHBsaWNhdGlvbi9vY3RldC1zdHJlYW07YmFzZTY0LHpjek1QZ0FBQUFBQUFBQUF3OUNRUHNQUWtENEFBQUFBOGpDV3NzM016RDRBQUFBQXc5Q1F2c1BRa0Q0QUFBQUF6Y3pNdnZJd0ZyTUFBQUFBd2RDUXZzVFFrTDRBQUFBQTh1U2pNYzNNekw0QUFBQUF4dENRUHIvUWtMNEFBQUFBemN6TVBnQUFBQUFBQUFBQSJ9LHsiYnl0ZUxlbmd0aCI6MTA4LCJuYW1lIjoiY2lyY2xlX2xvb3AiLCJ1cmkiOiJkYXRhOmFwcGxpY2F0aW9uL29jdGV0LXN0cmVhbTtiYXNlNjQsQUFBQUFNM016RDRBQUFBQUFBQUFBTVBRa0Q3RDBKQStBQUFBQVBJd2xyTE56TXcrQUFBQUFNUFFrTDdEMEpBK0FBQUFBTTNNekw3eU1CYXpBQUFBQU1IUWtMN0UwSkMrQUFBQUFQTGtvekhOek15K0FBQUFBTWJRa0Q2LzBKQytBQUFBQU0zTXpENEFBQUFBIn0seyJieXRlTGVuZ3RoIjoxMDgsIm5hbWUiOiJjaXJjbGVfbG9vcCIsInVyaSI6ImRhdGE6YXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtO2Jhc2U2NCxBQUFBQUFBQUFBRE56TXcrdzlDUVBnQUFBQUREMEpBK3pjek1QZ0FBQUFEeU1KYXl3OUNRUGdBQUFBREQwSkMrOGpBV3N3QUFBQUROek15K3hOQ1F2Z0FBQUFEQjBKQyt6Y3pNdmdBQUFBRHk1S014djlDUXZnQUFBQURHMEpBK0FBQUFBQUFBQUFETnpNdysifSx7ImJ5dGVMZW5ndGgiOjEwOCwibmFtZSI6ImNpcmNsZV9sb29wIiwidXJpIjoiZGF0YTphcHBsaWNhdGlvbi9vY3RldC1zdHJlYW07YmFzZTY0LHpjek1QZ0FBQUFBQUFBQUF3OUNRUHNQUWtENEFBQUFBOGpDV3NzM016RDRBQUFBQXc5Q1F2c1BRa0Q0QUFBQUF6Y3pNdnZJd0ZyTUFBQUFBd2RDUXZzVFFrTDRBQUFBQTh1U2pNYzNNekw0QUFBQUF4dENRUHIvUWtMNEFBQUFBemN6TVBnQUFBQUFBQUFBQSJ9LHsiYnl0ZUxlbmd0aCI6MTU2MCwibmFtZSI6ImJ1Zl9zY2F0dGVyZWRfbGluZXMiLCJ1cmkiOiJkYXRhOmFwcGxpY2F0aW9uL29jdGV0LXN0cmVhbTtiYXNlNjQsQUFBQUFBQUF3RUFBQUFBQUFBREFRQUFBUUVFQUFBQUFBQUFBQUFBQXdFQUFBQUFBQUFBQUFBQUF3RUFBQUVCQUFBQkFRUUFBd0VBQUFBQUFBQURBUUFBQVFFRUFBQUFBQUFCQVFRQUF3RUFBQUFBQUFBQ1FRUUFBUUVFQUFBQUFBQUJBUVFBQXdFQUFBQUFBQUFBQUFBQUF3RUFBQUVCQUFBQkFRUUFBd0VBQUFBQUFBQUJBUVFBQXdFQUFBRUJBQUFCQVFRQUF3RUFBQUFBQUFBREFRQUFBUUVFQUFFQkFBQURBUUFBQVFFRUFBQUFBM0J1VFAwTE9oa0dPMWVqQUFBREFRQUFBUUVFQUFBQUFBQUFBQUFBQXdFQUFBRUJBQUFEQVFBQUFRRUVBQUFBQUFBREFRQUFBUUVFQUFFQkFBQUNRUVFBQVFFRUFBQUFBU1pMVVFkeTJiVUdTSkluQUFBQ1FRUUFBUUVFQUFBQUFBQUJBUVFBQXdFQUFBRUJBQUFDUVFRQUFRRUVBQUFBQUFBREFRQUFBUUVFQUFFQkFBQUNRUVFBQVFFRUFBQUFBQUFDUVFRQUFRRUVBQUVCQUFBQUFBQUFBd0VBQUFFQkFBQURBUUFBQVFFRUFBRUJBQUFBQUFBQUF3RUFBQUVCQUFBQUFBQUFBd0VBQUFNQkFBQUJBUVFBQXdFQUFBRUJBQUFEQVFBQUFRRUVBQUVCQUFBQkFRUUFBd0VBQUFFQkFBQUNRUVFBQVFFRUFBRUJBQUFCQVFRQUF3RUFBQUVCQUFBQUFBQUFBd0VBQUFNQkFBQUJBUVFBQXdFQUFBRUJBQUFCQVFRQUF3RUFBQU1CQUFBQkFRUUFBd0VBQUFFQkFBQURBUUFBQVFFRUFBTUJBQUFEQVFBQUFRRUVBQUVCQXNLb3F2MVpWbFVHd3FxcStBQURBUUFBQVFFRUFBRUJBQUFBQUFBQUF3RUFBQU1CQUFBREFRQUFBUUVFQUFFQkFBQURBUUFBQVFFRUFBTUJBQUFEQVFBQUFRRUVBQUVCQXNLb3F2MVpWbFVHd3FxcStBQURBUUFBQVFFRUFBQUFBM0J1VFAwTE9oa0dPMWVqQUFBREFRQUFBUUVFQUFFQkFzS29xdjFaVmxVR3dxcXErQUFDUVFRQUFRRUVBQUFBQVNaTFVRZHkyYlVHU0pJbkFBQUNRUVFBQVFFRUFBRUJBb3ZiYVFjSDVjVUg4R0xnL0FBQ1FRUUFBUUVFQUFFQkFBQUJBUVFBQXdFQUFBTUJBQUFDUVFRQUFRRUVBQUVCQUFBREFRQUFBUUVFQUFNQkFBQUNRUVFBQVFFRUFBRUJBQUFDUVFRQUFRRUVBQU1CQUFBQ1FRUUFBUUVFQUFFQkFvdmJhUWNINWNVSDhHTGcvQUFDUVFRQUFRRUVBQUFBQVNaTFVRZHkyYlVHU0pJbkFBQUFBQUFBQXdFQUFBTUJBQUFEQVFBQUFRRUVBQU1CQUFBQUFBQUFBd0VBQUFNQkFBQUFBQUFBQXdFQUFBQkJCQUFCQVFRQUF3RUFBQU1CQUFBREFRQUFBUUVFQUFNQkFBQUJBUVFBQXdFQUFBTUJBQUFDUVFRQUFRRUVBQU1CQUFBQkFRUUFBd0VBQUFNQkFBQUFBQUFBQXdFQUFBQkJCQUFCQVFRQUF3RUFBQU1CQUFBQkFRUUFBd0VBQUFCQkJBQUJBUVFBQXdFQUFBTUJBQUFEQVFBQUFRRUVBQUJCQkFBREFRQUFBUUVFQUFNQkFzS29xdjFaVmxVRldWUlZCQUFEQVFBQUFRRUVBQU1CQUFBQUFBQUFBd0VBQUFCQkJBQURBUUFBQVFFRUFBTUJBQUFEQVFBQUFRRUVBQUJCQkFBREFRQUFBUUVFQUFNQkFzS29xdjFaVmxVRldWUlZCQUFEQVFBQUFRRUVBQUVCQXNLb3F2MVpWbFVHd3FxcStBQURBUUFBQVFFRUFBTUJBc0tvcXYxWlZsVUZXVlJWQkFBQ1FRUUFBUUVFQUFFQkFvdmJhUWNINWNVSDhHTGcvQUFDUVFRQUFRRUVBQU1CQW92YmFRY0g1Y1VIQitmRkFBQUNRUVFBQVFFRUFBTUJBQUFCQVFRQUF3RUFBQUJCQkFBQ1FRUUFBUUVFQUFNQkFBQURBUUFBQVFFRUFBQkJCQUFDUVFRQUFRRUVBQU1CQUFBQ1FRUUFBUUVFQUFCQkJBQUNRUVFBQVFFRUFBTUJBb3ZiYVFjSDVjVUhCK2ZGQUFBQ1FRUUFBUUVFQUFFQkFvdmJhUWNINWNVSDhHTGcvQUFBQUFBQUF3RUFBQUJCQkFBREFRQUFBUUVFQUFCQkJBQUJBUVFBQXdFQUFBQkJCQUFEQVFBQUFRRUVBQUJCQkFBQkFRUUFBd0VBQUFCQkJBQUNRUVFBQVFFRUFBQkJCQUFEQVFBQUFRRUVBQUJCQjNCdVRQMExPaGtGa05ZSkJBQURBUUFBQVFFRUFBQkJCM0J1VFAwTE9oa0ZrTllKQkFBREFRQUFBUUVFQUFNQkFzS29xdjFaVmxVRldWUlZCQUFEQVFBQUFRRUVBQUJCQjNCdVRQMExPaGtGa05ZSkJBQUNRUVFBQVFFRUFBTUJBb3ZiYVFjSDVjVUhCK2ZGQUFBQ1FRUUFBUUVFQUFCQkJTWkxVUWR5MmJVRkprbFJCQUFDUVFRQUFRRUVBQUJCQlNaTFVRZHkyYlVGSmtsUkJBQUNRUVFBQVFFRUFBTUJBb3ZiYVFjSDVjVUhCK2ZGQSJ9LHsiYnl0ZUxlbmd0aCI6NjI0LCJuYW1lIjoiYnVmX3JlZF9zY2F0dGVyZWRfbGluZXMiLCJ1cmkiOiJkYXRhOmFwcGxpY2F0aW9uL29jdGV0LXN0cmVhbTtiYXNlNjQsQUFBQUFBQUF3RUFBQUFBQWtpUUp3WklrU1VDU0pJbkFBQUJBUVFBQXdFQUFBQUFBUXM2R1Fkd2JreitPMWVqQUFBQUFBQUFBd0VBQUFFQkFRKzBWd2Z3WU9FRDhHTGcvQUFBQUFBQUF3RUFBQUVCQVErMFZ3ZndZT0VEOEdMZy9BQUFBQUFBQXdFQUFBQUFBa2lRSndaSWtTVUNTSkluQUFBQUFBQUFBd0VBQUFFQkFRKzBWd2Z3WU9FRDhHTGcvQUFCQVFRQUF3RUFBQUFBQVFzNkdRZHdia3orTzFlakFBQUJBUVFBQXdFQUFBRUJBVmxXVlFiQ3FLcit3cXFxK0FBQkFRUUFBd0VBQUFFQkFWbFdWUWJDcUtyK3dxcXErQUFCQVFRQUF3RUFBQUFBQVFzNkdRZHdia3orTzFlakFBQUFBQUFBQXdFQUFBTUJBUSswVndmd1lPRURCK2ZGQUFBQUFBQUFBd0VBQUFNQkFRKzBWd2Z3WU9FREIrZkZBQUFBQUFBQUF3RUFBQUVCQVErMFZ3ZndZT0VEOEdMZy9BQUFBQUFBQXdFQUFBTUJBUSswVndmd1lPRURCK2ZGQUFBQkFRUUFBd0VBQUFFQkFWbFdWUWJDcUtyK3dxcXErQUFCQVFRQUF3RUFBQU1CQVZsV1ZRYkNxS3I5V1ZSVkJBQUJBUVFBQXdFQUFBTUJBVmxXVlFiQ3FLcjlXVlJWQkFBQkFRUUFBd0VBQUFFQkFWbFdWUWJDcUtyK3dxcXErQUFBQUFBQUF3RUFBQUJCQmtpUUp3WklrU1VCSmtsUkJBQUFBQUFBQXdFQUFBQkJCa2lRSndaSWtTVUJKa2xSQkFBQUFBQUFBd0VBQUFNQkFRKzBWd2Z3WU9FREIrZkZBQUFBQUFBQUF3RUFBQUJCQmtpUUp3WklrU1VCSmtsUkJBQUJBUVFBQXdFQUFBTUJBVmxXVlFiQ3FLcjlXVlJWQkFBQkFRUUFBd0VBQUFCQkJRczZHUWR3Ymt6OWtOWUpCQUFCQVFRQUF3RUFBQUJCQlFzNkdRZHdia3o5a05ZSkJBQUJBUVFBQXdFQUFBTUJBVmxXVlFiQ3FLcjlXVlJWQiJ9XSwibWF0ZXJpYWxzIjpbeyJkb3VibGVTaWRlZCI6dHJ1ZSwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMSwwLjUsMC41LDFdLCJtZXRhbGxpY0ZhY3RvciI6MSwicm91Z2huZXNzRmFjdG9yIjoxfX0seyJkb3VibGVTaWRlZCI6dHJ1ZSwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMCwwLDAsMV0sIm1ldGFsbGljRmFjdG9yIjoxLCJyb3VnaG5lc3NGYWN0b3IiOjF9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlswLDAsMCwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX19LHsiZG91YmxlU2lkZWQiOnRydWUsInBick1ldGFsbGljUm91Z2huZXNzIjp7ImJhc2VDb2xvckZhY3RvciI6WzEsMCwwLDFdLCJtZXRhbGxpY0ZhY3RvciI6MSwicm91Z2huZXNzRmFjdG9yIjoxfX1dLCJtZXNoZXMiOlt7InByaW1pdGl2ZXMiOlt7ImF0dHJpYnV0ZXMiOnsiUE9TSVRJT04iOjB9LCJtYXRlcmlhbCI6MCwibW9kZSI6Nn0seyJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjoxfSwibWF0ZXJpYWwiOjAsIm1vZGUiOjZ9LHsiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6Mn0sIm1hdGVyaWFsIjowLCJtb2RlIjo2fV19LHsicHJpbWl0aXZlcyI6W3siYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6M30sIm1hdGVyaWFsIjoxLCJtb2RlIjo2fSx7ImF0dHJpYnV0ZXMiOnsiUE9TSVRJT04iOjR9LCJtYXRlcmlhbCI6MSwibW9kZSI6Nn0seyJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjo1fSwibWF0ZXJpYWwiOjEsIm1vZGUiOjZ9XX0seyJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjo2fSwibWF0ZXJpYWwiOjIsIm1vZGUiOjF9XX0seyJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjo3fSwibWF0ZXJpYWwiOjMsIm1vZGUiOjF9XX1dLCJub2RlcyI6W3sibWVzaCI6MCwidHJhbnNsYXRpb24iOlswLDYsMF19LHsibWVzaCI6MCwidHJhbnNsYXRpb24iOlsxMiw2LDBdfSx7Im1lc2giOjEsInRyYW5zbGF0aW9uIjpbNiwxMiwwXX0seyJtZXNoIjoxLCJ0cmFuc2xhdGlvbiI6WzE4LDEyLDBdfSx7Im1lc2giOjAsInRyYW5zbGF0aW9uIjpbMCw2LDNdfSx7Im1lc2giOjAsInRyYW5zbGF0aW9uIjpbMTIsNiwzXX0seyJtZXNoIjoxLCJ0cmFuc2xhdGlvbiI6WzYsMTIsM119LHsibWVzaCI6MSwidHJhbnNsYXRpb24iOlsxOCwxMiwzXX0seyJtZXNoIjowLCJ0cmFuc2xhdGlvbiI6WzAsNiw2XX0seyJtZXNoIjowLCJ0cmFuc2xhdGlvbiI6WzEyLDYsNl19LHsibWVzaCI6MSwidHJhbnNsYXRpb24iOls2LDEyLDZdfSx7Im1lc2giOjEsInRyYW5zbGF0aW9uIjpbMTgsMTIsNl19LHsibWVzaCI6MCwidHJhbnNsYXRpb24iOlswLDYsOV19LHsibWVzaCI6MCwidHJhbnNsYXRpb24iOlsxMiw2LDldfSx7Im1lc2giOjEsInRyYW5zbGF0aW9uIjpbNiwxMiw5XX0seyJtZXNoIjoxLCJ0cmFuc2xhdGlvbiI6WzE4LDEyLDldfSx7Im1lc2giOjIsInRyYW5zbGF0aW9uIjpbMCwwLDBdfSx7Im1lc2giOjMsInRyYW5zbGF0aW9uIjpbMCwwLDBdfV0sInNjZW5lIjowLCJzY2VuZXMiOlt7Im5vZGVzIjpbMCwxLDIsMyw0LDUsNiw3LDgsOSwxMCwxMSwxMiwxMywxNCwxNSwxNiwxN119XX0=">Download 3D Model as .GLTF File</a>
+  <br>Mouse Wheel = Zoom. Left Drag = Orbit. Right Drag = Strafe.
+  <div id="stim-3d-viewer-scene-container" style="width: calc(100vw - 32px); height: calc(100vh - 64px);">JavaScript Blocked?</div>
+
+  <script type="module">
+    let container = document.getElementById("stim-3d-viewer-scene-container");
+    let downloadLink = document.getElementById("stim-3d-viewer-download-link");
+    container.textContent = "Loading viewer...";
+
+    /// BEGIN TERRIBLE HACK.
+    /// Change the ID to avoid cross-cell interactions.
+    /// This is a workaround for https://github.com/jupyter/notebook/issues/6598
+    container.id = undefined;
+    downloadLink.id = undefined;
+
+    import {Box3, Scene, Color, PerspectiveCamera, WebGLRenderer, DirectionalLight, Vector3} from "three";
+    import {OrbitControls} from "three-orbitcontrols";
+    import {GLTFLoader} from "three-gltf-loader";
+
+    try {
+      container.textContent = "Loading model...";
+      let modelDataUri = downloadLink.href;
+      let gltf = await new GLTFLoader().loadAsync(modelDataUri);
+      container.textContent = "Loading scene...";
+
+      // Create the scene, adding lighting for the loaded objects.
+      let scene = new Scene();
+      scene.background = new Color("white");
+      let mainLight = new DirectionalLight(0xffffff, 5);
+      mainLight.position.set(1, 1, 0);
+      let backLight = new DirectionalLight(0xffffff, 4);
+      backLight.position.set(-1, -1, 0);
+      scene.add(mainLight, backLight);
+      scene.add(gltf.scene);
+
+      // Point the camera at the center, far enough back to see everything.
+      let camera = new PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 100000);
+      let controls = new OrbitControls(camera, container);
+      let bounds = new Box3().setFromObject(scene);
+      let mid = new Vector3(
+          (bounds.min.x + bounds.max.x) * 0.5,
+          (bounds.min.y + bounds.max.y) * 0.5,
+          (bounds.min.z + bounds.max.z) * 0.5,
+      );
+      let boxPoints = [];
+      for (let dx of [0, 0.5, 1]) {
+          for (let dy of [0, 0.5, 1]) {
+              for (let dz of [0, 0.5, 1]) {
+                  boxPoints.push(new Vector3(
+                      bounds.min.x + (bounds.max.x - bounds.min.x) * dx,
+                      bounds.min.y + (bounds.max.y - bounds.min.y) * dy,
+                      bounds.min.z + (bounds.max.z - bounds.min.z) * dz,
+                  ));
+              }
+          }
+      }
+      let isInView = p => {
+          p = new Vector3(p.x, p.y, p.z);
+          p.project(camera);
+          return Math.abs(p.x) < 1 && Math.abs(p.y) < 1 && p.z >= 0 && p.z < 1;
+      };
+      let unit = new Vector3(0.3, 0.4, -1.8);
+      unit.normalize();
+      let setCameraDistance = d => {
+          controls.target.copy(mid);
+          camera.position.copy(mid);
+          camera.position.addScaledVector(unit, d);
+          controls.update();
+          return boxPoints.every(isInView);
+      };
+
+      let maxDistance = 1;
+      for (let k = 0; k < 20; k++) {
+          if (setCameraDistance(maxDistance)) {
+              break;
+          }
+          maxDistance *= 2;
+      }
+      let minDistance = maxDistance;
+      for (let k = 0; k < 20; k++) {
+          minDistance /= 2;
+          if (!setCameraDistance(minDistance)) {
+              break;
+          }
+      }
+      for (let k = 0; k < 20; k++) {
+          let mid = (minDistance + maxDistance) / 2;
+          if (setCameraDistance(mid)) {
+              maxDistance = mid;
+          } else {
+              minDistance = mid;
+          }
+      }
+      setCameraDistance(maxDistance);
+
+      // Set up rendering.
+      let renderer = new WebGLRenderer({ antialias: true });
+      container.textContent = "";
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.physicallyCorrectLights = true;
+      container.appendChild(renderer.domElement);
+
+      // Render whenever any important changes have occurred.
+      requestAnimationFrame(() => renderer.render(scene, camera));
+      new ResizeObserver(() => {
+        let w = container.clientWidth;
+        let h = container.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        renderer.render(scene, camera);
+      }).observe(container);
+      controls.addEventListener("change", () => {
+          renderer.render(scene, camera);
+      })
+    } catch (ex) {
+      container.textContent = "Failed to show model. " + ex;
+      console.error(ex);
+    }
+  </script>
+</body>

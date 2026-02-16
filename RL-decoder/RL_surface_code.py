@@ -74,16 +74,16 @@ def evaluate_gym_env(model, d=3, error_model="X", include_masks=False, max_n_ste
 
 
 if __name__ == '__main__':
-    distance = 5
+    distance = 7
     error_model = 'depolarizing'  # 'X' or 'Z' or 'depolarizing'
     p_phys = 0.1
     include_masks = True
     max_n_steps = 100
     rl_algorithm = 'DQN' # 'random' or 'DQN' or 'PPO'
     training_steps = 3_000_000
-    mode = "train"   # change to "test" after training
+    mode = "test"   # change to "test" after training
     n_test_episodes = 20 # 10_000 for average score, 20 for render demo
-    render = False  # whether to render the environment during evaluation
+    render = True  # whether to render the environment during evaluation
     wait_time = 1.0  # time between steps when rendering
     verbose = False # whether to print detailed info during evaluation
 
