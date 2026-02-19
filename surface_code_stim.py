@@ -10,7 +10,7 @@ class SurfaceCode:
     """
 
     def __init__(self, hardware_params: dict, distance: int, n_rounds: int, ad: bool, 
-                 crosstalk: bool, default_2q_gate: str, fidelity_incl_decoherence: bool, 
+                 crosstalk: bool, default_2q_gate: str, 
                  memory_type: str, multiplier: float = 1.0, idle_depol: bool = False):
         
         self.hardware_params = hardware_params.copy()
@@ -29,7 +29,6 @@ class SurfaceCode:
             raise Exception("Memory type not supported")
 
         self.default_2q_gate = default_2q_gate
-        self.fidelity_incl_decoherence = fidelity_incl_decoherence
         self.memory_type = memory_type
 
         self.L = 2 * self.distance + 1  # length of the lattice
@@ -258,21 +257,39 @@ class SurfaceCode:
         # Goes through each stabilizer and correlates the measurement outcome of future rounds to previous rounds.
         num_Z_stabs = len(self.z_stabilizers)
         num_X_stabs = len(self.x_stabilizers)
+
+
+        # Z stabilizers
+        if round > 0:
+            for k, z_stab_idx in enumerate(self.z_stabilizers):
+                i = z_stab_idx // L
+                j = z_stab_idx % L
+                if round == 0: # add detector for the first round
+                    self.qc.append('DETECTOR', [stim.target_rec(-(num_Z_stabs - k))], [j, i, round])
+                else:
+                    self.qc.append('DETECTOR', [stim.target_rec(-(((num_Z_stabs + num_X_stabs) + num_Z_stabs - k))),
+                                                stim.target_rec(-(num_Z_stabs - k))], [j, i, round])
+                
+        # X stabilizers        
         for k, x_stab_idx in enumerate(self.x_stabilizers):
             i = x_stab_idx // L
             j = x_stab_idx % L
             if round == 0:  # add detector for the first round
                 self.qc.append('DETECTOR', [stim.target_rec(-(num_X_stabs + num_Z_stabs - k))], [j, i, round])
             else:
-                self.qc.append('DETECTOR', [stim.target_rec(-(((num_X_stabs + num_Z_stabs) + num_X_stabs + num_Z_stabs - k))),
+                self.qc.append('DETECTOR', [stim.target_rec(-((2*(num_X_stabs + num_Z_stabs) - k))),
                                             stim.target_rec(-(num_X_stabs + num_Z_stabs - k))], [j, i, round])
+                
         self.qc.append('TICK')
 
     def _add_detectors_z_memory(self, round: int):
         L = self.L
+
         # Goes through each stabilizer and correlates the measurement outcome of future rounds to previous rounds.
         num_Z_stabs = len(self.z_stabilizers)   
         num_X_stabs = len(self.x_stabilizers)
+
+        # Z stabilizers
         for k, z_stab_idx in enumerate(self.z_stabilizers):
             i = z_stab_idx // L
             j = z_stab_idx % L
@@ -281,6 +298,15 @@ class SurfaceCode:
             else:
                 self.qc.append('DETECTOR', [stim.target_rec(-(((num_Z_stabs + num_X_stabs) + num_Z_stabs - k))),
                                             stim.target_rec(-(num_Z_stabs - k))], [j, i, round])
+                
+        # X stabilizers
+        if round > 0:
+            for k, x_stab_idx in enumerate(self.x_stabilizers):
+                i = x_stab_idx // L
+                j = x_stab_idx % L
+                self.qc.append('DETECTOR', [stim.target_rec(-((2*(num_Z_stabs + num_X_stabs) - k))),
+                                            stim.target_rec(-((num_Z_stabs + num_X_stabs - k)))], [j, i, round])
+
         self.qc.append('TICK')
 
 
@@ -425,8 +451,9 @@ class SurfaceCode:
         #     self.qc.append('PAULI_CHANNEL_1', self.qubits, [self.p_X_1q, self.p_X_1q, self.p_Z_1q])
         # self.qc.append('TICK')
 
-        # self.qc.append('Z_ERROR', self.data_qubits, self.hardware_params['measurement_error'])  # measurement error
-        self.qc.append('MX', self.data_qubits, self.hardware_params['measurement_error'])  # measure data qubits in X basis
+        self.qc.append('Z_ERROR', self.data_qubits, self.hardware_params['measurement_error'])  # measurement error
+        self.qc.append('TICK')
+        self.qc.append('MX', self.data_qubits)  # measure data qubits in X basis
 
         num_Z_stabs = len(self.z_stabilizers)
         num_X_stabs = len(self.x_stabilizers)
@@ -464,7 +491,9 @@ class SurfaceCode:
     def _final_step_z_memory(self):
         L = self.L
 
-        self.qc.append('M', self.data_qubits, self.hardware_params['measurement_error'])  # measure data qubits
+        self.qc.append('X_ERROR', self.data_qubits, self.hardware_params['measurement_error'])
+        self.qc.append('TICK')
+        self.qc.append('M', self.data_qubits)  # measure data qubits
 
         num_Z_stabs = len(self.z_stabilizers)
         num_X_stabs = len(self.x_stabilizers)
@@ -540,7 +569,6 @@ if __name__ == "__main__":
     parser.add_argument("--idle_depol", type=bool, default=True)
 
     parser.add_argument("--default_2q_gate", type=str, default='CX')
-    parser.add_argument("--fidelity_incl_decoherence", action='store_true')
     parser.add_argument("--memory_type", type=str, default='z')
 
 
@@ -563,7 +591,6 @@ if __name__ == "__main__":
     idle_depol = args.idle_depol
 
     default_2q_gate = args.default_2q_gate
-    fidelity_incl_decoherence = args.fidelity_incl_decoherence
     memory_type = args.memory_type
 
     sc = SurfaceCode(
@@ -573,7 +600,6 @@ if __name__ == "__main__":
         ad=ad,
         crosstalk=crosstalk,
         default_2q_gate=default_2q_gate,
-        fidelity_incl_decoherence=fidelity_incl_decoherence,
         memory_type=memory_type,
         multiplier=1.0,
         idle_depol=idle_depol
