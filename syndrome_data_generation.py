@@ -171,6 +171,7 @@ class SyndromeDataGenerator:
             "predicted_oracle_obs_batch": predicted_oracle_obs_batch
         }
     
+    
     @staticmethod
     def plot_mwpm_solution_3d(circuit, matching, syndrome, true_obs, pred_obs, solution_edges):
         """
