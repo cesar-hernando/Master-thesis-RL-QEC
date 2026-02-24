@@ -68,7 +68,7 @@ class SyndromeDataGenerator:
         return base_circuit, base_matching
 
 
-    def generate_drifted_circuit(self, base_circuit: stim.Circuit):
+    def generate_drifted_circuit(self, base_circuit: stim.Circuit, seed: int=42):
         """
         Generate a Stim circuit with drifted noise parameters based on the specified mismatch.
 
@@ -76,6 +76,8 @@ class SyndromeDataGenerator:
         a certain mismatch factor. In a real implementation, drift varies over time in a more 
         complex manner.
         """
+        # Initialize a seeded random generator for reproducibility
+        np.random.seed(seed)
 
         drifted_circuit = stim.Circuit()
         for inst in base_circuit:
@@ -113,52 +115,145 @@ class SyndromeDataGenerator:
         sampler = drifted_circuit.compile_detector_sampler()
         syndrome_volume_batch, true_obs_batch = sampler.sample(shots=self.n_shots, separate_observables=True)
 
-        return syndrome_volume_batch, true_obs_batch
+        return np.asarray(syndrome_volume_batch, dtype=np.uint8), true_obs_batch
 
 
-    def get_oracle_solution_edges(self, drifted_matching: pymatching.Matching, syndrome_volume_batch: np.ndarray, return_predicted_obs: bool=False):
+    @staticmethod
+    def _predict_obs_from_selected_edges(
+        matching: pymatching.Matching,
+        selected_edges: np.ndarray
+    ) -> bool:
+        """
+        Compute predicted observable parity directly from selected decoding edges,
+        without calling decode() again.
+
+        Robust to boundary edges returned as (u, -1) by decode_to_edges_array.
+        We avoid matching.get_boundary_edge_data(...) and instead inspect the
+        networkx graph exported from the matching object.
+        """
+        G = matching.to_networkx()
+
+        # Try to infer number of detectors (real detector nodes are < num_detectors).
+        n_det = getattr(matching, "num_detectors", None)
+
+        # Maps:
+        #  - non_boundary_has_fault[(u,v)] = bool
+        #  - boundary_has_fault[det] = bool
+        non_boundary_has_fault = {}
+        boundary_has_fault = {}
+
+        is_multigraph = G.is_multigraph()
+        edge_iter = G.edges(keys=True, data=True) if is_multigraph else G.edges(data=True)
+
+        for item in edge_iter:
+            if is_multigraph:
+                u, v, _, data = item
+            else:
+                u, v, data = item
+
+            try:
+                u_i = int(u)
+                v_i = int(v)
+            except Exception:
+                continue
+
+            # Detect boundary nodes (prefer attribute; fallback to node id >= n_det)
+            u_is_boundary = bool(G.nodes[u].get("is_boundary", False))
+            v_is_boundary = bool(G.nodes[v].get("is_boundary", False))
+            if n_det is not None:
+                u_is_boundary = u_is_boundary or (u_i >= int(n_det))
+                v_is_boundary = v_is_boundary or (v_i >= int(n_det))
+
+            has_fault = bool(data.get("fault_ids", set()))
+
+            if u_is_boundary ^ v_is_boundary:
+                det = v_i if u_is_boundary else u_i
+                # XOR in case multiple parallel boundary edges exist (rare)
+                boundary_has_fault[det] = bool(boundary_has_fault.get(det, False) ^ has_fault)
+            elif not u_is_boundary and not v_is_boundary:
+                key = (u_i, v_i) if u_i <= v_i else (v_i, u_i)
+                # XOR in case of parallel edges with same endpoints (rare)
+                non_boundary_has_fault[key] = bool(non_boundary_has_fault.get(key, False) ^ has_fault)
+
+        # Now compute observable parity from selected edges.
+        obs_flip = False
+        for u, v in selected_edges:
+            u_i, v_i = int(u), int(v)
+
+            # PyMatching uses -1 as boundary sentinel in decode_to_edges_array
+            if u_i == -1 or v_i == -1:
+                det = v_i if u_i == -1 else u_i
+                if boundary_has_fault.get(det, False):
+                    obs_flip ^= True
+            else:
+                key = (u_i, v_i) if u_i <= v_i else (v_i, u_i)
+                if non_boundary_has_fault.get(key, False):
+                    obs_flip ^= True
+
+        return obs_flip
+
+
+    def get_solution_edges(
+            self, 
+            matching: pymatching.Matching, 
+            syndrome_volume: np.ndarray, 
+            enable_correlations: bool=False,
+            return_predicted_obs: bool=False
+    ):
+        """
+        Get the oracle solution edges for a given syndrome volume/shot by decoding with the provided matching.
+        """
+
+        solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+        
+        if return_predicted_obs:
+            predicted_obs = self._predict_obs_from_selected_edges(matching, solution_edges)
+            
+            return solution_edges, predicted_obs
+        
+        return solution_edges
+
+
+    def get_solution_edges_batch(
+            self, 
+            matching: pymatching.Matching, 
+            syndrome_volume_batch: np.ndarray,
+            enable_correlations: bool=True, 
+            return_predicted_obs: bool=False):
         """
         Get the oracle solution edges for each syndrome volume/shot by decoding with the drifted matching.
         """
 
         solution_edges_batch = []
         for shot_idx, syndrome_volume in enumerate(syndrome_volume_batch):
-            solution_edges = drifted_matching.decode_to_edges_array(syndrome_volume, enable_correlations=True)
+            solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
             solution_edges_batch.append(solution_edges)
         
         if return_predicted_obs:
             predicted_obs_batch = np.zeros(self.n_shots, dtype=bool)
 
             for shot_idx, edges in enumerate(solution_edges_batch):
-                obs_flip = False
-                
-                for u, v in edges:
-                    # Fetch edge data depending on whether it hits the boundary (-1)
-                    if v == -1:
-                        edge_data = drifted_matching.get_boundary_edge_data(u)
-                    else:
-                        edge_data = drifted_matching.get_edge_data(u, v)
-                        
-                    # If the edge has fault_ids, it crosses your single observable. Toggle parity!
-                    if edge_data and edge_data.get('fault_ids'):
-                        obs_flip ^= True 
-                        
-                predicted_obs_batch[shot_idx] = obs_flip
-        else:
-            predicted_obs_batch = None
+                predicted_obs_batch[shot_idx] = self._predict_obs_from_selected_edges(matching, edges)
 
-        return solution_edges_batch, predicted_obs_batch
-    
+            return solution_edges_batch, predicted_obs_batch        
+        
+        return solution_edges_batch
 
-    def generate_data(self, return_predicted_obs: bool=False):
+
+    def generate_data(self, seed: int=42):
         """
         Main method to generate all data: base circuit, drifted circuit, syndrome volumes, true labels, and oracle solution edges.
         """
-
+        
         base_circuit, base_matching = self.generate_base_circuit()
-        drifted_circuit, drifted_matching = self.generate_drifted_circuit(base_circuit)
+        drifted_circuit, drifted_matching = self.generate_drifted_circuit(base_circuit, seed=seed)
         syndrome_volume_batch, true_obs_batch = self.simulate_syndrome_data(drifted_circuit)
-        solution_oracle_edges_batch, predicted_oracle_obs_batch = self.get_oracle_solution_edges(drifted_matching, syndrome_volume_batch, return_predicted_obs)
+        solution_oracle_edges_batch, predicted_oracle_obs_batch = self.get_solution_edges_batch(
+            matching=drifted_matching, 
+            syndrome_volume_batch=syndrome_volume_batch, 
+            enable_correlations=True,
+            return_predicted_obs=True
+            )
 
         return {
             "base_circuit": base_circuit,
@@ -171,7 +266,7 @@ class SyndromeDataGenerator:
             "predicted_oracle_obs_batch": predicted_oracle_obs_batch
         }
     
-    
+
     @staticmethod
     def plot_mwpm_solution_3d(circuit, matching, syndrome, true_obs, pred_obs, solution_edges):
         """

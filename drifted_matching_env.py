@@ -20,7 +20,7 @@ class DriftedMatchingEnv(gym.Env):
     """
     Graph-structured RL environment for learning MWPM edge reweighting in presence of drift noise.
 
-    Observation (graph in array form)
+    Oservation (graph in array form)
     ---------------------------------
     A fixed-size dictionary (good for Gym + GNN training pipelines):
       - node_features: [N_edges, 2]
@@ -55,18 +55,8 @@ class DriftedMatchingEnv(gym.Env):
 
     Episode semantics
     -----------------
-    Each episode samples a *new drifted circuit* using episode_circuit_factory,
-    and the drift stays fixed for max_steps (like "trials" under one drift setting).
-
-    Notes on scalability/generalization
-    -----------------------------------
-    - The line-graph uses local adjacency only (shared detector endpoint),
-      which scales much better than dense all-pairs correlations.
-    - Tracers are stored in sparse-aligned form:
-        occurrence = node feature (size N_edges)
-        correlation = edge feature (size M_line)
-    - In the future, I plan to add a small number of non-local line-graph edges
-      (e.g., crosstalk candidates).
+    Each episode samples a new drifted circuit using SyndromeDataGenerator, 
+    and the agent interacts with a sequence of shots from that circuit.
     """
 
     metadata = {"render_modes": []}
@@ -83,17 +73,24 @@ class DriftedMatchingEnv(gym.Env):
         occ_to_weight_scale: float = 0.5,
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
-        logical_reward_coef: float = 1.0,
         oracle_reward_coef: float = 0.0,
     ):
         super().__init__()
 
-        # Use the provided syndrome data generator to create drifted circuits for each episode.
+        # Use the provided syndrome data generator to create drifted circuits for each episode
         self.syndrome_data_generator = syndrome_data_generator
 
-        # Build the base circuit and matching.
-        self.base_circuit, self.base_matching = self.syndrome_data_generator.generate_base_circuit()
-        self.dec_graph = self._matching_to_simple_nx(self.base_matching)
+        # Build the base circuit and matching
+        self.base_circuit, self.current_matching = self.syndrome_data_generator.generate_base_circuit()
+
+        # Capture the number of detectors
+        self.n_detectors = self.base_circuit.num_detectors
+
+        # Store a template decoding graph
+        self.decoder_template_graph = self.current_matching.to_networkx()
+
+        # Construct the simplified GNN graph
+        self.dec_graph = self._matching_to_simple_nx(self.current_matching)
 
         # Config / hyperparams
         self.max_steps = self.syndrome_data_generator.n_shots
@@ -101,26 +98,26 @@ class DriftedMatchingEnv(gym.Env):
         self.local_action_only = local_action_only
         self.local_action_hops = local_action_hops # Number of hops in line graph for local action masking
 
-        self.occ_ema_alpha = float(occ_ema_alpha)
-        self.corr_ema_alpha = float(corr_ema_alpha)
-        self.occ_to_weight_scale = float(occ_to_weight_scale)
+        self.occ_ema_alpha = occ_ema_alpha
+        self.corr_ema_alpha = corr_ema_alpha
+        self.occ_to_weight_scale = occ_to_weight_scale
 
-        self.min_weight = float(min_weight)
-        self.max_weight = float(max_weight)
+        self.min_weight = min_weight
+        self.max_weight = max_weight
 
-        self.logical_reward_coef = float(logical_reward_coef)
-        self.oracle_reward_coef = float(oracle_reward_coef)
+        self.oracle_reward_coef = oracle_reward_coef
 
         # Detector coordinates (used only to identify "real detectors" vs boundary nodes)
         self.detector_coords = self.base_circuit.get_detector_coordinates()
         self.real_detectors = set(int(k) for k in self.detector_coords.keys())
 
-        # Fixed decoding-edge indexing
-        self.dec_edge_list, self.dec_edge_to_idx, self.base_edge_weight = self._index_decoding_graph_edges(self.dec_graph)
+        # Fix decoding-edge indexing
+        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights = self._index_decoding_graph_edges(self.dec_graph)
         self.n_dec_edges = len(self.dec_edge_list)
-        self.base_p = 1.0 / (1.0 + np.exp(self.base_edge_weight))
+        self.base_p = 1.0 / (1.0 + np.exp(self.current_weights))
+        self.initial_base_weights = self.current_weights.copy()
 
-        # Fixed line-graph topology (local adjacency only, scalable default)
+        # Build the line graph, adding edges between geometrically close X and Z edges
         self.line_edge_index = self._build_line_graph_edges(
             self.dec_edge_list, 
             self.real_detectors,
@@ -129,10 +126,10 @@ class DriftedMatchingEnv(gym.Env):
         
         self.n_line_edges = self.line_edge_index.shape[1]
 
-        # Adjacency list for fast local action masking (k-hop expansion)
+        # Construct an adjacency list for fast local action masking
         self.line_neighbors = self._build_line_neighbors(self.line_edge_index, self.n_dec_edges)
 
-        # Spaces (fixed size for a given base circuit / distance)
+        # Define the Gym Observation and Action Spaces (fixed size for a given base circuit / distance)
         self.observation_space = spaces.Dict({
             "node_features": spaces.Box(
                 low=-np.inf,
@@ -167,161 +164,36 @@ class DriftedMatchingEnv(gym.Env):
             dtype=np.float32
         )
 
-        # Dynamic tracers
+        # Initialize dynamic tracers
         self.occ_ema = np.zeros(self.n_dec_edges, dtype=np.float32)
         self.corr_ema = np.zeros(self.n_line_edges, dtype=np.float32)
 
         # Cached current shot (prepared during reset and after each step)
-        self.curr_syndrome: Optional[np.ndarray] = None
-        self.curr_true_obs: Optional[np.ndarray] = None
-        self.curr_first_pass_selected_idx: Optional[np.ndarray] = None
-        self.curr_action_mask: Optional[np.ndarray] = None
+        self.current_syndrome: Optional[np.ndarray] = None
+        self.current_true_obs: Optional[np.ndarray] = None
+        self.current_first_pass_selected_idx: Optional[np.ndarray] = None
+        self.current_action_mask: Optional[np.ndarray] = None
 
-
-    def reset(self, seed=None, options=None):
-
-        super().reset(seed=seed)
-
-        # Reset the step count
-        self.step_count = 0
-
-        # Reset tracers
-        self.occ_ema = self.base_p.copy()
-        self.corr_ema.fill(0.0)
-
-        # Generate the episode data
-        self.episode_data = self.syndrome_data_generator.generate_data(return_predicted_obs=False)
-
-        # Prepare the first shot and build the initial observation
-        obs = self._prepare_next_observation()
-
-        info = {
-            "n_decoding_edges": self.n_dec_edges,
-            "n_line_edges": self.n_line_edges,
-        }
-        return obs, info
-
-
-    def step(self, action: np.ndarray):
-        
-        assert self.curr_syndrome is not None, "Call reset() before step()."
-
-        ###############################################################
-        # 1) Build current weights from base + occurrence tracer bias #
-        ###############################################################
-
-        # MWPM minimizes total path weight. If an edge occurs often under drift,
-        # it should usually become *more likely* -> lower weight.
-        current_weights = self._current_weights_from_occurrence()
-
-
-        ###############################################
-        # 2) Apply action (masked locally if enabled) #
-        ###############################################
-
-        action = np.asarray(action, dtype=np.float32).reshape(-1)
-        if action.shape[0] != self.n_dec_edges:
-            raise ValueError(f"Action has shape {action.shape}; expected ({self.n_dec_edges},)")
-
-        if self.curr_action_mask is None:
-            mask = np.ones(self.n_dec_edges, dtype=np.float32)
-        else:
-            mask = self.curr_action_mask.astype(np.float32)
-
-        if self.local_action_only:
-            applied_delta = self.action_scale * action * mask
-        else:
-            applied_delta = self.action_scale * action
-
-        second_pass_weights = np.clip(current_weights + applied_delta, self.min_weight, self.max_weight)
-
-
-        #######################################################
-        # 3) Build second-pass matching with reweighted graph #
-        #######################################################
-
-        second_pass_matching = self._build_matching_with_custom_weights(second_pass_weights)
-
-        # Decode observables and selected edges
-        pred_obs = np.asarray(second_pass_matching.decode(self.curr_syndrome), dtype=np.uint8).reshape(-1)
-        selected_edges_2 = self._safe_decode_to_edges_array(second_pass_matching, self.curr_syndrome, enable_correlations=False)
-        selected_idx_2 = self._selected_edge_indices_from_pairs(selected_edges_2)
-
-
-        ######################################################
-        # 4) Update tracers using SECOND-pass selected edges #
-        ######################################################
-
-        self._update_occurrence_tracer(selected_idx_2)
-        self._update_correlation_tracer(selected_idx_2)
-
-
-        #########################
-        # 5) Compute the reward #
-        #########################
-
-        true_obs = self.curr_true_obs.astype(np.uint8).reshape(-1)
-        logical_error = int(np.any(pred_obs != true_obs))
-        logical_reward = 1.0 if logical_error == 0 else -1.0
-
-        reward = self.logical_reward_coef * logical_reward
-
-        oracle_similarity = None
-        if self.oracle_reward_coef > 0.0:
-            # Pull the pre-calculated oracle edges for this exact shot
-            oracle_edges = self.episode_data["solution_oracle_edges_batch"][self.step_count]
-            oracle_idx = self._selected_edge_indices_from_pairs(oracle_edges)
-            
-            oracle_similarity = self._edge_set_jaccard(selected_idx_2, oracle_idx)
-            oracle_reward = 2.0 * oracle_similarity - 1.0
-            reward += self.oracle_reward_coef * oracle_reward
-
-        # Increment step count after processing the shot
-        self.step_count += 1
-        terminated = False
-        truncated = self.step_count >= self.max_steps # Episode ends when batch is empty
-
-
-        ############################################################
-        # 6) Prepare next observation (next shot under SAME drift) #
-        ############################################################
-
-        if not truncated:
-            next_obs = self._prepare_next_observation()
-        else:
-            # Still return a valid obs (same as last prepared style), but no new shot is needed.
-            # Here we return the last state-shaped view after tracer update.
-            next_obs = self._build_observation_from_cached_state()
-            # (This is okay because the episode ends right away.)
-
-        info = {
-            "logical_error": logical_error,
-            "true_obs": true_obs.copy(),
-            "pred_obs": pred_obs.copy(),
-            "reward_logical": logical_reward,
-            "reward_total": float(reward),
-            "oracle_similarity_jaccard": float(oracle_similarity) if oracle_similarity is not None else None,
-            "selected_edges_first_pass_idx": self.curr_first_pass_selected_idx.copy() if self.curr_first_pass_selected_idx is not None else None,
-            "selected_edges_second_pass_idx": selected_idx_2.copy(),
-            "action_mask": self.curr_action_mask.copy() if self.curr_action_mask is not None else None,
-        }
-
-        return next_obs, float(reward), terminated, truncated, info
-
-
-    def _matching_to_simple_nx(self, matching: pymatching.Matching) -> nx.Graph:
+    
+    @staticmethod
+    def _matching_to_simple_nx(matching: pymatching.Matching) -> nx.Graph:
         """
         Export PyMatching graph and collapse MultiGraph (if present) into a simple graph.
         Normalizes all node IDs to native Python integers.
         """
+        # 1. Get the raw graph (likely a MultiGraph)
         G = matching.to_networkx()
-        H = nx.Graph()
-        for n, nd in G.nodes(data=True):
-            H.add_node(int(n), **nd)
-        for u, v, data in G.edges(data=True):
-            H.add_edge(int(u), int(v), **data)
+        
+        # 2. Collapse to simple Graph (automatically handles parallel edges & attributes)
+        H = nx.Graph(G)
+        
+        # 3. Relabel all nodes to native Python ints to ensure compatibility with Gym/GNN
+        # This preserves the 'is_boundary' attribute which is CRITICAL for reconstruction
+        mapping = {n: int(n) for n in H.nodes()}
+        H = nx.relabel_nodes(H, mapping)
+        
         return H
-
+    
 
     @staticmethod
     def _index_decoding_graph_edges(
@@ -329,6 +201,11 @@ class DriftedMatchingEnv(gym.Env):
     ) -> Tuple[List[Tuple[int, int]], Dict[Tuple[int, int], int], np.ndarray]:
         """
         Create fixed indexing of decoding-graph edges.
+
+        Args
+        ----
+        G: NetworkX graph of the decoding graph (nodes = detectors, edges = possible
+        error mechanisms).
 
         Returns
         -------
@@ -349,6 +226,7 @@ class DriftedMatchingEnv(gym.Env):
             idx += 1
 
         return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32)
+    
 
     def _build_line_graph_edges(
         self,
@@ -374,7 +252,7 @@ class DriftedMatchingEnv(gym.Env):
             if v in real_detectors:
                 incident.setdefault(v, []).append(i)
 
-        for det, edge_ids in incident.items():
+        for _, edge_ids in incident.items():
             m = len(edge_ids)
             for a in range(m):
                 for b in range(a + 1, m):
@@ -417,10 +295,10 @@ class DriftedMatchingEnv(gym.Env):
             real_node = u if cu is not None else (v if cv is not None else None)
             if real_node is not None:
                 c = self.detector_coords[real_node]
-                j, i_y = int(round(c[0])), int(round(c[1])) # j=x, i=y
-                if (i_y % 4 == 0 and j % 4 == 0) or (i_y % 4 == 2 and j % 4 == 2):
+                j, i = int(round(c[0])), int(round(c[1])) # j=x, i=y
+                if (i % 4 == 0 and j % 4 == 0) or (i % 4 == 2 and j % 4 == 2):
                     etype = "X"
-                elif (i_y % 4 == 0 and j % 4 == 2) or (i_y % 4 == 2 and j % 4 == 0):
+                elif (i % 4 == 0 and j % 4 == 2) or (i % 4 == 2 and j % 4 == 0):
                     etype = "Z"
             edge_types.append(etype)
             
@@ -448,12 +326,13 @@ class DriftedMatchingEnv(gym.Env):
             return np.zeros((2, 0), dtype=np.int64)
 
         line_edges = np.array(sorted(line_edges_set), dtype=np.int64)
+        
         return line_edges.T
-
+    
 
     def _build_line_neighbors(self, line_edge_index: np.ndarray, n_nodes: int) -> List[List[int]]:
         """
-        Adjacency list of line graph (for fast k-hop local action masks).
+        Adjacency list of line graph.
         """
         neighbors = [[] for _ in range(n_nodes)]
         if line_edge_index.shape[1] == 0:
@@ -466,117 +345,72 @@ class DriftedMatchingEnv(gym.Env):
         return neighbors
 
 
+    def reset(self, seed=None, options=None):
+
+        super().reset(seed=seed)
+
+        # Generate a new drifted circuit and corresponding decoding graph
+        self.drifted_circuit, self.drifted_matching = self.syndrome_data_generator.generate_drifted_circuit(
+            base_circuit=self.base_circuit,
+            seed=seed
+            )
+        
+        # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
+        self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(self.drifted_circuit)
+
+        # Pre-generate the oracle solution edges and predicted observable for each shot in the episode using the drifted matching
+        self.oracle_solution_edges_batch, self.oracle_predicted_obs_batch = self.syndrome_data_generator.get_solution_edges_batch(
+            self.drifted_matching, 
+            self.syndrome_batch, 
+            enable_correlations=True, 
+            return_predicted_obs=True)
+        
+        # Reset the step count
+        self.step_count = 0
+
+        # Reset decoder weights/matching to the original base graph each episode
+        self.current_weights = self.initial_base_weights.copy()
+        self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
+
+        # Reset tracers
+        self.occ_ema = self.base_p.copy()
+        self.corr_ema.fill(0.0)
+
+        # Prepare the first shot and build the initial observation
+        obs = self._prepare_next_observation()
+
+        info = {
+            "n_decoding_edges": self.n_dec_edges,
+            "n_line_edges": self.n_line_edges,
+        }
+        return obs, info
+    
+
     def _prepare_next_observation(self) -> Dict[str, np.ndarray]:
         # Pull the pre-generated syndrome for the current step
-        syndrome = self.episode_data["syndrome_volume_batch"][self.step_count]
-        true_obs = self.episode_data["true_obs_batch"][self.step_count]
+        syndrome = self.syndrome_batch[self.step_count]
+        true_obs = self.true_obs_batch[self.step_count]
 
         # First pass MWPM still uses base matching (no drift knowledge)
-        selected_edges_1 = self._safe_decode_to_edges_array(self.base_matching, syndrome, enable_correlations=False)
+        selected_edges_1 = self.syndrome_data_generator.get_solution_edges(
+            matching=self.current_matching, 
+            syndrome_volume=syndrome, 
+            enable_correlations=False,
+            return_predicted_obs=False)
+        
         selected_idx_1 = self._selected_edge_indices_from_pairs(selected_edges_1)
 
         # Action mask around first-pass selected edges
         action_mask = self._compute_action_mask(selected_idx_1)
 
         # Cache
-        self.curr_syndrome = syndrome
-        self.curr_true_obs = true_obs
-        self.curr_first_pass_selected_idx = selected_idx_1
-        self.curr_action_mask = action_mask
+        self.current_syndrome = syndrome
+        self.current_true_obs = true_obs
+        self.current_first_pass_selected_idx = selected_idx_1
+        self.current_action_mask = action_mask
 
         return self._build_observation_from_cached_state()
-
-    def _build_observation_from_cached_state(self) -> Dict[str, np.ndarray]:
-        """
-        Builds observation arrays from current tracers + cached first-pass selection.
-        """
-        current_weights = self._current_weights_from_occurrence()
-
-        selected_flag = np.zeros(self.n_dec_edges, dtype=np.float32)
-        if self.curr_first_pass_selected_idx is not None and len(self.curr_first_pass_selected_idx) > 0:
-            selected_flag[self.curr_first_pass_selected_idx] = 1.0
-
-        node_features = np.stack([current_weights, selected_flag], axis=1).astype(np.float32)
-
-        edge_attr = self.corr_ema.reshape(-1, 1).astype(np.float32)
-
-        action_mask = (
-            self.curr_action_mask.astype(np.float32)
-            if self.curr_action_mask is not None
-            else np.ones(self.n_dec_edges, dtype=np.float32)
-        )
-
-        obs = {
-            "node_features": node_features,
-            "edge_index": self.line_edge_index.astype(np.int64),
-            "edge_attr": edge_attr,
-            "action_mask": action_mask,
-        }
-        return obs
-
-
-    def _current_weights_from_occurrence(self) -> np.ndarray:
-        """
-        Current node weights calculated using the MWPM log-odds formula.
-        """
-        # occ_ema represents our current estimate of the physical error probability p.
-        # We must clip it to prevent math errors:
-        # - p cannot be 0 (log(1/0) is undefined)
-        # - p should not be >= 0.5 (MWPM requires positive edge weights)
-        p = np.clip(self.occ_ema, 1e-6, 0.499999)
-        
-        # Apply the exact formula from the paper
-        w = np.log((1.0 - p) / p)
-        
-        # Clip to your environment's safe min/max weight boundaries
-        w = np.clip(w, self.min_weight, self.max_weight)
-        
-        return w.astype(np.float32)
-
-
-    def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
-        """
-        Rebuild a PyMatching object using the same decoding-graph topology but new weights.
-
-        This is simple and robust for a prototype. For larger distances, you can optimize
-        by avoiding repeated graph reconstruction.
-        """
-        G = self.dec_graph.copy()
-
-        for idx, (u, v) in enumerate(self.dec_edge_list):
-            G[u][v]["weight"] = float(custom_weights[idx])
-
-        # Keep fault_ids / error_probability attrs if present in original graph
-        m = pymatching.Matching.from_networkx(G)
-        return m
-
-
-    def _safe_decode_to_edges_array(
-        self, 
-        matching: pymatching.Matching, 
-        syndrome: np.ndarray, 
-        enable_correlations: bool
-    ) -> np.ndarray:
-        """
-        Wrapper for PyMatching v2 decode_to_edges_array.
-        Returns array of shape [K, 2] (node pairs in the decoding graph).
-        """
-        if not hasattr(matching, "decode_to_edges_array"):
-            raise RuntimeError(
-                "This environment expects PyMatching v2 with decode_to_edges_array(). "
-                "Please upgrade PyMatching."
-            )
-
-        edges = matching.decode_to_edges_array(syndrome)
-        edges = np.asarray(edges, dtype=np.int64)
-
-        if edges.size == 0:
-            return np.zeros((0, 2), dtype=np.int64)
-
-        if edges.ndim != 2 or edges.shape[1] != 2:
-            raise RuntimeError(f"Unexpected decode_to_edges_array shape: {edges.shape}")
-
-        return edges
+    
 
     def _selected_edge_indices_from_pairs(self, edge_pairs: np.ndarray) -> np.ndarray:
         """
@@ -600,7 +434,173 @@ class DriftedMatchingEnv(gym.Env):
 
         # unique sorted
         return np.asarray(sorted(set(idxs)), dtype=np.int64)
+    
 
+    def _compute_action_mask(self, selected_idx: np.ndarray) -> np.ndarray:
+        """
+        Build a local action mask on line-graph nodes.
+
+        If local_action_only=False -> all ones.
+        Else -> selected edges + k-hop line-graph neighborhood.
+        """
+        if not self.local_action_only:
+            return np.ones(self.n_dec_edges, dtype=np.float32)
+
+        mask = np.zeros(self.n_dec_edges, dtype=np.float32)
+        if selected_idx.size == 0:
+            return mask  # no fired/selected edges -> no action region (reasonable default)
+
+        frontier = set(int(i) for i in selected_idx.tolist())
+        visited = set(frontier)
+
+        for i in frontier:
+            mask[i] = 1.0
+
+        for _ in range(self.local_action_hops):
+            new_frontier = set()
+            for i in frontier:
+                for j in self.line_neighbors[i]:
+                    if j not in visited:
+                        visited.add(j)
+                        new_frontier.add(j)
+            for j in new_frontier:
+                mask[j] = 1.0
+            frontier = new_frontier
+            if not frontier:
+                break
+
+        return mask
+    
+
+    def _build_observation_from_cached_state(self) -> Dict[str, np.ndarray]:
+        """
+        Builds observation arrays from current tracers + cached first-pass selection.
+        """
+
+        selected_flag = np.zeros(self.n_dec_edges, dtype=np.float32)
+        if self.current_first_pass_selected_idx is not None and len(self.current_first_pass_selected_idx) > 0:
+            selected_flag[self.current_first_pass_selected_idx] = 1.0
+
+        node_features = np.stack([self.current_weights, selected_flag], axis=1).astype(np.float32)
+
+        edge_attr = self.corr_ema.reshape(-1, 1).astype(np.float32)
+
+        action_mask = (
+            self.current_action_mask.astype(np.float32)
+            if self.current_action_mask is not None
+            else np.ones(self.n_dec_edges, dtype=np.float32)
+        )
+
+        obs = {
+            "node_features": node_features,
+            "edge_index": self.line_edge_index.astype(np.int64),
+            "edge_attr": edge_attr,
+            "action_mask": action_mask,
+        }
+        return obs
+
+
+    def step(self, action: np.ndarray):
+        
+        assert self.current_syndrome is not None, "Call reset() before step()."
+
+        ###############################################
+        # 1) Apply action (masked locally if enabled) #
+        ###############################################
+
+        action = np.asarray(action, dtype=np.float32).reshape(-1)
+        if action.shape[0] != self.n_dec_edges:
+            raise ValueError(f"Action has shape {action.shape}; expected ({self.n_dec_edges},)")
+
+        if self.current_action_mask is None:
+            mask = np.ones(self.n_dec_edges, dtype=np.float32)
+        else:
+            mask = self.current_action_mask.astype(np.float32)
+
+        if self.local_action_only:
+            applied_delta = self.action_scale * action * mask
+        else:
+            applied_delta = self.action_scale * action
+
+        second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
+
+
+        #######################################################
+        # 2) Build second-pass matching with reweighted graph #
+        #######################################################
+
+        second_pass_matching = self._build_matching_with_custom_weights(second_pass_weights)
+
+        # Run MWPM to get the selected edges and predicted observable for the current shot
+        selected_edges_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
+            matching=second_pass_matching,
+            syndrome_volume=self.current_syndrome,
+            enable_correlations=False,
+            return_predicted_obs=True)
+        
+        selected_idx_2 = self._selected_edge_indices_from_pairs(selected_edges_2)
+
+        ######################################################
+        # 3) Update tracers using SECOND-pass selected edges #
+        ######################################################
+
+        self._update_occurrence_tracer(selected_idx_2)
+        self._update_correlation_tracer(selected_idx_2)
+        self._update_base_matching_from_occurrence()
+
+
+        #########################
+        # 4) Compute the reward #
+        #########################
+
+        logical_error = pred_obs != self.current_true_obs
+        logical_reward = 1.0 if logical_error == 0 else -1.0
+
+        reward = logical_reward
+
+        oracle_similarity = None
+        if self.oracle_reward_coef > 0.0:
+            # Pull the pre-calculated oracle edges for this exact shot
+            oracle_edges = self.oracle_solution_edges_batch[self.step_count]
+            oracle_idx = self._selected_edge_indices_from_pairs(oracle_edges)
+            
+            # Compute Jaccard similarity between the second-pass selected edges and the oracle solution edges
+            oracle_similarity = self._edge_set_jaccard(selected_idx_2, oracle_idx)
+            oracle_reward = 2.0 * oracle_similarity - 1.0
+            reward += self.oracle_reward_coef * oracle_reward
+
+        # Increment step count after processing the shot
+        self.step_count += 1
+        terminated = False
+        truncated = self.step_count >= self.max_steps # Episode ends when batch is empty
+
+
+        ############################################################
+        # 5) Prepare next observation (next shot under same drift) #
+        ############################################################
+
+        if not truncated:
+            next_obs = self._prepare_next_observation()
+        else:
+            # Still return a valid obs (same as last prepared style), but no new shot is needed.
+            # Here we return the last state-shaped view after tracer update.
+            next_obs = self._build_observation_from_cached_state()
+            # (This is okay because the episode ends right away.)
+
+        info = {
+            "logical_error": logical_error,
+            "true_obs": self.current_true_obs,
+            "pred_obs": pred_obs,
+            "reward_logical": logical_reward,
+            "reward_total": float(reward),
+            "oracle_similarity_jaccard": float(oracle_similarity) if oracle_similarity is not None else None,
+            "selected_edges_first_pass_idx": self.current_first_pass_selected_idx.copy() if self.current_first_pass_selected_idx is not None else None,
+            "selected_edges_second_pass_idx": selected_idx_2.copy(),
+            "action_mask": self.current_action_mask.copy() if self.current_action_mask is not None else None,
+        }
+
+        return next_obs, float(reward), terminated, truncated, info    
+    
 
     def _update_occurrence_tracer(self, selected_idx: np.ndarray):
         """
@@ -637,41 +637,58 @@ class DriftedMatchingEnv(gym.Env):
         self.corr_ema = (1.0 - alpha) * self.corr_ema + alpha * co_active
 
 
-    def _compute_action_mask(self, selected_idx: np.ndarray) -> np.ndarray:
+    def _update_base_matching_from_occurrence(self):
         """
-        Build a local action mask on line-graph nodes.
-
-        If local_action_only=False -> all ones.
-        Else -> selected edges + k-hop line-graph neighborhood.
+        Periodically update the 'base' decoder to catch up with the drift.
+        Use this sparingly (e.g., once per episode in reset) to keep the RL stable.
         """
-        if not self.local_action_only:
-            return np.ones(self.n_dec_edges, dtype=np.float32)
+        p = np.clip(self.occ_ema, 1e-6, 0.499999)
+        
+        # Apply the exact formula from the paper
+        w = np.log((1.0 - p) / p)
+        
+        # Clip to your environment's safe min/max weight boundaries
+        w = np.clip(w, self.min_weight, self.max_weight)
 
-        mask = np.zeros(self.n_dec_edges, dtype=np.float32)
-        if selected_idx.size == 0:
-            return mask  # no fired/selected edges -> no action region (reasonable default)
+        # Update the current weights for observation building and next steps
+        self.current_weights = w.copy()
+        
+        # Update the base matching object
+        self.current_matching = self._build_matching_with_custom_weights(w)
 
-        frontier = set(int(i) for i in selected_idx.tolist())
-        visited = set(frontier)
 
-        for i in frontier:
-            mask[i] = 1.0
+    def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
+        """
+        Rebuild a PyMatching object using the FULL topology template.
+        """
+        # 1. Copy the RAW template graph
+        G = self.decoder_template_graph.copy()
 
-        for _ in range(self.local_action_hops):
-            new_frontier = set()
-            for i in frontier:
-                for j in self.line_neighbors[i]:
-                    if j not in visited:
-                        visited.add(j)
-                        new_frontier.add(j)
-            for j in new_frontier:
-                mask[j] = 1.0
-            frontier = new_frontier
-            if not frontier:
-                break
+        # 2. Iterate and update weights
+        is_multigraph = G.is_multigraph()
+        edges_iterator = G.edges(keys=True, data=True) if is_multigraph else G.edges(data=True)
 
-        return mask
+        for item in edges_iterator:
+            if is_multigraph:
+                u, v, k, d = item
+            else:
+                u, v, d = item
 
+            # Normalize key to int for lookup (just for the dictionary)
+            u_int, v_int = int(u), int(v)
+            key = (u_int, v_int) if u_int <= v_int else (v_int, u_int)
+            
+            # Lookup and update weight
+            idx = self.dec_edge_to_idx.get(key, None)
+            if idx is not None:
+                d["weight"] = float(custom_weights[idx])
+
+        # 3. Use the constructor with explicit n_detectors
+        # This prevents PyMatching from incorrectly inferring boundary nodes as regular nodes.
+        m = pymatching.Matching(G, num_detectors=self.n_detectors)
+        
+        return m
+    
 
     @staticmethod
     def _edge_set_jaccard(a_idx: np.ndarray, b_idx: np.ndarray) -> float:
@@ -695,6 +712,6 @@ class DriftedMatchingEnv(gym.Env):
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
             "dec_edge_list": list(self.dec_edge_list),
-            "base_edge_weight": self.base_edge_weight.copy(),
+            "base_edge_weight": self.current_weights.copy(),
             "line_edge_index": self.line_edge_index.copy(),
         }

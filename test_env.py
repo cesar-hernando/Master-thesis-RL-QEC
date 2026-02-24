@@ -14,8 +14,8 @@ n_shots = 10
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=3, 
-    n_rounds=3, 
+    distance=5, 
+    n_rounds=5, 
     mismatch=20.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
@@ -69,7 +69,7 @@ for i in range(env.n_line_edges):
         xz_link_count += 1
         
 # Since line edges are directed in the PyG format, we divide by 2 for unique undirected pairs
-print(f" - Unique X-Z Crosstalk Connections Found: {xz_link_count // 2}")
+print(f" - Unique X-Z Crosstalk Connections Found: {xz_link_count}")
 
 
 print("\n--- 3. Testing env.reset() ---")
