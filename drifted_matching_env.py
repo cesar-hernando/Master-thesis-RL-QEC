@@ -18,29 +18,30 @@ from syndrome_data_generation import SyndromeDataGenerator
 
 class DriftedMatchingEnv(gym.Env):
     """
-    Graph-structured RL environment for learning MWPM edge reweighting in presence of drift noise.
+    Graph-structured RL environment for learning MWPM edge reweighting in presence 
+    of drift noise.
 
     Oservation (graph in array form)
     ---------------------------------
     A fixed-size dictionary (good for Gym + GNN training pipelines):
       - node_features: [N_edges, 2]
-          [:, 0] = current MWPM edge weight (base + occurrence-tracer bias)
+          [:, 0] = current MWPM edge weight (base updated with the occurrence tracer)
           [:, 1] = selected by first MWPM pass (0/1)
       - edge_index: [2, M_line]
           Line-graph connectivity (nodes = decoding-graph edges)
       - edge_attr: [M_line, 1]
-          Correlation tracer on line-graph edges
+          Correlation tracer on line-graph edges 
       - action_mask: [N_edges]
           0/1 mask; if local_action_only=True, action is applied only where mask=1
 
     Action
     ------
-    Continuous vector of shape [N_edges], each component in [-1, 1].
-    The env scales it by action_scale and applies it as a small weight delta.
+    Continuous vector of shape [N_edges], each component in action_scale*[-1, 1].
+    The env scales it by and applies it as a small weight delta.
 
-    By default (for scalability), the env only applies actions on the local
-    neighborhood of first-pass selected edges (controlled by local_action_only
-    and local_action_hops). The action_mask is included in the observation.
+    By default (for scalability), the env only applies actions on the local neighborhood 
+    of first-pass selected edges (controlled by local_action_only and local_action_hops). 
+    The action_mask is included in the observation.
 
     Transition (one env.step)
     -------------------------
@@ -51,12 +52,14 @@ class DriftedMatchingEnv(gym.Env):
     5) Compute reward:
          - logical reward: based on predicted vs true observable
          - optional oracle imitation reward (DGR-like auxiliary signal)
-    6) Sample next shot and prepare next observation
+    6) Retrieve next shot from episode cache and prepare next observation
 
     Episode semantics
     -----------------
-    Each episode samples a new drifted circuit using SyndromeDataGenerator, 
-    and the agent interacts with a sequence of shots from that circuit.
+    Each episode samples a new drifted circuit using SyndromeDataGenerator, and the agent 
+    interacts with a sequence of shots from that circuit. Thus, the number of shots is a 
+    hyperparameter that determines the length of the episode. It plays a simlar role as 
+    the number of trials in the DGR paper.
     """
 
     metadata = {"render_modes": []}
@@ -64,13 +67,11 @@ class DriftedMatchingEnv(gym.Env):
     def __init__(
         self,
         syndrome_data_generator: SyndromeDataGenerator,
-        action_scale: float = 0.25,
         local_action_only: bool = True,
         local_action_hops: int = 1,
         xz_crosstalk_radius: float = 2.1,
         occ_ema_alpha: float = 0.05,
         corr_ema_alpha: float = 0.05,
-        occ_to_weight_scale: float = 0.5,
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         oracle_reward_coef: float = 0.0,
@@ -83,28 +84,21 @@ class DriftedMatchingEnv(gym.Env):
         # Build the base circuit and matching
         self.base_circuit, self.current_matching = self.syndrome_data_generator.generate_base_circuit()
 
-        # Capture the number of detectors
+        # Store the number of detectors
         self.n_detectors = self.base_circuit.num_detectors
 
-        # Store a template decoding graph
-        self.decoder_template_graph = self.current_matching.to_networkx()
-
-        # Construct the simplified GNN graph
-        self.dec_graph = self._matching_to_simple_nx(self.current_matching)
+        # Construct the simplified GNN decoding graph
+        self.dec_graph = self.current_matching.to_networkx()
 
         # Config / hyperparams
         self.max_steps = self.syndrome_data_generator.n_shots
-        self.action_scale = action_scale
         self.local_action_only = local_action_only
         self.local_action_hops = local_action_hops # Number of hops in line graph for local action masking
-
+        self.xz_crosstalk_radius = xz_crosstalk_radius
         self.occ_ema_alpha = occ_ema_alpha
         self.corr_ema_alpha = corr_ema_alpha
-        self.occ_to_weight_scale = occ_to_weight_scale
-
         self.min_weight = min_weight
         self.max_weight = max_weight
-
         self.oracle_reward_coef = oracle_reward_coef
 
         # Detector coordinates (used only to identify "real detectors" vs boundary nodes)
@@ -113,17 +107,15 @@ class DriftedMatchingEnv(gym.Env):
 
         # Fix decoding-edge indexing
         self.dec_edge_list, self.dec_edge_to_idx, self.current_weights = self._index_decoding_graph_edges(self.dec_graph)
+
         self.n_dec_edges = len(self.dec_edge_list)
         self.base_p = 1.0 / (1.0 + np.exp(self.current_weights))
+
+        # Store the original weights obtained from the DEM
         self.initial_base_weights = self.current_weights.copy()
 
         # Build the line graph, adding edges between geometrically close X and Z edges
-        self.line_edge_index = self._build_line_graph_edges(
-            self.dec_edge_list, 
-            self.real_detectors,
-            xz_crosstalk_radius
-            )
-        
+        self.line_edge_index = self._build_line_graph_edges()
         self.n_line_edges = self.line_edge_index.shape[1]
 
         # Construct an adjacency list for fast local action masking
@@ -173,26 +165,6 @@ class DriftedMatchingEnv(gym.Env):
         self.current_true_obs: Optional[np.ndarray] = None
         self.current_first_pass_selected_idx: Optional[np.ndarray] = None
         self.current_action_mask: Optional[np.ndarray] = None
-
-    
-    @staticmethod
-    def _matching_to_simple_nx(matching: pymatching.Matching) -> nx.Graph:
-        """
-        Export PyMatching graph and collapse MultiGraph (if present) into a simple graph.
-        Normalizes all node IDs to native Python integers.
-        """
-        # 1. Get the raw graph (likely a MultiGraph)
-        G = matching.to_networkx()
-        
-        # 2. Collapse to simple Graph (automatically handles parallel edges & attributes)
-        H = nx.Graph(G)
-        
-        # 3. Relabel all nodes to native Python ints to ensure compatibility with Gym/GNN
-        # This preserves the 'is_boundary' attribute which is CRITICAL for reconstruction
-        mapping = {n: int(n) for n in H.nodes()}
-        H = nx.relabel_nodes(H, mapping)
-        
-        return H
     
 
     @staticmethod
@@ -228,12 +200,7 @@ class DriftedMatchingEnv(gym.Env):
         return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32)
     
 
-    def _build_line_graph_edges(
-        self,
-        dec_edge_list: List[Tuple[int, int]],
-        real_detectors: Set[int],
-        xz_crosstalk_radius: float
-    ) -> np.ndarray:
+    def _build_line_graph_edges(self) -> np.ndarray:
         """
         Build line-graph connectivity using:
         1. Shared real detector endpoints (captures all local X-X and Z-Z connections)
@@ -246,10 +213,10 @@ class DriftedMatchingEnv(gym.Env):
         ###############################################################
 
         incident: Dict[int, List[int]] = {}
-        for i, (u, v) in enumerate(dec_edge_list):
-            if u in real_detectors:
+        for i, (u, v) in enumerate(self.dec_edge_list):
+            if u in self.real_detectors:
                 incident.setdefault(u, []).append(i)
-            if v in real_detectors:
+            if v in self.real_detectors:
                 incident.setdefault(v, []).append(i)
 
         for _, edge_ids in incident.items():
@@ -264,10 +231,10 @@ class DriftedMatchingEnv(gym.Env):
         #########################################################
         # 2. Geometric Connections (Midpoint Proximity for X-Z) #
         #########################################################
-        midpoints = np.zeros((len(dec_edge_list), 3))
+        midpoints = np.zeros((len(self.dec_edge_list), 3))
         edge_types = []
 
-        for i, (u, v) in enumerate(dec_edge_list):
+        for i, (u, v) in enumerate(self.dec_edge_list):
             cu = self.detector_coords.get(u, None)
             cv = self.detector_coords.get(v, None)
             
@@ -315,7 +282,7 @@ class DriftedMatchingEnv(gym.Env):
             dist_matrix = np.linalg.norm(x_mids[:, None, :] - z_mids[None, :, :], axis=-1)
             
             # Find all pairs within the local crosstalk threshold
-            close_pairs = np.argwhere(dist_matrix <= xz_crosstalk_radius)
+            close_pairs = np.argwhere(dist_matrix <= self.xz_crosstalk_radius)
             
             for px, pz in close_pairs:
                 ix, iz = x_indices[px], z_indices[pz]
@@ -409,7 +376,11 @@ class DriftedMatchingEnv(gym.Env):
         self.current_first_pass_selected_idx = selected_idx_1
         self.current_action_mask = action_mask
 
-        return self._build_observation_from_cached_state()
+        # Construct next observation from selected edges, current tracers and action mask
+        # in the required format
+        obs = self._build_observation_from_cached_state()
+
+        return obs
     
 
     def _selected_edge_indices_from_pairs(self, edge_pairs: np.ndarray) -> np.ndarray:
@@ -512,15 +483,11 @@ class DriftedMatchingEnv(gym.Env):
         if action.shape[0] != self.n_dec_edges:
             raise ValueError(f"Action has shape {action.shape}; expected ({self.n_dec_edges},)")
 
-        if self.current_action_mask is None:
-            mask = np.ones(self.n_dec_edges, dtype=np.float32)
-        else:
-            mask = self.current_action_mask.astype(np.float32)
-
         if self.local_action_only:
-            applied_delta = self.action_scale * action * mask
+            mask = self.current_action_mask.astype(np.float32)
+            applied_delta = action * mask
         else:
-            applied_delta = self.action_scale * action
+            applied_delta = action
 
         second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
 
@@ -662,7 +629,7 @@ class DriftedMatchingEnv(gym.Env):
         Rebuild a PyMatching object using the FULL topology template.
         """
         # 1. Copy the RAW template graph
-        G = self.decoder_template_graph.copy()
+        G = self.dec_graph.copy()
 
         # 2. Iterate and update weights
         is_multigraph = G.is_multigraph()

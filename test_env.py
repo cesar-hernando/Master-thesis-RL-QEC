@@ -14,8 +14,8 @@ n_shots = 10
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=5, 
-    n_rounds=5, 
+    distance=3, 
+    n_rounds=3, 
     mismatch=20.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
@@ -34,7 +34,6 @@ print("\n--- 2. Initializing DriftedMatchingEnv ---")
 # Setting xz_crosstalk_radius=2.1 captures Y errors and nearest-neighbor crosstalk
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
-    action_scale=1.0,
     local_action_only=True,
     local_action_hops=1,
     xz_crosstalk_radius=2.1, 
