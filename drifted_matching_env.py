@@ -21,7 +21,7 @@ class DriftedMatchingEnv(gym.Env):
     Graph-structured RL environment for learning MWPM edge reweighting in presence 
     of drift noise.
 
-    Oservation (graph in array form)
+    Observation (graph in array form)
     ---------------------------------
     A fixed-size dictionary (good for Gym + GNN training pipelines):
       - node_features: [N_edges, 2]
@@ -45,14 +45,13 @@ class DriftedMatchingEnv(gym.Env):
 
     Transition (one env.step)
     -------------------------
-    1) Use current shot + first-pass MWPM info prepared by the env
     2) Build second-pass weights = current_weights + masked_action_delta
     3) Run second-pass MWPM
     4) Update occurrence and correlation tracers using second-pass selected edges
     5) Compute reward:
          - logical reward: based on predicted vs true observable
          - optional oracle imitation reward (DGR-like auxiliary signal)
-    6) Retrieve next shot from episode cache and prepare next observation
+    6) Retrieve next shot from episode cache and prepare next observation (1st MWPM pass)
 
     Episode semantics
     -----------------
@@ -508,7 +507,7 @@ class DriftedMatchingEnv(gym.Env):
         selected_idx_2 = self._selected_edge_indices_from_pairs(selected_edges_2)
 
         ######################################################
-        # 3) Update tracers using SECOND-pass selected edges #
+        # 3) Update tracers using 2nd-pass selected edges #
         ######################################################
 
         self._update_occurrence_tracer(selected_idx_2)
@@ -566,7 +565,40 @@ class DriftedMatchingEnv(gym.Env):
             "action_mask": self.current_action_mask.copy() if self.current_action_mask is not None else None,
         }
 
-        return next_obs, float(reward), terminated, truncated, info    
+        return next_obs, float(reward), terminated, truncated, info   
+
+
+    def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
+        """
+        Rebuild a PyMatching object using the FULL topology template.
+        """
+        # 1. Copy the base decoding graph in networkx format
+        G = self.dec_graph.copy()
+
+        # 2. Iterate and update weights
+        is_multigraph = G.is_multigraph()
+        edges_iterator = G.edges(keys=True, data=True) if is_multigraph else G.edges(data=True)
+
+        for item in edges_iterator:
+            if is_multigraph:
+                u, v, k, d = item
+            else:
+                u, v, d = item
+
+            # Normalize key to int for lookup (just for the dictionary)
+            u_int, v_int = int(u), int(v)
+            key = (u_int, v_int) if u_int <= v_int else (v_int, u_int)
+            
+            # Lookup and update weight
+            idx = self.dec_edge_to_idx.get(key, None)
+            if idx is not None:
+                d["weight"] = float(custom_weights[idx])
+
+        # 3. Use the constructor with explicit n_detectors
+        # This prevents PyMatching from incorrectly inferring boundary nodes as regular nodes.
+        m = pymatching.Matching(G, num_detectors=self.n_detectors)
+        
+        return m 
     
 
     def _update_occurrence_tracer(self, selected_idx: np.ndarray):
@@ -611,50 +643,11 @@ class DriftedMatchingEnv(gym.Env):
         """
         p = np.clip(self.occ_ema, 1e-6, 0.499999)
         
-        # Apply the exact formula from the paper
-        w = np.log((1.0 - p) / p)
-        
-        # Clip to your environment's safe min/max weight boundaries
-        w = np.clip(w, self.min_weight, self.max_weight)
-
-        # Update the current weights for observation building and next steps
-        self.current_weights = w.copy()
+        # Compute the weights with some safety clipping
+        self.current_weights = np.clip(np.log((1.0 - p) / p), self.min_weight, self.max_weight)
         
         # Update the base matching object
-        self.current_matching = self._build_matching_with_custom_weights(w)
-
-
-    def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
-        """
-        Rebuild a PyMatching object using the FULL topology template.
-        """
-        # 1. Copy the RAW template graph
-        G = self.dec_graph.copy()
-
-        # 2. Iterate and update weights
-        is_multigraph = G.is_multigraph()
-        edges_iterator = G.edges(keys=True, data=True) if is_multigraph else G.edges(data=True)
-
-        for item in edges_iterator:
-            if is_multigraph:
-                u, v, k, d = item
-            else:
-                u, v, d = item
-
-            # Normalize key to int for lookup (just for the dictionary)
-            u_int, v_int = int(u), int(v)
-            key = (u_int, v_int) if u_int <= v_int else (v_int, u_int)
-            
-            # Lookup and update weight
-            idx = self.dec_edge_to_idx.get(key, None)
-            if idx is not None:
-                d["weight"] = float(custom_weights[idx])
-
-        # 3. Use the constructor with explicit n_detectors
-        # This prevents PyMatching from incorrectly inferring boundary nodes as regular nodes.
-        m = pymatching.Matching(G, num_detectors=self.n_detectors)
-        
-        return m
+        self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
     
 
     @staticmethod

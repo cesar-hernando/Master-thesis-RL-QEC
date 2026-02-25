@@ -14,8 +14,8 @@ n_shots = 10
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=3, 
-    n_rounds=3, 
+    distance=5, 
+    n_rounds=5, 
     mismatch=20.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
