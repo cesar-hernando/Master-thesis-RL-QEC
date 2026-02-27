@@ -3,13 +3,11 @@ In this file, we build a Gymnasium environment for reweighting the decoding grap
 statistics and the first MWPM pass selected edges.
 '''
 
-from typing import Dict, Any, Optional, Tuple, List, Set
-
+from typing import Dict, Any, List
 import numpy as np
-import networkx as nx
 import gymnasium as gym
 from gymnasium import spaces
-
+import plotly.graph_objects as go
 import pymatching
 
 from syndrome_data_generation import SyndromeDataGenerator
@@ -36,7 +34,7 @@ class DriftedMatchingEnv(gym.Env):
 
     Action
     ------
-    Continuous vector of shape [N_edges], each component in action_scale*[-1, 1].
+    Continuous vector of length N_edges, each component in action_scale*[-1, 1].
     The env scales it by and applies it as a small weight delta.
 
     By default (for scalability), the env only applies actions on the local neighborhood 
@@ -45,23 +43,26 @@ class DriftedMatchingEnv(gym.Env):
 
     Transition (one env.step)
     -------------------------
-    2) Build second-pass weights = current_weights + masked_action_delta
-    3) Run second-pass MWPM
-    4) Update occurrence and correlation tracers using second-pass selected edges
-    5) Compute reward:
+    1) Build second-pass weights = current_weights + masked_action_delta
+    2) Run second-pass MWPM
+    3) Update occurrence and correlation tracers using second-pass selected edges
+    4) Compute reward:
          - logical reward: based on predicted vs true observable
          - optional oracle imitation reward (DGR-like auxiliary signal)
-    6) Retrieve next shot from episode cache and prepare next observation (1st MWPM pass)
+    5) Retrieve next shot from episode cache and prepare next observation (1st MWPM pass)
 
     Episode semantics
     -----------------
     Each episode samples a new drifted circuit using SyndromeDataGenerator, and the agent 
     interacts with a sequence of shots from that circuit. Thus, the number of shots is a 
     hyperparameter that determines the length of the episode. It plays a simlar role as 
-    the number of trials in the DGR paper.
+    the number of trials in the DGR paper. 
+    Currently, we process one shot per step. However, we could process more shots, and give as 
+    reward the logical error rate and average jaccard similarity. In this way, the occurrence
+    and correlation tracer updates are smoother and less noisy.
     """
 
-    metadata = {"render_modes": []}
+    metadata = {"render_modes": ["human"]}
 
     def __init__(
         self,
@@ -74,10 +75,13 @@ class DriftedMatchingEnv(gym.Env):
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         oracle_reward_coef: float = 0.0,
+        render_mode = None
     ):
         super().__init__()
+        self.render_mode = render_mode
 
-        # Use the provided syndrome data generator to create drifted circuits for each episode
+        # Use the provided syndrome data generator to create drifted circuits for each episode, sample
+        # syndrome data and run MWPM via pymatching.
         self.syndrome_data_generator = syndrome_data_generator
 
         # Build the base circuit and matching
@@ -86,7 +90,7 @@ class DriftedMatchingEnv(gym.Env):
         # Store the number of detectors
         self.n_detectors = self.base_circuit.num_detectors
 
-        # Construct the simplified GNN decoding graph
+        # Construct the simplified GNN decoding graph in networkx format
         self.dec_graph = self.current_matching.to_networkx()
 
         # Config / hyperparams
@@ -102,13 +106,10 @@ class DriftedMatchingEnv(gym.Env):
 
         # Detector coordinates (used only to identify "real detectors" vs boundary nodes)
         self.detector_coords = self.base_circuit.get_detector_coordinates()
-        self.real_detectors = set(int(k) for k in self.detector_coords.keys())
 
-        # Fix decoding-edge indexing
-        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights = self._index_decoding_graph_edges(self.dec_graph)
-
+        # Extract the decoding edge weights and index
+        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p = self._index_decoding_graph_edges()
         self.n_dec_edges = len(self.dec_edge_list)
-        self.base_p = 1.0 / (1.0 + np.exp(self.current_weights))
 
         # Store the original weights obtained from the DEM
         self.initial_base_weights = self.current_weights.copy()
@@ -160,43 +161,41 @@ class DriftedMatchingEnv(gym.Env):
         self.corr_ema = np.zeros(self.n_line_edges, dtype=np.float32)
 
         # Cached current shot (prepared during reset and after each step)
-        self.current_syndrome: Optional[np.ndarray] = None
-        self.current_true_obs: Optional[np.ndarray] = None
-        self.current_first_pass_selected_idx: Optional[np.ndarray] = None
-        self.current_action_mask: Optional[np.ndarray] = None
+        self.current_syndrome = None
+        self.current_true_obs = None
+        self.current_first_pass_selected_idx = None
+        self.current_action_mask = None
     
 
-    @staticmethod
-    def _index_decoding_graph_edges(
-        G: nx.Graph
-    ) -> Tuple[List[Tuple[int, int]], Dict[Tuple[int, int], int], np.ndarray]:
+    def _index_decoding_graph_edges(self):
         """
-        Create fixed indexing of decoding-graph edges.
-
-        Args
-        ----
-        G: NetworkX graph of the decoding graph (nodes = detectors, edges = possible
-        error mechanisms).
+        Create fixed indexing of decoding-graph edges and extract weights
+        and error probabilities.
 
         Returns
         -------
         dec_edge_list : list[(u,v)]   canonical sorted endpoints
         dec_edge_to_idx : dict[(u,v)] -> idx
         base_edge_weight : np.ndarray shape [N]
+        base_edge_error_prob : np.ndarray shape [N]
         """
-        dec_edge_list: List[Tuple[int, int]] = []
-        dec_edge_to_idx: Dict[Tuple[int, int], int] = {}
-        weights: List[float] = []
+        dec_edge_list = []
+        dec_edge_to_idx = {}
+        weights = []
+        error_probs = []
 
         idx = 0
-        for u, v, data in G.edges(data=True):
+        for u, v, data in self.current_matching.edges():
+            u = self.n_detectors if u is None else u
+            v = self.n_detectors if v is None else v
             key = (u, v) if u <= v else (v, u)
             dec_edge_list.append(key)
             dec_edge_to_idx[key] = idx
-            weights.append(float(data.get("weight", 1.0)))
+            weights.append(data["weight"])
+            error_probs.append(data["error_probability"])
             idx += 1
 
-        return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32)
+        return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32), np.asarray(error_probs, dtype=np.float32)
     
 
     def _build_line_graph_edges(self) -> np.ndarray:
@@ -205,17 +204,17 @@ class DriftedMatchingEnv(gym.Env):
         1. Shared real detector endpoints (captures all local X-X and Z-Z connections)
         2. Geometric proximity (captures overlapping X-Z errors like Y-errors, and local crosstalk)
         """
-        line_edges_set: Set[Tuple[int, int]] = set()
+        line_edges_set = set()
 
         ###############################################################
         # 1) Topological Connections (Shared Detectors for X-X & Z-Z) #
         ###############################################################
 
-        incident: Dict[int, List[int]] = {}
+        incident = {}
         for i, (u, v) in enumerate(self.dec_edge_list):
-            if u in self.real_detectors:
+            if u < self.n_detectors  and u != -1:
                 incident.setdefault(u, []).append(i)
-            if v in self.real_detectors:
+            if v < self.n_detectors and v != -1:
                 incident.setdefault(v, []).append(i)
 
         for _, edge_ids in incident.items():
@@ -230,6 +229,7 @@ class DriftedMatchingEnv(gym.Env):
         #########################################################
         # 2. Geometric Connections (Midpoint Proximity for X-Z) #
         #########################################################
+
         midpoints = np.zeros((len(self.dec_edge_list), 3))
         edge_types = []
 
@@ -263,9 +263,9 @@ class DriftedMatchingEnv(gym.Env):
                 c = self.detector_coords[real_node]
                 j, i = int(round(c[0])), int(round(c[1])) # j=x, i=y
                 if (i % 4 == 0 and j % 4 == 0) or (i % 4 == 2 and j % 4 == 2):
-                    etype = "X"
-                elif (i % 4 == 0 and j % 4 == 2) or (i % 4 == 2 and j % 4 == 0):
                     etype = "Z"
+                elif (i % 4 == 0 and j % 4 == 2) or (i % 4 == 2 and j % 4 == 0):
+                    etype = "X"
             edge_types.append(etype)
             
         # Extract indices of X and Z edges
@@ -287,6 +287,9 @@ class DriftedMatchingEnv(gym.Env):
                 ix, iz = x_indices[px], z_indices[pz]
                 e = (ix, iz) if ix < iz else (iz, ix)
                 line_edges_set.add(e)
+
+        self.edge_midpoints = midpoints
+        self.edge_types = edge_types
 
         if not line_edges_set:
             return np.zeros((2, 0), dtype=np.int64)
@@ -675,3 +678,128 @@ class DriftedMatchingEnv(gym.Env):
             "base_edge_weight": self.current_weights.copy(),
             "line_edge_index": self.line_edge_index.copy(),
         }
+    
+
+    def render(self):
+        """
+        Renders the Line Graph topology in 3D using Plotly.
+        Nodes represent the original decoding edges, and edges represent message-passing paths.
+        Includes GNN node features and edge features (correlations) directly on the lines.
+        """
+        if self.render_mode != "human":
+            return
+
+        print("Rendering Line Graph Topology & GNN Features...")
+
+        midpoints = self.edge_midpoints
+        src = self.line_edge_index[0]
+        dst = self.line_edge_index[1]
+
+        # ---------------------------------------------------------
+        # 1. Build Edge Geometry and Features directly on the lines
+        # ---------------------------------------------------------
+        edge_x, edge_y, edge_z = [], [], []
+        edge_colors = []
+        edge_hover_text = []
+
+        for i in range(self.n_line_edges):
+            u_idx, v_idx = src[i], dst[i]
+            x0, y0, z0 = midpoints[u_idx]
+            x1, y1, z1 = midpoints[v_idx]
+            
+            # Geometry for the continuous line trace (with None to break segments)
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+            edge_z.extend([z0, z1, None])
+            
+            # Fetch Edge Feature (Correlation EMA)
+            corr_val = self.corr_ema[i]
+            
+            txt = (
+                f"<b>Line Edge ID:</b> {i}<br>"
+                f"<b>Connects Nodes:</b> {u_idx} &mdash; {v_idx}<br>"
+                f"<b>Correlation EMA (edge_attr):</b> {corr_val:.4f}"
+            )
+            
+            # Apply the color and text to both ends of the line segment
+            # The third value (0.0 / "") corresponds to the 'None' coordinate gap
+            edge_colors.extend([corr_val, corr_val, 0.0])
+            edge_hover_text.extend([txt, txt, ""])
+
+        fig = go.Figure()
+
+        # Add the Edges (Colored dynamically based on correlation)
+        fig.add_trace(go.Scatter3d(
+            x=edge_x, y=edge_y, z=edge_z,
+            mode='lines',
+            opacity=0.5,
+            line=dict(
+                color=edge_colors,
+                colorscale='Viridis', 
+                width=4,              
+                showscale=True,
+                colorbar=dict(title="Correlation<br>EMA", x=0.85, thickness=15, len=0.5)
+            ),
+            text=edge_hover_text,
+            hoverinfo='text',
+            name='Message Passing Paths'
+        ))
+
+        # ---------------------------------------------------------
+        # 2. Build Node Geometry and Node Features
+        # ---------------------------------------------------------
+        # Deep Red for X, Deep Blue for Z, Gold for Unknown/Ancilla
+        color_map = {'X': '#b22222', 'Z': '#005f87', 'Unknown': '#d4af37'}
+        node_colors = [color_map.get(t, '#d4af37') for t in self.edge_types]
+
+        first_pass_set = set()
+        if self.current_first_pass_selected_idx is not None:
+            first_pass_set = set(self.current_first_pass_selected_idx.tolist())
+
+        node_hover_text = []
+        for i in range(self.n_dec_edges):
+            weight = self.current_weights[i]
+            occ = self.occ_ema[i]
+            fired = "Yes" if i in first_pass_set else "No"
+            
+            node_hover_text.append(
+                f"<b>Node ID:</b> {i} ({self.edge_types[i]})<br>"
+                f"<b>Current Base Weight:</b> {weight:.3f}<br>"
+                f"<b>Occurrence EMA:</b> {occ:.4f}<br>"
+                f"<b>1st Pass Fired:</b> {fired}"
+            )
+
+        # Add Nodes (Original decoding edges)
+        fig.add_trace(go.Scatter3d(
+            x=midpoints[:, 0], y=midpoints[:, 1], z=midpoints[:, 2],
+            mode='markers',
+            marker=dict(
+                size=6, 
+                color=node_colors, 
+                line=dict(width=1, color='white'),
+                opacity=1.0
+            ),
+            text=node_hover_text,
+            hoverinfo='text',
+            name='GNN Nodes'
+        ))
+
+        # ---------------------------------------------------------
+        # 3. Layout Formatting
+        # ---------------------------------------------------------
+        fig.update_layout(
+            title="<b>GNN Line Graph Topology & Features</b><br><sup>Hover over nodes for state features, hover over lines for correlations</sup>",
+            scene=dict(
+                xaxis_title="X (Space)",
+                yaxis_title="Y (Space)",
+                zaxis_title="T (Time)",
+                aspectmode="data",
+                bgcolor='rgb(245, 245, 245)' 
+            ),
+            legend=dict(itemsizing="constant", yanchor="top", y=0.9, xanchor="left", x=0.05),
+            margin=dict(l=0, r=0, b=0, t=60)
+        )
+
+        # Save silently to an HTML file instead of opening a new tab
+        filename = "live_graph.html"
+        fig.write_html(filename)

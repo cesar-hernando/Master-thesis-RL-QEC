@@ -3,19 +3,20 @@ In this file, we perform a basic sanity test of the DriftedMatchingEnv
 and its integration with the SyndromeDataGenerator.
 """
 
+import numpy as np
+import matplotlib.pyplot as plt
+
 from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 
 
-print("--- 1. Initializing Syndrome Data Generator ---")
-
 # We will set n_shots to 5 so our episode length is exactly 5 steps
-n_shots = 10
+n_shots = 100_000
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=5, 
-    n_rounds=5, 
+    distance=3, 
+    n_rounds=3, 
     mismatch=20.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
@@ -29,15 +30,16 @@ generator = SyndromeDataGenerator(
     qec_code='surface_code'
 )
 
-print("\n--- 2. Initializing DriftedMatchingEnv ---")
-
 # Setting xz_crosstalk_radius=2.1 captures Y errors and nearest-neighbor crosstalk
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
     local_action_hops=1,
-    xz_crosstalk_radius=2.1, 
-    oracle_reward_coef=0.5  # Turn on oracle reward to test Jaccard math
+    xz_crosstalk_radius=1.5, 
+    occ_ema_alpha=0.0001,
+    corr_ema_alpha=0.0001,
+    oracle_reward_coef=0.5,
+    render_mode = "human"
 )
 
 print(f"\nGraph Topology Built Successfully:")
@@ -70,8 +72,7 @@ for i in range(env.n_line_edges):
 # Since line edges are directed in the PyG format, we divide by 2 for unique undirected pairs
 print(f" - Unique X-Z Crosstalk Connections Found: {xz_link_count}")
 
-
-print("\n--- 3. Testing env.reset() ---")
+print("\n--- Testing env.reset() ---")
 obs, info = env.reset(seed=42)
 print("Observation Keys:", list(obs.keys()))
 print("Node Features Shape:", obs["node_features"].shape)
@@ -81,19 +82,27 @@ unlocked_actions = int(obs["action_mask"].sum())
 print(f"Initial Shot - Unlocked Actions (due to masking): {unlocked_actions} / {env.n_dec_edges}")
 
 
-print("\n--- 4. Testing Episode Loop (env.step) ---")
+print("\n--- Testing Episode Loop (env.step) ---")
 terminated = False
 truncated = False
 step_num = 0
+cum_reward = 0.0
+avg_reward = []
 
 while not (terminated or truncated):
     step_num += 1
+
+    #if step_num % 10 == 0:
+    #    env.render()
     
     # Sample a random continuous action between [-1.0, 1.0]
-    action = env.action_space.sample()
+    #action = env.action_space.sample()
+    action = np.zeros(env.n_dec_edges, dtype=np.float32)
     
     # Step the environment
     next_obs, reward, terminated, truncated, step_info = env.step(action)
+    cum_reward += reward
+    avg_reward.append(cum_reward/step_num)
     
     print(f"\nStep {step_num}:")
     print(f"  - Logical Error Occurred: {bool(step_info['logical_error'])}")
@@ -107,4 +116,14 @@ while not (terminated or truncated):
 
 print(f"\nEpisode finished! Truncated: {truncated}, Terminated: {terminated}")
 print(f"Total steps taken: {step_num} (Should match n_shots: {n_shots})")
+
+
+# Plot the average reward
+
+plt.figure()
+plt.plot(avg_reward[100:])
+plt.xlabel("Step")
+plt.ylabel("Average reward")
+plt.grid()
+plt.show()
 
