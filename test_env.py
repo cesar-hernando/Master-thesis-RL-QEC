@@ -12,18 +12,19 @@ from drifted_matching_env import DriftedMatchingEnv
 
 # We will set n_shots to 5 so our episode length is exactly 5 steps
 n_shots = 100_000
+verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=3, 
-    n_rounds=3, 
-    mismatch=20.0,  # Drift multiplier
+    distance=5, 
+    n_rounds=5, 
+    mismatch=50.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.01,
-        "before_measure_flip_probability": 0.01,
-        "after_reset_flip_probability": 0.01,
-        "before_round_data_depolarization": 0.01,
+        "after_clifford_depolarization": 0.001,
+        "before_measure_flip_probability": 0.001,
+        "after_reset_flip_probability": 0.001,
+        "before_round_data_depolarization": 0.001,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
@@ -36,9 +37,8 @@ env = DriftedMatchingEnv(
     local_action_only=True,
     local_action_hops=1,
     xz_crosstalk_radius=1.5, 
-    occ_ema_alpha=0.0001,
-    corr_ema_alpha=0.0001,
-    oracle_reward_coef=0.5,
+    alpha=0.01,
+    oracle_reward_coef=0.0,
     render_mode = "human"
 )
 
@@ -88,9 +88,17 @@ truncated = False
 step_num = 0
 cum_reward = 0.0
 avg_reward = []
+weights_mse_error = [info["weights_mse_error"]]
+logical_error_rate = []
+n_logical_errors = 0
+n_logical_errors_oracle = 0
+logical_error_rate_oracle = []
 
 while not (terminated or truncated):
     step_num += 1
+
+    if step_num % (n_shots/10)== 0:
+        print(f"Completed {100*step_num/n_shots:.0f}% of the episode")
 
     #if step_num % 10 == 0:
     #    env.render()
@@ -103,27 +111,58 @@ while not (terminated or truncated):
     next_obs, reward, terminated, truncated, step_info = env.step(action)
     cum_reward += reward
     avg_reward.append(cum_reward/step_num)
+    weights_mse_error.append(step_info["weights_mse_error"])
+    logical_error = step_info["logical_error"]
+    if logical_error:
+        n_logical_errors += 1
+    logical_error_rate.append(n_logical_errors/step_num)
+    if step_info["oracle_pred_obs"] != step_info["true_obs"]:
+        n_logical_errors_oracle += 1
+    logical_error_rate_oracle.append(n_logical_errors_oracle/step_num)
     
-    print(f"\nStep {step_num}:")
-    print(f"  - Logical Error Occurred: {bool(step_info['logical_error'])}")
-    print(f"  - Total Reward: {reward:.4f}")
-    
-    if step_info['oracle_similarity_jaccard'] is not None:
-        print(f"  - Jaccard Similarity to Oracle: {step_info['oracle_similarity_jaccard']:.4f}")
+    if verbose:
+        print(f"\nStep {step_num}:")
+        print(f"  - Logical Error Occurred: {bool(step_info['logical_error'])}")
+        print(f"  - Total Reward: {reward:.4f}")
         
-    unlocked_actions = int(next_obs["action_mask"].sum())
-    print(f"  - Unlocked Actions for NEXT step: {unlocked_actions}")
+        if step_info['oracle_similarity_jaccard'] is not None:
+            print(f"  - Jaccard Similarity to Oracle: {step_info['oracle_similarity_jaccard']:.4f}")
+            
+        unlocked_actions = int(next_obs["action_mask"].sum())
+        print(f"  - Unlocked Actions for NEXT step: {unlocked_actions}")
 
 print(f"\nEpisode finished! Truncated: {truncated}, Terminated: {terminated}")
 print(f"Total steps taken: {step_num} (Should match n_shots: {n_shots})")
 
+env.render()
 
+'''
 # Plot the average reward
-
 plt.figure()
-plt.plot(avg_reward[100:])
+plt.plot(avg_reward[1000:])
 plt.xlabel("Step")
 plt.ylabel("Average reward")
 plt.grid()
 plt.show()
+
+# Plot the weight error
+plt.figure()
+plt.plot(weights_mse_error[1000:])
+plt.xlabel("Step")
+plt.ylabel("Weight Error (MSE)")
+plt.grid()
+plt.show()
+'''
+
+# Plot the logical error rate evolution
+plt.figure()
+plt.plot(logical_error_rate[100:], label="Our")
+plt.plot(logical_error_rate_oracle[100:], label="Oracle")
+plt.xlabel("Step")
+plt.ylabel("Logical error rate")
+plt.grid()
+plt.legend()
+plt.show()
+
+env.render()
 

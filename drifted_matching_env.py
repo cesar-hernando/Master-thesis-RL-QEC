@@ -70,8 +70,7 @@ class DriftedMatchingEnv(gym.Env):
         local_action_only: bool = True,
         local_action_hops: int = 1,
         xz_crosstalk_radius: float = 2.1,
-        occ_ema_alpha: float = 0.05,
-        corr_ema_alpha: float = 0.05,
+        alpha: float = 0.01,
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         oracle_reward_coef: float = 0.0,
@@ -85,21 +84,17 @@ class DriftedMatchingEnv(gym.Env):
         self.syndrome_data_generator = syndrome_data_generator
 
         # Build the base circuit and matching
-        self.base_circuit, self.current_matching = self.syndrome_data_generator.generate_base_circuit()
+        self.base_circuit, self.base_dem, self.current_matching = self.syndrome_data_generator.generate_base_circuit()
 
         # Store the number of detectors
         self.n_detectors = self.base_circuit.num_detectors
-
-        # Construct the simplified GNN decoding graph in networkx format
-        self.dec_graph = self.current_matching.to_networkx()
 
         # Config / hyperparams
         self.max_steps = self.syndrome_data_generator.n_shots
         self.local_action_only = local_action_only
         self.local_action_hops = local_action_hops # Number of hops in line graph for local action masking
         self.xz_crosstalk_radius = xz_crosstalk_radius
-        self.occ_ema_alpha = occ_ema_alpha
-        self.corr_ema_alpha = corr_ema_alpha
+        self.alpha = alpha
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.oracle_reward_coef = oracle_reward_coef
@@ -108,15 +103,17 @@ class DriftedMatchingEnv(gym.Env):
         self.detector_coords = self.base_circuit.get_detector_coordinates()
 
         # Extract the decoding edge weights and index
-        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p = self._index_decoding_graph_edges()
+        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p = self._index_decoding_graph_edges(self.current_matching)
         self.n_dec_edges = len(self.dec_edge_list)
 
         # Store the original weights obtained from the DEM
         self.initial_base_weights = self.current_weights.copy()
 
         # Build the line graph, adding edges between geometrically close X and Z edges
-        self.line_edge_index = self._build_line_graph_edges()
+        #self.line_edge_index = self._build_line_graph_edges_v1()
+        self.line_edge_index, self.initial_corr_tracer = self._build_line_graph_edges_v2()
         self.n_line_edges = self.line_edge_index.shape[1]
+        #self.initial_corr_tracer = np.zeros(self.n_line_edges, dtype=np.float32)
 
         # Construct an adjacency list for fast local action masking
         self.line_neighbors = self._build_line_neighbors(self.line_edge_index, self.n_dec_edges)
@@ -157,8 +154,8 @@ class DriftedMatchingEnv(gym.Env):
         )
 
         # Initialize dynamic tracers
-        self.occ_ema = np.zeros(self.n_dec_edges, dtype=np.float32)
-        self.corr_ema = np.zeros(self.n_line_edges, dtype=np.float32)
+        self.occ_tracer = np.zeros(self.n_dec_edges, dtype=np.float32)
+        self.corr_tracer = np.zeros(self.n_line_edges, dtype=np.float32)
 
         # Cached current shot (prepared during reset and after each step)
         self.current_syndrome = None
@@ -167,7 +164,7 @@ class DriftedMatchingEnv(gym.Env):
         self.current_action_mask = None
     
 
-    def _index_decoding_graph_edges(self):
+    def _index_decoding_graph_edges(self, matching: pymatching):
         """
         Create fixed indexing of decoding-graph edges and extract weights
         and error probabilities.
@@ -185,7 +182,7 @@ class DriftedMatchingEnv(gym.Env):
         error_probs = []
 
         idx = 0
-        for u, v, data in self.current_matching.edges():
+        for u, v, data in matching.edges():
             u = self.n_detectors if u is None else u
             v = self.n_detectors if v is None else v
             key = (u, v) if u <= v else (v, u)
@@ -198,7 +195,7 @@ class DriftedMatchingEnv(gym.Env):
         return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32), np.asarray(error_probs, dtype=np.float32)
     
 
-    def _build_line_graph_edges(self) -> np.ndarray:
+    def _build_line_graph_edges_v1(self) -> np.ndarray:
         """
         Build line-graph connectivity using:
         1. Shared real detector endpoints (captures all local X-X and Z-Z connections)
@@ -299,6 +296,137 @@ class DriftedMatchingEnv(gym.Env):
         return line_edges.T
     
 
+    def _build_line_graph_edges_v2(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Build line-graph connectivity exclusively from correlated hyperedges 
+        in the Stim Detector Error Model (DEM).
+        
+        Returns:
+            line_edge_index: [2, M_line] array of edges
+            initial_correlations: [M_line] array of baseline probabilities from the DEM
+        """
+        correlation_dict = {}
+        
+        for inst in self.base_dem.flattened():
+            if inst.type != "error":
+                continue
+                
+            p = inst.args_copy()[0]
+            targets = inst.targets_copy()
+            
+            # 2. Parse targets separated by '^' (Stim's correlation separator)
+            components = []
+            current_component = []
+            
+            for t in targets:
+                if t.is_separator(): # Found a '^'
+                    if current_component:
+                        components.append(current_component)
+                        current_component = []
+                elif t.is_relative_detector_id():
+                    current_component.append(t.val)
+            
+            if current_component:
+                components.append(current_component)
+                
+            # If there is only 1 component, it's an independent error (no correlation)
+            if len(components) < 2:
+                continue
+                
+            # 3. Map components to our decoding graph edges (GNN nodes)
+            node_indices = []
+            for comp in components:
+                # Resolve the endpoints. If 1 detector, the other is the boundary (self.n_detectors)
+                u = comp[0] if len(comp) > 0 else self.n_detectors
+                v = comp[1] if len(comp) > 1 else self.n_detectors
+                
+                key = (u, v) if u <= v else (v, u)
+                
+                # Fetch the canonical GNN node ID for this physical edge
+                idx = self.dec_edge_to_idx.get(key)
+                if idx is not None:
+                    node_indices.append(idx)
+                    
+            # 4. Create pairwise connections in the line graph for this hyperedge
+            for a in range(len(node_indices)):
+                for b in range(a + 1, len(node_indices)):
+                    na, nb = node_indices[a], node_indices[b]
+                    if na == nb:
+                        continue
+                        
+                    edge_key = (na, nb) if na <= nb else (nb, na)
+                    
+                    # Combine probabilities using logical OR: P(A ∪ B) = P(A) + P(B) - 2*P(A)*P(B)
+                    # (in case multiple physical mechanisms trigger the exact same correlation)
+                    if edge_key in correlation_dict:
+                        existing_p = correlation_dict[edge_key]
+                        correlation_dict[edge_key] = existing_p * (1 - p) + p * (1 - existing_p)
+                    else:
+                        correlation_dict[edge_key] = p
+                        
+        # Pre-calculate geometry so your plot render() still works perfectly!
+        self._calculate_rendering_geometry()
+        
+        if not correlation_dict:
+            return np.zeros((2, 0), dtype=np.int64), np.zeros(0, dtype=np.float32)
+            
+        # 5. Format into PyTorch Geometric expected arrays
+        sorted_edges = sorted(correlation_dict.keys())
+        
+        line_edges = np.array(sorted_edges, dtype=np.int64).T
+        initial_correlations = np.array([correlation_dict[e] for e in sorted_edges], dtype=np.float32)
+        
+        return line_edges, initial_correlations
+    
+
+    def _calculate_rendering_geometry(self):
+        """Helper method to compute midpoints and X/Z types for Plotly rendering."""
+        midpoints = np.zeros((len(self.dec_edge_list), 3))
+        edge_types = []
+
+        for i, (u, v) in enumerate(self.dec_edge_list):
+            cu = self.detector_coords.get(u, None)
+            cv = self.detector_coords.get(v, None)
+            
+            def pad3(c):
+                if c is None: return None
+                lst = list(c)
+                while len(lst) < 3: lst.append(0.0)
+                return np.array(lst[:3])
+            
+            cu, cv = pad3(cu), pad3(cv)
+            
+            if cu is not None and cv is not None: midpoints[i] = (cu + cv) / 2.0
+            elif cu is not None: midpoints[i] = cu
+            elif cv is not None: midpoints[i] = cv
+            else: midpoints[i] = np.zeros(3)
+                
+            etype = "Unknown"
+            real_node = u if cu is not None else (v if cv is not None else None)
+            if real_node is not None:
+                c = self.detector_coords[real_node]
+                j, y = int(round(c[0])), int(round(c[1])) # j=x, y=y
+                if (y % 4 == 0 and j % 4 == 0) or (y % 4 == 2 and j % 4 == 2): etype = "Z"
+                elif (y % 4 == 0 and j % 4 == 2) or (y % 4 == 2 and j % 4 == 0): etype = "X"
+            edge_types.append(etype)
+
+            # ----------------------------------------------------------------
+            # DETERMINISTIC VISUAL SEPARATION
+            # Shift X and Z subgraphs slightly apart to reveal Y-correlations
+            # ----------------------------------------------------------------
+            visual_offset = 0.15 # Tweak this if the gap is too large or too small
+            
+            if etype == "X":
+                # Shift X-nodes slightly in the +x, +y direction
+                midpoints[i] += np.array([visual_offset, visual_offset, 0.0])
+            elif etype == "Z":
+                # Shift Z-nodes slightly in the -x, -y direction
+                midpoints[i] += np.array([-visual_offset, -visual_offset, 0.0])
+
+        self.edge_midpoints = midpoints
+        self.edge_types = edge_types
+    
+
     def _build_line_neighbors(self, line_edge_index: np.ndarray, n_nodes: int) -> List[List[int]]:
         """
         Adjacency list of line graph.
@@ -324,6 +452,9 @@ class DriftedMatchingEnv(gym.Env):
             seed=seed
             )
         
+        # Retrieve the weights of the oracle decoding graph
+        _, _, self.oracle_weights, _ = self._index_decoding_graph_edges(self.drifted_matching)
+        
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(self.drifted_circuit)
 
@@ -341,9 +472,12 @@ class DriftedMatchingEnv(gym.Env):
         self.current_weights = self.initial_base_weights.copy()
         self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
 
+        # Calculate the initial weights mse error between oracle and base
+        weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
+
         # Reset tracers
-        self.occ_ema = self.base_p.copy()
-        self.corr_ema.fill(0.0)
+        self.occ_tracer = self.base_p.copy()
+        self.corr_tracer = self.initial_corr_tracer.copy()
 
         # Prepare the first shot and build the initial observation
         obs = self._prepare_next_observation()
@@ -351,6 +485,7 @@ class DriftedMatchingEnv(gym.Env):
         info = {
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
+            "weights_mse_error": weights_mse_error
         }
         return obs, info
     
@@ -456,7 +591,7 @@ class DriftedMatchingEnv(gym.Env):
 
         node_features = np.stack([self.current_weights, selected_flag], axis=1).astype(np.float32)
 
-        edge_attr = self.corr_ema.reshape(-1, 1).astype(np.float32)
+        edge_attr = self.corr_tracer.reshape(-1, 1).astype(np.float32)
 
         action_mask = (
             self.current_action_mask.astype(np.float32)
@@ -537,6 +672,8 @@ class DriftedMatchingEnv(gym.Env):
             oracle_similarity = self._edge_set_jaccard(selected_idx_2, oracle_idx)
             oracle_reward = 2.0 * oracle_similarity - 1.0
             reward += self.oracle_reward_coef * oracle_reward
+        
+        weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
 
         # Increment step count after processing the shot
         self.step_count += 1
@@ -560,12 +697,14 @@ class DriftedMatchingEnv(gym.Env):
             "logical_error": logical_error,
             "true_obs": self.current_true_obs,
             "pred_obs": pred_obs,
+            "oracle_pred_obs": self.oracle_predicted_obs_batch[self.step_count - 1],
             "reward_logical": logical_reward,
             "reward_total": float(reward),
             "oracle_similarity_jaccard": float(oracle_similarity) if oracle_similarity is not None else None,
             "selected_edges_first_pass_idx": self.current_first_pass_selected_idx.copy() if self.current_first_pass_selected_idx is not None else None,
             "selected_edges_second_pass_idx": selected_idx_2.copy(),
             "action_mask": self.current_action_mask.copy() if self.current_action_mask is not None else None,
+            "weights_mse_error": weights_mse_error
         }
 
         return next_obs, float(reward), terminated, truncated, info   
@@ -573,60 +712,54 @@ class DriftedMatchingEnv(gym.Env):
 
     def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
         """
-        Rebuild a PyMatching object using the FULL topology template.
+        Rebuild a PyMatching object using the FULL topology template natively.
         """
-        # 1. Copy the base decoding graph in networkx format
-        G = self.dec_graph.copy()
+        # Initialize an empty Matching object with the correct number of detectors
+        m = pymatching.Matching(num_detectors=self.n_detectors)
 
-        # 2. Iterate and update weights
-        is_multigraph = G.is_multigraph()
-        edges_iterator = G.edges(keys=True, data=True) if is_multigraph else G.edges(data=True)
-
-        for item in edges_iterator:
-            if is_multigraph:
-                u, v, k, d = item
-            else:
-                u, v, d = item
-
-            # Normalize key to int for lookup (just for the dictionary)
-            u_int, v_int = int(u), int(v)
-            key = (u_int, v_int) if u_int <= v_int else (v_int, u_int)
+        # Iterate through our canonical list of edges
+        for idx, (u, v) in enumerate(self.dec_edge_list):
             
-            # Lookup and update weight
-            idx = self.dec_edge_to_idx.get(key, None)
-            if idx is not None:
-                d["weight"] = float(custom_weights[idx])
+            weight = float(custom_weights[idx]) 
+            
+            if v == self.n_detectors:
+                # It's a boundary edge. (We assigned self.n_detectors to represent boundary in _index_decoding_graph_edges)
+                m.add_boundary_edge(
+                    node=u,
+                    weight=weight
+                )
+            else:
+                # It's a standard internal edge connecting two detectors
+                m.add_edge(
+                    node1=u,
+                    node2=v,
+                    weight=weight
+                )
 
-        # 3. Use the constructor with explicit n_detectors
-        # This prevents PyMatching from incorrectly inferring boundary nodes as regular nodes.
-        m = pymatching.Matching(G, num_detectors=self.n_detectors)
-        
-        return m 
+        return m
     
 
     def _update_occurrence_tracer(self, selected_idx: np.ndarray):
         """
-        EMA occurrence tracer on line-graph nodes (decoding edges).
+        Occurrence tracer on line-graph nodes (decoding edges).
         """
-        alpha = self.occ_ema_alpha
         active = np.zeros(self.n_dec_edges, dtype=np.float32)
         if selected_idx.size > 0:
             active[selected_idx] = 1.0
 
-        self.occ_ema = (1.0 - alpha) * self.occ_ema + alpha * active
+        # Update using the Exponential Moving Average (EMA) formula
+        self.occ_tracer = (1 - self.alpha)*self.occ_tracer + self.alpha*active
 
 
     def _update_correlation_tracer(self, selected_idx: np.ndarray):
         """
-        EMA correlation tracer on line-graph edges.
+        Correlation tracer on line-graph edges.
 
         A line-graph edge (i,j) is "co-active" if both decoding edges i and j were selected
         in the SECOND-pass MWPM solution.
         """
         if self.n_line_edges == 0:
             return
-
-        alpha = self.corr_ema_alpha
 
         active = np.zeros(self.n_dec_edges, dtype=np.bool_)
         if selected_idx.size > 0:
@@ -636,7 +769,8 @@ class DriftedMatchingEnv(gym.Env):
         dst = self.line_edge_index[1]
         co_active = (active[src] & active[dst]).astype(np.float32)
 
-        self.corr_ema = (1.0 - alpha) * self.corr_ema + alpha * co_active
+        # Update using the Exponential Moving Average (EMA) formula
+        self.corr_tracer = (1.0 - self.alpha) * self.corr_tracer + (self.alpha * co_active)
 
 
     def _update_base_matching_from_occurrence(self):
@@ -644,7 +778,7 @@ class DriftedMatchingEnv(gym.Env):
         Periodically update the 'base' decoder to catch up with the drift.
         Use this sparingly (e.g., once per episode in reset) to keep the RL stable.
         """
-        p = np.clip(self.occ_ema, 1e-6, 0.499999)
+        p = np.clip(self.occ_tracer, 1e-6, 0.499999)
         
         # Compute the weights with some safety clipping
         self.current_weights = np.clip(np.log((1.0 - p) / p), self.min_weight, self.max_weight)
@@ -712,13 +846,13 @@ class DriftedMatchingEnv(gym.Env):
             edge_y.extend([y0, y1, None])
             edge_z.extend([z0, z1, None])
             
-            # Fetch Edge Feature (Correlation EMA)
-            corr_val = self.corr_ema[i]
+            # Fetch Edge Feature (Correlation)
+            corr_val = self.corr_tracer[i]
             
             txt = (
                 f"<b>Line Edge ID:</b> {i}<br>"
                 f"<b>Connects Nodes:</b> {u_idx} &mdash; {v_idx}<br>"
-                f"<b>Correlation EMA (edge_attr):</b> {corr_val:.4f}"
+                f"<b>Correlation (edge_attr):</b> {corr_val:.4f}"
             )
             
             # Apply the color and text to both ends of the line segment
@@ -738,7 +872,7 @@ class DriftedMatchingEnv(gym.Env):
                 colorscale='Viridis', 
                 width=4,              
                 showscale=True,
-                colorbar=dict(title="Correlation<br>EMA", x=0.85, thickness=15, len=0.5)
+                colorbar=dict(title="Correlation<br>", x=0.85, thickness=15, len=0.5)
             ),
             text=edge_hover_text,
             hoverinfo='text',
@@ -759,13 +893,13 @@ class DriftedMatchingEnv(gym.Env):
         node_hover_text = []
         for i in range(self.n_dec_edges):
             weight = self.current_weights[i]
-            occ = self.occ_ema[i]
+            occ = self.occ_tracer[i]
             fired = "Yes" if i in first_pass_set else "No"
             
             node_hover_text.append(
                 f"<b>Node ID:</b> {i} ({self.edge_types[i]})<br>"
                 f"<b>Current Base Weight:</b> {weight:.3f}<br>"
-                f"<b>Occurrence EMA:</b> {occ:.4f}<br>"
+                f"<b>Occurrence:</b> {occ:.4f}<br>"
                 f"<b>1st Pass Fired:</b> {fired}"
             )
 
