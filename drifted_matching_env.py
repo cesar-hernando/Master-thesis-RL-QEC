@@ -103,7 +103,7 @@ class DriftedMatchingEnv(gym.Env):
         self.detector_coords = self.base_circuit.get_detector_coordinates()
 
         # Extract the decoding edge weights and index
-        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p = self._index_decoding_graph_edges(self.current_matching)
+        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p, self.fault_ids = self._index_decoding_graph_edges(self.current_matching)
         self.n_dec_edges = len(self.dec_edge_list)
 
         # Store the original weights obtained from the DEM
@@ -180,6 +180,7 @@ class DriftedMatchingEnv(gym.Env):
         dec_edge_to_idx = {}
         weights = []
         error_probs = []
+        fault_ids = []
 
         idx = 0
         for u, v, data in matching.edges():
@@ -190,9 +191,17 @@ class DriftedMatchingEnv(gym.Env):
             dec_edge_to_idx[key] = idx
             weights.append(data["weight"])
             error_probs.append(data["error_probability"])
+
+            f_ids = data.get("fault_ids", set())
+            if isinstance(f_ids, (int, float)):
+                f_ids = {int(f_ids)}
+            else:
+                f_ids = set(int(f) for f in f_ids)
+            fault_ids.append(f_ids)
+
             idx += 1
 
-        return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32), np.asarray(error_probs, dtype=np.float32)
+        return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32), np.asarray(error_probs, dtype=np.float32), fault_ids
     
 
     def _build_line_graph_edges_v1(self) -> np.ndarray:
@@ -453,7 +462,7 @@ class DriftedMatchingEnv(gym.Env):
             )
         
         # Retrieve the weights of the oracle decoding graph
-        _, _, self.oracle_weights, _ = self._index_decoding_graph_edges(self.drifted_matching)
+        _, _, self.oracle_weights, _, _ = self._index_decoding_graph_edges(self.drifted_matching)
         
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(self.drifted_circuit)
@@ -462,7 +471,7 @@ class DriftedMatchingEnv(gym.Env):
         self.oracle_solution_edges_batch, self.oracle_predicted_obs_batch = self.syndrome_data_generator.get_solution_edges_batch(
             self.drifted_matching, 
             self.syndrome_batch, 
-            enable_correlations=True, 
+            enable_correlations=False, 
             return_predicted_obs=True)
         
         # Reset the step count
@@ -680,18 +689,9 @@ class DriftedMatchingEnv(gym.Env):
         terminated = False
         truncated = self.step_count >= self.max_steps # Episode ends when batch is empty
 
-
         ############################################################
-        # 5) Prepare next observation (next shot under same drift) #
+        # 5) Prepare information about current step to be returned #
         ############################################################
-
-        if not truncated:
-            next_obs = self._prepare_next_observation()
-        else:
-            # Still return a valid obs (same as last prepared style), but no new shot is needed.
-            # Here we return the last state-shaped view after tracer update.
-            next_obs = self._build_observation_from_cached_state()
-            # (This is okay because the episode ends right away.)
 
         info = {
             "logical_error": logical_error,
@@ -707,6 +707,20 @@ class DriftedMatchingEnv(gym.Env):
             "weights_mse_error": weights_mse_error
         }
 
+        ############################################################
+        # 6) Prepare next observation (next shot under same drift) #
+        ############################################################
+
+        if not truncated:
+            next_obs = self._prepare_next_observation()
+        else:
+            # Still return a valid obs (same as last prepared style), but no new shot is needed.
+            # Here we return the last state-shaped view after tracer update.
+            next_obs = self._build_observation_from_cached_state()
+            # (This is okay because the episode ends right away.)
+
+        
+
         return next_obs, float(reward), terminated, truncated, info   
 
 
@@ -721,19 +735,22 @@ class DriftedMatchingEnv(gym.Env):
         for idx, (u, v) in enumerate(self.dec_edge_list):
             
             weight = float(custom_weights[idx]) 
+            f_ids = self.fault_ids[idx]
             
             if v == self.n_detectors:
                 # It's a boundary edge. (We assigned self.n_detectors to represent boundary in _index_decoding_graph_edges)
                 m.add_boundary_edge(
                     node=u,
-                    weight=weight
+                    weight=weight,
+                    fault_ids=f_ids
                 )
             else:
                 # It's a standard internal edge connecting two detectors
                 m.add_edge(
                     node1=u,
                     node2=v,
-                    weight=weight
+                    weight=weight,
+                    fault_ids=f_ids
                 )
 
         return m
