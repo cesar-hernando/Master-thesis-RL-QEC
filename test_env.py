@@ -11,20 +11,20 @@ from drifted_matching_env import DriftedMatchingEnv
 
 
 # We will set n_shots to 5 so our episode length is exactly 5 steps
-n_shots = 50_000
+n_shots = 200_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=5, 
-    n_rounds=5, 
-    mismatch=10.0,  # Drift multiplier
+    distance=3, 
+    n_rounds=3, 
+    mismatch=1.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.005,
-        "before_measure_flip_probability": 0.005,
-        "after_reset_flip_probability": 0.005,
-        "before_round_data_depolarization": 0.005,
+        "after_clifford_depolarization": 0.0,
+        "before_measure_flip_probability": 0.1,
+        "after_reset_flip_probability": 0.0,
+        "before_round_data_depolarization": 0.1,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
@@ -37,7 +37,8 @@ env = DriftedMatchingEnv(
     local_action_only=True,
     local_action_hops=1,
     xz_crosstalk_radius=1.5, 
-    alpha=0.0001,
+    update_period=1000,
+    prior_shots=1000,
     oracle_reward_coef=0.5,
     render_mode = "human"
 )
@@ -94,6 +95,10 @@ n_logical_errors = 0
 n_logical_errors_oracle = 0
 logical_error_rate_oracle = []
 n_logical_flips = 0
+n_logical_errors_static = 0
+logical_error_rate_static = []
+
+print("initial weights: ", env.current_weights)
 
 while not (terminated or truncated):
     step_num += 1
@@ -124,6 +129,10 @@ while not (terminated or truncated):
         n_logical_errors_oracle += 1
     logical_error_rate_oracle.append(n_logical_errors_oracle/step_num)
 
+    if step_info["static_pred_obs"] != step_info["true_obs"]:
+        n_logical_errors_static += 1
+    logical_error_rate_static.append(n_logical_errors_static/step_num)
+
     if step_info["true_obs"]:
         n_logical_flips += 1
     
@@ -143,18 +152,20 @@ print(f"Total steps taken: {step_num} (Should match n_shots: {n_shots})")
 
 env.render()
 
-'''
+print("final weights: ", env.current_weights)
+
 # Plot the average reward
 plt.figure()
-plt.plot(avg_reward[1000:])
+plt.plot(avg_reward)
 plt.xlabel("Step")
 plt.ylabel("Average reward")
 plt.grid()
 plt.show()
-'''
+
+
 # Plot the weight error
 plt.figure()
-plt.plot(weights_mse_error[1000:])
+plt.plot(weights_mse_error)
 plt.xlabel("Step")
 plt.ylabel("Weight Error (MSE)")
 plt.grid()
@@ -163,12 +174,24 @@ plt.show()
 
 print("Number of logical errors of our decoder: ", n_logical_errors)
 print("Number of logical errors of oracle decoder: ", n_logical_errors_oracle)
+print("Number of logical errors of static decoder: ", n_logical_errors_static)
 print("Number of logical flips: ", n_logical_flips)
 
 # Plot the logical error rate evolution
 plt.figure()
-plt.plot(logical_error_rate[100:], label="Our")
-plt.plot(logical_error_rate_oracle[100:], label="Oracle")
+plt.plot(logical_error_rate, label="Our")
+plt.plot(logical_error_rate_oracle, label="Oracle")
+plt.plot(logical_error_rate_static, label="Static")
+plt.xlabel("Step")
+plt.ylabel("Logical error rate")
+plt.grid()
+plt.legend()
+plt.show()
+
+plt.figure()
+plt.loglog(logical_error_rate, label="Our")
+plt.loglog(logical_error_rate_oracle, label="Oracle")
+plt.loglog(logical_error_rate_static, label="Static")
 plt.xlabel("Step")
 plt.ylabel("Logical error rate")
 plt.grid()

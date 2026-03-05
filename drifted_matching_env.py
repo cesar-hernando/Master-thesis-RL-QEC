@@ -70,7 +70,8 @@ class DriftedMatchingEnv(gym.Env):
         local_action_only: bool = True,
         local_action_hops: int = 1,
         xz_crosstalk_radius: float = 2.1,
-        alpha: float = 0.01,
+        update_period: int = 1000,
+        prior_shots: int = 1000,
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         oracle_reward_coef: float = 0.0,
@@ -83,8 +84,8 @@ class DriftedMatchingEnv(gym.Env):
         # syndrome data and run MWPM via pymatching.
         self.syndrome_data_generator = syndrome_data_generator
 
-        # Build the base circuit and matching
-        self.base_circuit, self.base_dem, self.current_matching = self.syndrome_data_generator.generate_base_circuit()
+        # Build the base circuit and base matching
+        self.base_circuit, self.base_dem, self.base_matching = self.syndrome_data_generator.generate_base_circuit()
 
         # Store the number of detectors
         self.n_detectors = self.base_circuit.num_detectors
@@ -94,7 +95,8 @@ class DriftedMatchingEnv(gym.Env):
         self.local_action_only = local_action_only
         self.local_action_hops = local_action_hops # Number of hops in line graph for local action masking
         self.xz_crosstalk_radius = xz_crosstalk_radius
-        self.alpha = alpha
+        self.update_period = update_period
+        self.prior_shots = prior_shots
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.oracle_reward_coef = oracle_reward_coef
@@ -103,11 +105,14 @@ class DriftedMatchingEnv(gym.Env):
         self.detector_coords = self.base_circuit.get_detector_coordinates()
 
         # Extract the decoding edge weights and index
-        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p, self.fault_ids = self._index_decoding_graph_edges(self.current_matching)
+        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p, self.fault_ids = self._index_decoding_graph_edges(self.base_matching)
         self.n_dec_edges = len(self.dec_edge_list)
 
         # Store the original weights obtained from the DEM
         self.initial_base_weights = self.current_weights.copy()
+
+        # Make a copy of the base matching that will be updated every step
+        self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
 
         # Build the line graph, adding edges between geometrically close X and Z edges
         #self.line_edge_index = self._build_line_graph_edges_v1()
@@ -474,6 +479,11 @@ class DriftedMatchingEnv(gym.Env):
             enable_correlations=False, 
             return_predicted_obs=True)
         
+        # Pre-generate the static decoder solution edge predicted observable
+        self.static_predicted_obs_batch = self.base_matching.decode_batch(
+            self.syndrome_batch, 
+            enable_correlations=False)
+        
         # Reset the step count
         self.step_count = 0
 
@@ -483,6 +493,12 @@ class DriftedMatchingEnv(gym.Env):
 
         # Calculate the initial weights mse error between oracle and base
         weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
+
+        # Initialize absolute counters for the actual observed MWPM shots
+        self.total_shots_traced = 0
+        self.shots_since_update = 0
+        self.occ_batch_counts = np.zeros(self.n_dec_edges, dtype=np.float32)
+        self.corr_batch_counts = np.zeros(self.n_line_edges, dtype=np.float32)
 
         # Reset tracers
         self.occ_tracer = self.base_p.copy()
@@ -657,10 +673,15 @@ class DriftedMatchingEnv(gym.Env):
         # 3) Update tracers using 2nd-pass selected edges #
         ######################################################
 
-        self._update_occurrence_tracer(selected_idx_2)
-        self._update_correlation_tracer(selected_idx_2)
-        self._update_base_matching_from_occurrence()
+        self._accumulate_occurrence(self.current_first_pass_selected_idx)
+        self._accumulate_correlation(self.current_first_pass_selected_idx)
+        
+        self.total_shots_traced += 1
+        self.shots_since_update += 1
 
+        if self.shots_since_update >= self.update_period:
+            self._apply_cma_and_update_graph()
+            self.shots_since_update = 0
 
         #########################
         # 4) Compute the reward #
@@ -698,6 +719,7 @@ class DriftedMatchingEnv(gym.Env):
             "true_obs": self.current_true_obs,
             "pred_obs": pred_obs,
             "oracle_pred_obs": self.oracle_predicted_obs_batch[self.step_count - 1],
+            "static_pred_obs":self.static_predicted_obs_batch[self.step_count - 1],
             "reward_logical": logical_reward,
             "reward_total": float(reward),
             "oracle_similarity_jaccard": float(oracle_similarity) if oracle_similarity is not None else None,
@@ -756,52 +778,49 @@ class DriftedMatchingEnv(gym.Env):
         return m
     
 
-    def _update_occurrence_tracer(self, selected_idx: np.ndarray):
-        """
-        Occurrence tracer on line-graph nodes (decoding edges).
-        """
-        active = np.zeros(self.n_dec_edges, dtype=np.float32)
+    def _accumulate_occurrence(self, selected_idx: np.ndarray):
+        """Add 1 to the occurrence batch count for selected edges."""
         if selected_idx.size > 0:
-            active[selected_idx] = 1.0
-
-        # Update using the Exponential Moving Average (EMA) formula
-        self.occ_tracer = (1 - self.alpha)*self.occ_tracer + self.alpha*active
+            self.occ_batch_counts[selected_idx] += 1.0
 
 
-    def _update_correlation_tracer(self, selected_idx: np.ndarray):
-        """
-        Correlation tracer on line-graph edges.
-
-        A line-graph edge (i,j) is "co-active" if both decoding edges i and j were selected
-        in the SECOND-pass MWPM solution.
-        """
-        if self.n_line_edges == 0:
+    def _accumulate_correlation(self, selected_idx: np.ndarray):
+        """Add 1 to the co-occurrence batch count for line graph edges."""
+        if self.n_line_edges == 0 or selected_idx.size == 0:
             return
-
         active = np.zeros(self.n_dec_edges, dtype=np.bool_)
-        if selected_idx.size > 0:
-            active[selected_idx] = True
-
+        active[selected_idx] = True
         src = self.line_edge_index[0]
         dst = self.line_edge_index[1]
-        co_active = (active[src] & active[dst]).astype(np.float32)
-
-        # Update using the Exponential Moving Average (EMA) formula
-        self.corr_tracer = (1.0 - self.alpha) * self.corr_tracer + (self.alpha * co_active)
+        self.corr_batch_counts += (active[src] & active[dst]).astype(np.float32)
 
 
-    def _update_base_matching_from_occurrence(self):
+    def _apply_cma_and_update_graph(self):
         """
-        Periodically update the 'base' decoder to catch up with the drift.
-        Use this sparingly (e.g., once per episode in reset) to keep the RL stable.
+        Apply the recursive Bayesian CMA update rule to refine the base graph.
         """
+        # 1. Calculate the occurrence rate for JUST the recent batch
+        batch_occ_rate = self.occ_batch_counts / self.update_period
+        
+        # 2. Calculate the decaying CMA learning rate (alpha)
+        # N_total is the total shots processed so far.
+        alpha = self.update_period / (self.prior_shots + self.total_shots_traced)
+        
+        # 3. Apply the Moving Average Update Rule
+        self.occ_tracer = self.occ_tracer + alpha * (batch_occ_rate - self.occ_tracer)
+        
+        if self.n_line_edges > 0:
+            batch_corr_rate = self.corr_batch_counts / self.update_period
+            self.corr_tracer = self.corr_tracer + alpha * (batch_corr_rate - self.corr_tracer)
+
+        # 4. Update MWPM weights
         p = np.clip(self.occ_tracer, 1e-6, 0.499999)
-        
-        # Compute the weights with some safety clipping
         self.current_weights = np.clip(np.log((1.0 - p) / p), self.min_weight, self.max_weight)
-        
-        # Update the base matching object
         self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
+        
+        # 5. Flush the batch counters for the next period
+        self.occ_batch_counts.fill(0.0)
+        self.corr_batch_counts.fill(0.0)
     
 
     @staticmethod
