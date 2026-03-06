@@ -117,37 +117,33 @@ class SyndromeDataGenerator:
         # Sample syndromes from the drifted circuit
         sampler = drifted_circuit.compile_detector_sampler()
         syndrome_volume_batch, true_obs_batch = sampler.sample(shots=self.n_shots, separate_observables=True)
+        true_obs_batch = true_obs_batch.flatten()
 
         return np.asarray(syndrome_volume_batch, dtype=np.uint8), true_obs_batch
 
     @staticmethod
     def _predict_obs_from_selected_edges(
         selected_edges: np.ndarray,
-        dec_edge_to_idx,
-        fault_ids
+        pair_to_idx_matrix: np.ndarray,
+        fault_array: np.ndarray
     ) -> bool:
-        """
-        Compute predicted observable parity directly from selected decoding edges.
-        Uses the pre-computed edge indices and fault_ids for O(1) fast lookup.
-        Assumes the boundary node is represented as -1 globally.
-        """
-        obs_flip = False
-        
-        for u, v in selected_edges:
-            u_i, v_i = int(u), int(v)
+        """Fully vectorized observable prediction using native -1 boundary indexing."""
+        if selected_edges.size == 0:
+            return False
 
-            # Format the key to match our index map (e.g., (-1, 5))
-            key = (u_i, v_i) if u_i <= v_i else (v_i, u_i)
+        u = selected_edges[:, 0].astype(np.int32)
+        v = selected_edges[:, 1].astype(np.int32)
+
+        # Fast matrix lookup (NumPy dynamically maps -1 to the boundary row/col)
+        idxs = pair_to_idx_matrix[u, v]
+        valid_idxs = idxs[idxs != -1]
+
+        # Check parity (If the sum of crossed boundaries is odd, it flipped)
+        if valid_idxs.size > 0:
+            fault_count = np.sum(fault_array[valid_idxs])
+            return bool(fault_count % 2 != 0)
             
-            # Look up the canonical edge index
-            idx = dec_edge_to_idx.get(key)
-
-            if idx is not None:
-                # If this edge has any fault_ids, it crossed the logical tripwire
-                if len(fault_ids[idx]) > 0:
-                    obs_flip ^= True
-
-        return obs_flip
+        return False
 
 
     def get_solution_edges(
@@ -156,8 +152,8 @@ class SyndromeDataGenerator:
             syndrome_volume: np.ndarray, 
             enable_correlations: bool=False,
             return_predicted_obs: bool=False,
-            dec_edge_to_idx=None,
-            fault_ids=None
+            pair_to_idx_matrix=None,
+            fault_array=None
         ):
         """
         Get the oracle solution edges for a given syndrome volume/shot by decoding with the provided matching.
@@ -166,15 +162,13 @@ class SyndromeDataGenerator:
         solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
         
         if return_predicted_obs:
-            if dec_edge_to_idx is None:
-                raise ValueError(f"dec_edge_to_idx must be provided if return_predicted_obs = True")
-            if fault_ids is None:
-                raise ValueError(f"dec_edge_to_idx must be provided if return_predicted_obs = True")
+            if pair_to_idx_matrix is None or fault_array is None:
+                raise ValueError("pair_to_idx_matrix and fault_array must be provided if return_predicted_obs = True")
             
             predicted_obs = self._predict_obs_from_selected_edges( 
                 selected_edges=solution_edges, 
-                dec_edge_to_idx=dec_edge_to_idx, 
-                fault_ids=fault_ids
+                pair_to_idx_matrix=pair_to_idx_matrix, 
+                fault_array=fault_array
             )
 
             return solution_edges, predicted_obs
@@ -188,35 +182,37 @@ class SyndromeDataGenerator:
             syndrome_volume_batch: np.ndarray,
             enable_correlations: bool=True, 
             return_predicted_obs: bool=False,
-            dec_edge_to_idx=None,
-            fault_ids=None
+            pair_to_idx_matrix=None,
+            fault_array=None
         ):
         """
         Get the oracle solution edges for each syndrome volume/shot by decoding with the drifted matching.
         """
-
+        n_shots = len(syndrome_volume_batch)
         solution_edges_batch = []
-        for shot_idx, syndrome_volume in enumerate(syndrome_volume_batch):
-            solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
-            solution_edges_batch.append(solution_edges)
         
         if return_predicted_obs:
-            predicted_obs_batch = np.zeros(self.n_shots, dtype=bool)
-            if dec_edge_to_idx is None:
-                raise ValueError(f"dec_edge_to_idx must be provided if return_predicted_obs = True")
-            if fault_ids is None:
-                raise ValueError(f"dec_edge_to_idx must be provided if return_predicted_obs = True")
-
-            for shot_idx, edges in enumerate(solution_edges_batch):
+            if pair_to_idx_matrix is None or fault_array is None:
+                raise ValueError("pair_to_idx_matrix and fault_array must be provided if return_predicted_obs = True")
+            
+            predicted_obs_batch = np.zeros(n_shots, dtype=bool)
+            
+            # Decode AND Predict the Obs in one pass
+            for shot_idx, syndrome_volume in enumerate(syndrome_volume_batch):
+                edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+                solution_edges_batch.append(edges)
                 predicted_obs_batch[shot_idx] = self._predict_obs_from_selected_edges( 
                     selected_edges=edges,
-                    dec_edge_to_idx=dec_edge_to_idx, 
-                    fault_ids=fault_ids
+                    pair_to_idx_matrix=pair_to_idx_matrix, 
+                    fault_array=fault_array
                 )
-
             return solution_edges_batch, predicted_obs_batch     
-        
-        return solution_edges_batch
+        else:
+            # Just Decode
+            for shot_idx, syndrome_volume in enumerate(syndrome_volume_batch):
+                edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+                solution_edges_batch.append(edges)
+            return solution_edges_batch
         
 
     @staticmethod

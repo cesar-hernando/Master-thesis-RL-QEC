@@ -100,8 +100,15 @@ class DriftedMatchingEnv(gym.Env):
         # Define a dictionary that maps the index of each detector to its 3D coordinates
         self.detector_coords = self.base_circuit.get_detector_coordinates()
 
-        # Extract the decoding edge weights and index
-        self.dec_edge_list, self.dec_edge_to_idx, self.current_weights, self.base_p, self.fault_ids = self._index_decoding_graph_edges(self.base_matching)
+        # Extract the decoding edge weights, arrays, and fast lookup matrix natively
+        (
+            self.dec_edge_list, 
+            self.pair_to_idx_matrix, 
+            self.current_weights, 
+            self.base_p, 
+            self.fault_ids, 
+            self.fault_array
+        ) = self._index_decoding_graph_edges(self.base_matching)
         self.n_dec_edges = len(self.dec_edge_list)
 
         # Store the original weights obtained from the DEM
@@ -114,11 +121,18 @@ class DriftedMatchingEnv(gym.Env):
         self.line_edge_index, self.initial_corr_tracer = self._build_line_graph_edges()
         self.n_line_edges = self.line_edge_index.shape[1]
 
+        # Build a base 1-hop adjacency matrix
+        adj_mat = np.eye(self.n_dec_edges, dtype=int)
+        for u, v in zip(self.line_edge_index[0], self.line_edge_index[1]):
+            adj_mat[u, v] = 1
+            adj_mat[v, u] = 1
+            
+        # Compute K-hops instantly using Matrix Power
+        # (path of length K exists if the Kth power of the matrix > 0)
+        self.k_hop_adj_mat = np.linalg.matrix_power(adj_mat, self.local_action_hops) > 0
+
         # Pre-calculate geometry for render method
         self._calculate_rendering_geometry()
-
-        # Construct an adjacency list for fast local action masking
-        self.line_neighbors = self._build_line_neighbors(self.line_edge_index, self.n_dec_edges)
 
         # Define the Gym Observation and Action Spaces (fixed size for a given base circuit / distance)
         self.observation_space = spaces.Dict({
@@ -157,35 +171,33 @@ class DriftedMatchingEnv(gym.Env):
         )       
     
 
-    def _index_decoding_graph_edges(self, matching: pymatching):
+    def _index_decoding_graph_edges(self, matching: pymatching.Matching):
         """
         Create fixed indexing of decoding-graph edges and extract weights,
-        error probabilities and fault ids.
-
-        Returns
-        -------
-        dec_edge_list : list[(u,v)]   canonical sorted endpoints
-        dec_edge_to_idx : dict[(u,v)] -> idx
-        base_edge_weight : np.ndarray shape [N]
-        base_edge_error_prob : np.ndarray shape [N]
-        fault_ids: list of length N containing where each element is a set representing
-            which logical observables it flips
+        error probabilities, fault ids, and fast lookup matrices.
         """
         dec_edge_list = []
-        dec_edge_to_idx = {}
         weights = []
         error_probs = []
         fault_ids = []
+
+        # Initialize the fast 2D NumPy lookup table for edge pairs
+        matrix_size = self.n_detectors + 1
+        pair_to_idx_matrix = np.full((matrix_size, matrix_size), -1, dtype=np.int32)
 
         idx = 0
         for u, v, data in matching.edges():
             u = -1 if u is None else u
             v = -1 if v is None else v
             key = (u, v) if u <= v else (v, u)
+            
             dec_edge_list.append(key)
-            dec_edge_to_idx[key] = idx
             weights.append(data["weight"])
             error_probs.append(data["error_probability"])
+
+            # Populate the fast matrix natively inside the loop
+            pair_to_idx_matrix[u, v] = idx
+            pair_to_idx_matrix[v, u] = idx
 
             f_ids = data.get("fault_ids", set())
             if isinstance(f_ids, (int, float)):
@@ -196,7 +208,17 @@ class DriftedMatchingEnv(gym.Env):
 
             idx += 1
 
-        return dec_edge_list, dec_edge_to_idx, np.asarray(weights, dtype=np.float32), np.asarray(error_probs, dtype=np.float32), fault_ids
+        # Create the ultra-fast 1D boolean array for observable prediction
+        fault_array = np.array([len(f) > 0 for f in fault_ids], dtype=bool)
+
+        return (
+            dec_edge_list, 
+            pair_to_idx_matrix, 
+            np.asarray(weights, dtype=np.float32), 
+            np.asarray(error_probs, dtype=np.float32), 
+            fault_ids, 
+            fault_array
+        )
     
 
     def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
@@ -273,11 +295,9 @@ class DriftedMatchingEnv(gym.Env):
                 u = comp[0] if len(comp) > 0 else -1
                 v = comp[1] if len(comp) > 1 else -1
                 
-                key = (u, v) if u <= v else (v, u)
-                
                 # Fetch the canonical GNN node ID for this physical edge
-                idx = self.dec_edge_to_idx.get(key)
-                if idx is not None:
+                idx = self.pair_to_idx_matrix[u, v]
+                if idx != -1:
                     node_indices.append(idx)
                     
             # 4. Create pairwise connections in the line graph for this hyperedge
@@ -355,21 +375,6 @@ class DriftedMatchingEnv(gym.Env):
 
         self.edge_midpoints = midpoints
         self.edge_types = edge_types
-    
-
-    def _build_line_neighbors(self, line_edge_index: np.ndarray, n_nodes: int) -> List[List[int]]:
-        """
-        Adjacency list of line graph.
-        """
-        neighbors = [[] for _ in range(n_nodes)]
-        if line_edge_index.shape[1] == 0:
-            return neighbors
-        src = line_edge_index[0]
-        dst = line_edge_index[1]
-        for i, j in zip(src.tolist(), dst.tolist()):
-            neighbors[i].append(j)
-            neighbors[j].append(i)
-        return neighbors
 
 
     def reset(self, seed=None, options=None):
@@ -383,7 +388,7 @@ class DriftedMatchingEnv(gym.Env):
             )
         
         # Retrieve the weights of the oracle decoding graph
-        _, _, self.oracle_weights, _, _ = self._index_decoding_graph_edges(self.drifted_matching)
+        _, _, self.oracle_weights, _, _, _ = self._index_decoding_graph_edges(self.drifted_matching)
         
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(self.drifted_circuit)
@@ -394,14 +399,15 @@ class DriftedMatchingEnv(gym.Env):
             syndrome_volume_batch=self.syndrome_batch, 
             enable_correlations=False, 
             return_predicted_obs=True,
-            dec_edge_to_idx=self.dec_edge_to_idx,
-            fault_ids=self.fault_ids
+            pair_to_idx_matrix=self.pair_to_idx_matrix,
+            fault_array=self.fault_array
         )
         
         # Pre-generate the static decoder solution edge predicted observable
         self.static_predicted_obs_batch = self.base_matching.decode_batch(
             self.syndrome_batch, 
-            enable_correlations=False)
+            enable_correlations=False
+            ).flatten()
         
         # Reset the step count
         self.step_count = 0
@@ -414,7 +420,6 @@ class DriftedMatchingEnv(gym.Env):
         weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
 
         # Initialize absolute counters for the actual observed MWPM shots
-        self.total_shots_traced = 0
         self.shots_since_update = 0
         self.occ_batch_counts = np.zeros(self.n_dec_edges, dtype=np.float32)
         self.corr_batch_counts = np.zeros(self.n_line_edges, dtype=np.float32)
@@ -479,62 +484,34 @@ class DriftedMatchingEnv(gym.Env):
     
 
     def _selected_edge_indices_from_pairs(self, edge_pairs: np.ndarray) -> np.ndarray:
-        """
-        Convert decoding-graph node pairs [[u,v], ...] to our fixed decoding-edge indices.
-
-        Edges that are not in the base graph indexing are ignored (rare if topology matches).
-        """
+        """Vectorized O(1) array lookup taking advantage of NumPy's -1 indexing."""
         if edge_pairs.size == 0:
             return np.zeros((0,), dtype=np.int64)
 
-        idxs = []
-        for uv in edge_pairs:
-            u, v = int(uv[0]), int(uv[1])
-            key = (u, v) if u <= v else (v, u)
-            idx = self.dec_edge_to_idx.get(key, None)
-            if idx is not None:
-                idxs.append(idx)
+        # Slice out the u and v columns
+        u = edge_pairs[:, 0].astype(np.int32)
+        v = edge_pairs[:, 1].astype(np.int32)
 
-        if not idxs:
-            return np.zeros((0,), dtype=np.int64)
+        # Instant lookup of all edges in C-memory (NumPy handles the -1 boundary magically!)
+        idxs = self.pair_to_idx_matrix[u, v]
 
-        # unique sorted
-        return np.asarray(sorted(set(idxs)), dtype=np.int64)
+        # Filter out invalid edges (-1) and return sorted unique indices
+        valid_idxs = idxs[idxs != -1]
+        return np.unique(valid_idxs).astype(np.int64)
     
 
     def _compute_action_mask(self, selected_idx: np.ndarray) -> np.ndarray:
-        """
-        Build a local action mask on line-graph nodes.
-
-        If local_action_only=False -> all ones.
-        Else -> selected edges + k-hop line-graph neighborhood.
-        """
+        """Instant vectorized mask using pre-computed K-hop matrix."""
         if not self.local_action_only:
             return np.ones(self.n_dec_edges, dtype=np.float32)
 
-        mask = np.zeros(self.n_dec_edges, dtype=np.float32)
         if selected_idx.size == 0:
-            return mask  # no fired/selected edges -> no action region (reasonable default)
+            return np.zeros(self.n_dec_edges, dtype=np.float32)
 
-        frontier = set(int(i) for i in selected_idx.tolist())
-        visited = set(frontier)
-
-        for i in frontier:
-            mask[i] = 1.0
-
-        for _ in range(self.local_action_hops):
-            new_frontier = set()
-            for i in frontier:
-                for j in self.line_neighbors[i]:
-                    if j not in visited:
-                        visited.add(j)
-                        new_frontier.add(j)
-            for j in new_frontier:
-                mask[j] = 1.0
-            frontier = new_frontier
-            if not frontier:
-                break
-
+        # Slice the K-hop matrix rows for the selected edges, 
+        # collapse them with .any(), and cast to float mask!
+        mask = self.k_hop_adj_mat[selected_idx].any(axis=0).astype(np.float32)
+        
         return mask
     
 
@@ -555,24 +532,27 @@ class DriftedMatchingEnv(gym.Env):
             applied_delta = action * mask
         else:
             applied_delta = action
-
+        '''
+        if not np.any(applied_delta):
+            second_pass_matching = self.current_matching
+        else:
+            second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
+            second_pass_matching = self._build_matching_with_custom_weights(second_pass_weights)
+        '''
         second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-
-
-        #######################################################
-        # 2) Build second-pass matching with reweighted graph #
-        #######################################################
-
         second_pass_matching = self._build_matching_with_custom_weights(second_pass_weights)
 
-        # Run MWPM to get the selected edges and predicted observable for the current shot
+        ##############################################
+        # 2) Run 2nd pass MWPM with reweighted edges #
+        ##############################################
+
         selected_edges_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
             matching=second_pass_matching,
             syndrome_volume=self.current_syndrome,
             enable_correlations=False,
             return_predicted_obs=True,
-            dec_edge_to_idx=self.dec_edge_to_idx,
-            fault_ids=self.fault_ids
+            pair_to_idx_matrix=self.pair_to_idx_matrix,
+            fault_array=self.fault_array
         )
         
         selected_idx_2 = self._selected_edge_indices_from_pairs(selected_edges_2)
@@ -583,8 +563,6 @@ class DriftedMatchingEnv(gym.Env):
 
         self._accumulate_occurrence(self.current_first_pass_selected_idx)
         self._accumulate_correlation(self.current_first_pass_selected_idx)
-        
-        self.total_shots_traced += 1
         self.shots_since_update += 1
 
         if self.shots_since_update >= self.update_period:
@@ -676,7 +654,7 @@ class DriftedMatchingEnv(gym.Env):
         
         # 2. Calculate the decaying CMA learning rate (alpha)
         # N_total is the total shots processed so far.
-        alpha = self.update_period / (self.prior_shots + self.total_shots_traced)
+        alpha = self.update_period / (self.prior_shots + self.step_count)
         
         # 3. Apply the Moving Average Update Rule
         self.occ_tracer = self.occ_tracer + alpha * (batch_occ_rate - self.occ_tracer)
@@ -697,15 +675,14 @@ class DriftedMatchingEnv(gym.Env):
 
     @staticmethod
     def _edge_set_jaccard(a_idx: np.ndarray, b_idx: np.ndarray) -> float:
-        """
-        Jaccard similarity between two selected-edge index sets.
-        """
-        a = set(int(x) for x in a_idx.tolist())
-        b = set(int(x) for x in b_idx.tolist())
-        if not a and not b:
+        """Pure NumPy Jaccard similarity without Python object creation."""
+        if a_idx.size == 0 and b_idx.size == 0:
             return 1.0
-        inter = len(a & b)
-        uni = len(a | b)
+            
+        # assume_unique=True skips a sorting step, making this blazing fast
+        inter = np.intersect1d(a_idx, b_idx, assume_unique=True).size
+        uni = a_idx.size + b_idx.size - inter
+        
         return float(inter / uni) if uni > 0 else 1.0
 
 

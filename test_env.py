@@ -10,8 +10,7 @@ import time
 from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 
-
-# We will set n_shots to 5 so our episode length is exactly 5 steps
+# We will set n_shots to 100,000
 n_shots = 100_000
 verbose = False
 
@@ -32,7 +31,7 @@ generator = SyndromeDataGenerator(
     qec_code='surface_code'
 )
 
-# Setting xz_crosstalk_radius=2.1 captures Y errors and nearest-neighbor crosstalk
+# Setting local_action_hops=1 captures Y errors and nearest-neighbor crosstalk
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
@@ -40,107 +39,96 @@ env = DriftedMatchingEnv(
     update_period=100,
     prior_shots=100,
     oracle_reward_coef=0.5,
-    render_mode = "human"
+    render_mode="human"
 )
 
 print(f"\nGraph Topology Built Successfully:")
 print(f" - Total Decoding Edges (GNN Nodes): {env.n_dec_edges}")
 print(f" - Total Line Graph Connections (GNN Edges): {env.n_line_edges}")
 
+# Pre-allocate metric arrays for speed
+rewards = np.zeros(n_shots, dtype=np.float32)
+logical_errors = np.zeros(n_shots, dtype=np.float32)
+oracle_errors = np.zeros(n_shots, dtype=np.float32)
+static_errors = np.zeros(n_shots, dtype=np.float32)
+weights_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
 
-step_num = 0
-cum_reward = 0.0
-avg_reward = []
-logical_error_rate = []
-n_logical_errors = 0
-n_logical_errors_oracle = 0
-logical_error_rate_oracle = []
 n_logical_flips = 0
-n_logical_errors_static = 0
-logical_error_rate_static = []
+
 start_time = time.time()
+obs, info = env.reset(seed=42)
+
+# Record the starting weight error
+weights_mse_error[0] = info["weights_mse_error"]
 
 terminated = False
 truncated = False
-obs, info = env.reset(seed=42)
-weights_mse_error = [info["weights_mse_error"]]
+step_idx = 0
 
-while not (terminated or truncated):
-    step_num += 1
-
-    if step_num % (n_shots/10)== 0:
-        print(f"Completed {100*step_num/n_shots:.0f}% of the episode")
-    
-    # Sample a random continuous action between [-1.0, 1.0]
-    #action = env.action_space.sample()
-    action = np.zeros(env.n_dec_edges, dtype=np.float32)
+print("\n--- Starting Episode Loop ---")
+while not (terminated or truncated) and step_idx < n_shots:
+    if (step_idx + 1) % (n_shots // 10) == 0:
+        print(f"Completed {100 * (step_idx + 1) / n_shots:.0f}% of the episode")
     
     # Step the environment
+    action = np.zeros(env.n_dec_edges, dtype=np.float32)
     next_obs, reward, terminated, truncated, step_info = env.step(action)
 
-    # Episode analysis
-    cum_reward += reward
-    avg_reward.append(cum_reward/step_num)
-    weights_mse_error.append(step_info["weights_mse_error"])
-    logical_error = step_info["logical_error"]
-    if logical_error:
-        n_logical_errors += 1
-    logical_error_rate.append(n_logical_errors/step_num)
 
-    if step_info["oracle_pred_obs"] != step_info["true_obs"]:
-        n_logical_errors_oracle += 1
-    logical_error_rate_oracle.append(n_logical_errors_oracle/step_num)
-
-    if step_info["static_pred_obs"] != step_info["true_obs"]:
-        n_logical_errors_static += 1
-    logical_error_rate_static.append(n_logical_errors_static/step_num)
-
+    # Fast indexed storage
+    rewards[step_idx] = reward
+    weights_mse_error[step_idx + 1] = step_info["weights_mse_error"]
+    logical_errors[step_idx] = float(step_info["logical_error"])
+    oracle_errors[step_idx] = float(step_info["oracle_pred_obs"] != step_info["true_obs"])
+    static_errors[step_idx] = float(step_info["static_pred_obs"] != step_info["true_obs"])
+    
     if step_info["true_obs"]:
         n_logical_flips += 1
-    
-    if verbose:
-        print(f"\nStep {step_num}:")
-        print(f"  - Logical Error Occurred: {bool(step_info['logical_error'])}")
-        print(f"  - Total Reward: {reward:.4f}")
         
-        if step_info['oracle_similarity_jaccard'] is not None:
-            print(f"  - Jaccard Similarity to Oracle: {step_info['oracle_similarity_jaccard']:.4f}")
-            
-        unlocked_actions = int(next_obs["action_mask"].sum())
-        print(f"  - Unlocked Actions for NEXT step: {unlocked_actions}")
+    step_idx += 1
 
 end_time = time.time()
-episode_time = end_time - start_time
-print(f"\nEpisode finished! Time taken: {episode_time} (s)")
+print(f"\nEpisode finished! Time taken: {end_time - start_time:.2f} seconds")
 
+# Calculate running averages instantly using np.cumsum
+steps_array = np.arange(1, n_shots + 1)
+avg_reward = np.cumsum(rewards) / steps_array
+logical_error_rate = np.cumsum(logical_errors) / steps_array
+logical_error_rate_oracle = np.cumsum(oracle_errors) / steps_array
+logical_error_rate_static = np.cumsum(static_errors) / steps_array
 
-# Plot the average reward
-plt.figure()
-plt.plot(avg_reward)
-plt.xlabel("Step")
-plt.ylabel("Average reward")
-plt.grid()
-plt.show()
-
-# Plot the weight error
-plt.figure()
-plt.loglog(weights_mse_error)
-plt.xlabel("Step")
-plt.ylabel("Weight Error (MSE)")
-plt.grid()
-plt.show()
+n_logical_errors = int(np.sum(logical_errors))
+n_logical_errors_oracle = int(np.sum(oracle_errors))
+n_logical_errors_static = int(np.sum(static_errors))
 
 print("Number of logical errors of our decoder: ", n_logical_errors)
 print("Number of logical errors of oracle decoder: ", n_logical_errors_oracle)
 print("Number of logical errors of static decoder: ", n_logical_errors_static)
 print("Number of logical flips: ", n_logical_flips)
 
-# Plot the logical error rate evolution# Generate the correct x-axis steps
-x_steps = range(1000, len(logical_error_rate))
+# Plotting
 plt.figure()
-plt.loglog(x_steps, logical_error_rate[1000:], label="Our")
-plt.loglog(x_steps, logical_error_rate_oracle[1000:], label="Oracle")
-plt.loglog(x_steps, logical_error_rate_static[1000:], label="Static")
+plt.plot(steps_array, avg_reward)
+plt.xlabel("Step")
+plt.ylabel("Average reward")
+plt.grid()
+plt.show()
+
+plt.figure()
+plt.loglog(np.arange(n_shots + 1), weights_mse_error)
+plt.xlabel("Step")
+plt.ylabel("Weight Error (MSE)")
+plt.grid()
+plt.show()
+
+# Generate the correct x-axis steps for the detached plot
+start_plot_idx = 1000
+x_steps = steps_array[start_plot_idx:]
+
+plt.figure()
+plt.loglog(x_steps, logical_error_rate[start_plot_idx:], label="Our")
+plt.loglog(x_steps, logical_error_rate_oracle[start_plot_idx:], label="Oracle")
+plt.loglog(x_steps, logical_error_rate_static[start_plot_idx:], label="Static")
 plt.xlabel("Step")
 plt.ylabel("Logical error rate")
 plt.grid()
@@ -148,4 +136,3 @@ plt.legend()
 plt.show()
 
 env.render()
-
