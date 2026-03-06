@@ -9,6 +9,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import plotly.graph_objects as go
 import pymatching
+import scipy.sparse as sp
 
 from syndrome_data_generation import SyndromeDataGenerator
 
@@ -105,9 +106,9 @@ class DriftedMatchingEnv(gym.Env):
             self.dec_edge_list, 
             self.pair_to_idx_matrix, 
             self.current_weights, 
-            self.base_p, 
-            self.fault_ids, 
-            self.fault_array
+            self.base_p,  
+            self.fault_array,
+            self.H
         ) = self._index_decoding_graph_edges(self.base_matching)
         self.n_dec_edges = len(self.dec_edge_list)
 
@@ -115,7 +116,7 @@ class DriftedMatchingEnv(gym.Env):
         self.initial_base_weights = self.current_weights.copy()
 
         # Make a copy of the base matching that will be updated every step
-        self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
+        self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
         # Build the line graph adding edges based on the DEM
         self.line_edge_index, self.initial_corr_tracer = self._build_line_graph_edges()
@@ -172,18 +173,17 @@ class DriftedMatchingEnv(gym.Env):
     
 
     def _index_decoding_graph_edges(self, matching: pymatching.Matching):
-        """
-        Create fixed indexing of decoding-graph edges and extract weights,
-        error probabilities, fault ids, and fast lookup matrices.
-        """
         dec_edge_list = []
         weights = []
         error_probs = []
         fault_ids = []
 
-        # Initialize the fast 2D NumPy lookup table for edge pairs
         matrix_size = self.n_detectors + 1
         pair_to_idx_matrix = np.full((matrix_size, matrix_size), -1, dtype=np.int32)
+
+        # Arrays to hold the Sparse Check Matrix (H) coordinates
+        h_rows = []
+        h_cols = []
 
         idx = 0
         for u, v, data in matching.edges():
@@ -195,9 +195,16 @@ class DriftedMatchingEnv(gym.Env):
             weights.append(data["weight"])
             error_probs.append(data["error_probability"])
 
-            # Populate the fast matrix natively inside the loop
             pair_to_idx_matrix[u, v] = idx
             pair_to_idx_matrix[v, u] = idx
+
+            # Map the edges to the Check Matrix (ignoring the -1 boundary)
+            if u != -1:
+                h_rows.append(u)
+                h_cols.append(idx)
+            if v != -1:
+                h_rows.append(v)
+                h_cols.append(idx)
 
             f_ids = data.get("fault_ids", set())
             if isinstance(f_ids, (int, float)):
@@ -208,47 +215,21 @@ class DriftedMatchingEnv(gym.Env):
 
             idx += 1
 
-        # Create the ultra-fast 1D boolean array for observable prediction
+        # Build the ultra-fast array
         fault_array = np.array([len(f) > 0 for f in fault_ids], dtype=bool)
+
+        # Build the actual sparse C-matrix
+        h_data = np.ones(len(h_rows), dtype=np.int8)
+        H = sp.csc_matrix((h_data, (h_rows, h_cols)), shape=(self.n_detectors, idx))
 
         return (
             dec_edge_list, 
             pair_to_idx_matrix, 
             np.asarray(weights, dtype=np.float32), 
             np.asarray(error_probs, dtype=np.float32), 
-            fault_ids, 
-            fault_array
+            fault_array,
+            H 
         )
-    
-
-    def _build_matching_with_custom_weights(self, custom_weights: np.ndarray) -> pymatching.Matching:
-        """
-        Build a PyMatching object using the base topology and custom weights.
-        """
-        # Initialize an empty Matching object with the correct number of detectors
-        m = pymatching.Matching(num_detectors=self.n_detectors)
-
-        # Iterate through our canonical list of edges
-        for idx, (u, v) in enumerate(self.dec_edge_list):
-            
-            weight = float(custom_weights[idx]) 
-            f_ids = self.fault_ids[idx]
-            
-            if u == -1:
-                m.add_boundary_edge(
-                    node=v,
-                    weight=weight,
-                    fault_ids=f_ids
-                )
-            else:
-                m.add_edge(
-                    node1=u,
-                    node2=v,
-                    weight=weight,
-                    fault_ids=f_ids
-                )
-
-        return m
     
 
     def _build_line_graph_edges(self) -> tuple[np.ndarray, np.ndarray]:
@@ -414,7 +395,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # Reset decoder weights/matching to the original base graph each episode
         self.current_weights = self.initial_base_weights.copy()
-        self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
+        self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
         # Calculate the initial weights mse error between oracle and base
         weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
@@ -537,10 +518,10 @@ class DriftedMatchingEnv(gym.Env):
             second_pass_matching = self.current_matching
         else:
             second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-            second_pass_matching = self._build_matching_with_custom_weights(second_pass_weights)
+            second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
         '''
         second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-        second_pass_matching = self._build_matching_with_custom_weights(second_pass_weights)
+        second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
 
         ##############################################
         # 2) Run 2nd pass MWPM with reweighted edges #
@@ -666,7 +647,7 @@ class DriftedMatchingEnv(gym.Env):
         # 4. Update MWPM weights
         p = np.clip(self.occ_tracer, 1e-6, 0.499999)
         self.current_weights = np.clip(np.log((1.0 - p) / p), self.min_weight, self.max_weight)
-        self.current_matching = self._build_matching_with_custom_weights(self.current_weights)
+        self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
         
         # 5. Reset the batch counters for the next period
         self.occ_batch_counts.fill(0.0)
