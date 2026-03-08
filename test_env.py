@@ -10,21 +10,21 @@ import time
 from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 
-# We will set n_shots to 100,000
-n_shots = 100_000
+
+n_shots = 1_000_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
     distance=5, 
     n_rounds=5, 
-    mismatch=10.0,  # Drift multiplier
+    mismatch=20.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.0,
-        "before_measure_flip_probability": 0.01,
-        "after_reset_flip_probability": 0.0,
-        "before_round_data_depolarization": 0.01,
+        "after_clifford_depolarization": 0.001,
+        "before_measure_flip_probability": 0.001,
+        "after_reset_flip_probability": 0.001,
+        "before_round_data_depolarization": 0.001,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
@@ -36,9 +36,12 @@ env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
     local_action_hops=1,
-    update_period=1,
+    update_period=1000,
     prior_shots=100,
     oracle_reward_coef=0.5,
+    use_covariance=True,
+    use_syndrome_features=True,
+    update_with='DGR',
     render_mode="human"
 )
 

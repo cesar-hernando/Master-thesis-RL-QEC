@@ -73,6 +73,9 @@ class DriftedMatchingEnv(gym.Env):
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         oracle_reward_coef: float = 0.0,
+        use_covariance: bool = True,
+        use_syndrome_features: bool = False,
+        update_with: str = 'DGR',
         render_mode = None
     ):
         super().__init__()
@@ -97,6 +100,9 @@ class DriftedMatchingEnv(gym.Env):
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.oracle_reward_coef = oracle_reward_coef
+        self.use_covariance = use_covariance
+        self.use_syndrome_features = use_syndrome_features
+        self.update_with = update_with
 
         # Define a dictionary that maps the index of each detector to its 3D coordinates
         self.detector_coords = self.base_circuit.get_detector_coordinates()
@@ -135,12 +141,15 @@ class DriftedMatchingEnv(gym.Env):
         # Pre-calculate geometry for render method
         self._calculate_rendering_geometry()
 
+        node_feat_dim = 3 if self.use_syndrome_features else 2
+        edge_attr_dim = 2 if self.use_syndrome_features else 1
+
         # Define the Gym Observation and Action Spaces (fixed size for a given base circuit / distance)
         self.observation_space = spaces.Dict({
             "node_features": spaces.Box(
                 low=-np.inf,
                 high=np.inf,
-                shape=(self.n_dec_edges, 2),
+                shape=(self.n_dec_edges, node_feat_dim),
                 dtype=np.float32
             ),
             "edge_index": spaces.Box(
@@ -152,7 +161,7 @@ class DriftedMatchingEnv(gym.Env):
             "edge_attr": spaces.Box(
                 low=-np.inf,
                 high=np.inf,
-                shape=(self.n_line_edges, 1),
+                shape=(self.n_line_edges, edge_attr_dim),
                 dtype=np.float32
             ),
             "action_mask": spaces.Box(
@@ -374,6 +383,12 @@ class DriftedMatchingEnv(gym.Env):
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(self.drifted_circuit)
 
+        # Pre-compute physics chunks and initialize trackers
+        if self.use_syndrome_features:
+            self._precompute_all_syndrome_statistics()
+            self.spitz_tracer = self.initial_base_weights.copy()
+            self.remm_tracer = self.initial_corr_tracer.copy()
+
         # Pre-generate the oracle solution edges and predicted observable for each shot in the episode using the drifted matching
         self.oracle_solution_edges_batch, self.oracle_predicted_obs_batch = self.syndrome_data_generator.get_solution_edges_batch(
             matching=self.drifted_matching, 
@@ -408,6 +423,11 @@ class DriftedMatchingEnv(gym.Env):
         # Reset tracers
         self.occ_tracer = self.base_p.copy()
         self.corr_tracer = self.initial_corr_tracer.copy()
+
+        # Reset Syndrome Physics Tracers
+        if self.use_syndrome_features:
+            self.spitz_tracer = self.initial_base_weights.copy()
+            self.remm_tracer = self.initial_corr_tracer.copy()
 
         # Prepare the first shot and build the initial observation
         obs = self._prepare_next_observation()
@@ -454,10 +474,41 @@ class DriftedMatchingEnv(gym.Env):
         self.current_first_pass_selected_idx = selected_idx_1
         self.current_action_mask = action_mask
 
+        # Evaluate the DGR (Decoder) Edge Feature
+        if self.use_covariance:
+            if self.n_line_edges > 0:
+                src = self.line_edge_index[0]
+                dst = self.line_edge_index[1]
+                
+                # Covariance formula: P(A ∩ B) - (P(A) * P(B))
+                covariance = self.corr_tracer - (self.occ_tracer[src] * self.occ_tracer[dst])
+                
+                # Clip at 0.0 to prevent negative finite-sampling noise
+                dgr_edge_feat = np.clip(covariance, 0.0, None)
+            else:
+                dgr_edge_feat = np.zeros(0, dtype=np.float32)
+        else:
+            dgr_edge_feat = self.corr_tracer
+
+        # Build Feature Arrays Dynamically based on the Flag
+        if self.use_syndrome_features:
+            # Stack: [Base Weights, 1st Pass Flag, Spitz Probabilities]
+            node_feats = np.stack([self.current_weights, selected_flag, self.spitz_tracer], axis=1)
+            
+            if self.n_line_edges > 0:
+                # Stack: [DGR Tracer (Covariance or Raw), Remm Covariance]
+                edge_feats = np.stack([dgr_edge_feat, self.remm_tracer], axis=1)
+            else:
+                edge_feats = np.zeros((0, 2), dtype=np.float32)
+        else:
+            # Fallback to the original DGR-only sizes
+            node_feats = np.stack([self.current_weights, selected_flag], axis=1)
+            edge_feats = dgr_edge_feat.reshape(-1, 1)
+
         obs = {
-            "node_features": np.stack([self.current_weights, selected_flag], axis=1).astype(np.float32),
+            "node_features": node_feats.astype(np.float32),
             "edge_index": self.line_edge_index.astype(np.int64),
-            "edge_attr": self.corr_tracer.reshape(-1, 1).astype(np.float32),
+            "edge_attr": edge_feats.astype(np.float32),
             "action_mask": action_mask,
         }
 
@@ -513,15 +564,15 @@ class DriftedMatchingEnv(gym.Env):
             applied_delta = action * mask
         else:
             applied_delta = action
-        '''
+        
         if not np.any(applied_delta):
             second_pass_matching = self.current_matching
         else:
             second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
             second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
-        '''
-        second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-        second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
+        
+        #second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
+        #second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
 
         ##############################################
         # 2) Run 2nd pass MWPM with reweighted edges #
@@ -542,14 +593,14 @@ class DriftedMatchingEnv(gym.Env):
         # 3) Update tracers using 2nd-pass selected edges #
         ######################################################
 
-        self._accumulate_occurrence(self.current_first_pass_selected_idx)
-        self._accumulate_correlation(self.current_first_pass_selected_idx)
+        self._accumulate_occurrence(selected_idx_2)
+        self._accumulate_correlation(selected_idx_2)
         self.shots_since_update += 1
 
         if self.shots_since_update >= self.update_period:
             self._apply_cma_and_update_graph()
             self.shots_since_update = 0
-
+                                                 
         #########################
         # 4) Compute the reward #
         #########################
@@ -625,31 +676,144 @@ class DriftedMatchingEnv(gym.Env):
         dst = self.line_edge_index[1]
         self.corr_batch_counts += (active[src] & active[dst]).astype(np.float32)
 
+    
+    def _compute_raw_syndrome_statistics(self, recent_syndromes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Maps Spitz and Remm analytical syndrome formulas to the GNN.
+        Calculates exact physical probabilities for a specific time window.
+        """
+        n_shots = recent_syndromes.shape[0]
+        spitz_probs = np.zeros(self.n_dec_edges, dtype=np.float32)
+        v_mean = np.mean(recent_syndromes, axis=0) 
+        
+        E_matrix = np.zeros((self.n_dec_edges, n_shots), dtype=bool)
+
+        for idx, (u, v) in enumerate(self.dec_edge_list):
+            # Handle boundary edges
+            if u == -1 or v == -1:
+                real_node = v if u == -1 else u
+                p = np.clip(v_mean[real_node] / 2.0, 1e-6, 0.499)
+                spitz_probs[idx] = p
+                E_matrix[idx] = recent_syndromes[:, real_node] == 1
+                continue
+            
+            # Extract boolean columns for the two detectors
+            v_u = recent_syndromes[:, u]
+            v_v = recent_syndromes[:, v]
+            E_matrix[idx] = v_u & v_v
+            
+            # Spitz Formula Variables
+            mean_u = v_mean[u]
+            mean_v = v_mean[v]
+            mean_uv = np.mean(E_matrix[idx])
+            mean_xor = np.mean(v_u ^ v_v)
+            
+            # Calculate the Spitz probability
+            denom = 1.0 - 2.0 * mean_xor
+            if abs(denom) < 1e-9:
+                p = 0.499 
+            else:
+                cov = mean_uv - (mean_u * mean_v)
+                root_term = max(0.0, 0.25 - (cov / denom))
+                p = np.clip(0.5 - np.sqrt(root_term), 1e-6, 0.499)
+                
+            spitz_probs[idx] = p
+
+        remm_covariances = np.zeros(self.n_line_edges, dtype=np.float32)
+
+        if self.n_line_edges > 0:
+            src = self.line_edge_index[0]
+            dst = self.line_edge_index[1]
+            mean_E = E_matrix.mean(axis=1)
+
+            for i in range(self.n_line_edges):
+                u_idx, v_idx = src[i], dst[i]
+                edge1 = self.dec_edge_list[u_idx]
+                edge2 = self.dec_edge_list[v_idx]
+
+                # Symmetric difference to handle syndrome cancellation natively (modulo-2 arithmetic)
+                nodes1 = set([n for n in edge1 if n != -1])
+                nodes2 = set([n for n in edge2 if n != -1])
+                signature_nodes = list(nodes1.symmetric_difference(nodes2))
+
+                # If the edges completely cancel each other out (empty signature), covariance is 0
+                if not signature_nodes:
+                    continue
+
+                # The event H is true ONLY if the exact uncanceled signature flashed
+                H_active = np.ones(n_shots, dtype=bool)
+                for node in signature_nodes:
+                    H_active &= (recent_syndromes[:, node] == 1)
+
+                mean_H = np.mean(H_active)
+                accidental_overlap = mean_E[u_idx] * mean_E[v_idx]
+                
+                # Covariance: <H> - <E_1><E_2>
+                remm_covariances[i] = max(0.0, mean_H - accidental_overlap)
+
+        return spitz_probs, remm_covariances
+
+
+    def _precompute_all_syndrome_statistics(self):
+        """
+        Pre-computes the Spitz and Remm statistics for every update_period chunk 
+        in the episode to maximize step() performance and avoid lookahead bias.
+        """
+        num_chunks = int(np.ceil(self.max_steps / self.update_period))
+        
+        self.precomputed_spitz = np.zeros((num_chunks, self.n_dec_edges), dtype=np.float32)
+        self.precomputed_remm = np.zeros((num_chunks, self.n_line_edges), dtype=np.float32)
+        
+        for i in range(num_chunks):
+            start_idx = i * self.update_period
+            end_idx = min(start_idx + self.update_period, self.max_steps)
+            
+            # Slice the exact window of shots for this specific chunk
+            chunk = self.syndrome_batch[start_idx:end_idx]
+            
+            # Calculate the physics statistics for this chunk
+            spitz, remm = self._compute_raw_syndrome_statistics(chunk)
+            
+            # Store them in the cache arrays
+            self.precomputed_spitz[i] = spitz
+            self.precomputed_remm[i] = remm
+
 
     def _apply_cma_and_update_graph(self):
-        """
-        Apply the recursive Bayesian CMA update rule to refine the base graph.
-        """
-        # 1. Calculate the occurrence rate for JUST the recent batch
-        batch_occ_rate = self.occ_batch_counts / self.update_period
-        
-        # 2. Calculate the decaying CMA learning rate (alpha)
-        # N_total is the total shots processed so far.
+        # 1. Calculate the decaying CMA learning rate (alpha)
         alpha = self.update_period / (self.prior_shots + self.step_count)
-        
-        # 3. Apply the Moving Average Update Rule
+
+        # 2. DGR TRACERS 
+        batch_occ_rate = self.occ_batch_counts / self.update_period
         self.occ_tracer = self.occ_tracer + alpha * (batch_occ_rate - self.occ_tracer)
         
         if self.n_line_edges > 0:
             batch_corr_rate = self.corr_batch_counts / self.update_period
             self.corr_tracer = self.corr_tracer + alpha * (batch_corr_rate - self.corr_tracer)
 
-        # 4. Update MWPM weights
-        p = np.clip(self.occ_tracer, 1e-6, 0.499999)
+        # 3. SYNDROME TRACERS
+        if self.use_syndrome_features:
+            # Figure out which chunk we just finished 
+            chunk_idx = (self.step_count - 1) // self.update_period
+            
+            # O(1) Array Lookup
+            batch_spitz = self.precomputed_spitz[chunk_idx]
+            batch_remm = self.precomputed_remm[chunk_idx]
+            
+            # Apply the exact same CMA update rule
+            self.spitz_tracer = self.spitz_tracer + alpha * (batch_spitz - self.spitz_tracer)
+            if self.n_line_edges > 0:
+                self.remm_tracer = self.remm_tracer + alpha * (batch_remm - self.remm_tracer)
+
+        # 4. Update MWPM weights 
+        if self.update_with == 'DGR':
+            p = np.clip(self.occ_tracer, 1e-6, 0.499999)
+        elif self.update_with == 'Spitz':
+            p = np.clip(self.spitz_tracer, 1e-6, 0.499999)
+
         self.current_weights = np.clip(np.log((1.0 - p) / p), self.min_weight, self.max_weight)
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
         
-        # 5. Reset the batch counters for the next period
         self.occ_batch_counts.fill(0.0)
         self.corr_batch_counts.fill(0.0)
     
