@@ -11,33 +11,32 @@ from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 
 
-n_shots = 1_000_000
+n_shots = 100_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=5, 
-    n_rounds=5, 
-    mismatch=20.0,  # Drift multiplier
+    distance=3, 
+    n_rounds=3, 
+    mismatch=10.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.001,
-        "before_measure_flip_probability": 0.001,
-        "after_reset_flip_probability": 0.001,
-        "before_round_data_depolarization": 0.001,
+        "after_clifford_depolarization": 0.0,
+        "before_measure_flip_probability": 0.005,
+        "after_reset_flip_probability": 0.0,
+        "before_round_data_depolarization": 0.005,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
     qec_code='surface_code'
 )
 
-# Setting local_action_hops=1 captures Y errors and nearest-neighbor crosstalk
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
     local_action_hops=1,
-    update_period=1000,
-    prior_shots=100,
+    update_period=100,
+    prior_shots=1000,
     oracle_reward_coef=0.5,
     use_covariance=True,
     use_syndrome_features=True,
@@ -68,17 +67,20 @@ terminated = False
 truncated = False
 step_idx = 0
 
+print("\nStatic weights: ", env.current_weights)
+print("\nOracle weights: ", env.oracle_weights)
+
+
 print("\n--- Starting Episode Loop ---")
 while not (terminated or truncated) and step_idx < n_shots:
-    if (step_idx + 1) % (n_shots // 10) == 0:
-        print(f"Completed {100 * (step_idx + 1) / n_shots:.0f}% of the episode")
+    #if (step_idx + 1) % (n_shots // 10) == 0:
+    #    print(f"Completed {100 * (step_idx + 1) / n_shots:.0f}% of the episode")
     
     # Step the environment
     action = np.zeros(env.n_dec_edges, dtype=np.float32)
     next_obs, reward, terminated, truncated, step_info = env.step(action)
 
-
-    # Fast indexed storage
+    # Store step information
     rewards[step_idx] = reward
     weights_mse_error[step_idx + 1] = step_info["weights_mse_error"]
     logical_errors[step_idx] = float(step_info["logical_error"])
@@ -90,6 +92,7 @@ while not (terminated or truncated) and step_idx < n_shots:
         
     step_idx += 1
 
+print("\nOur decoder final weights: ", env.current_weights)
 end_time = time.time()
 print(f"\nEpisode finished! Time taken: {end_time - start_time:.2f} seconds")
 
@@ -108,25 +111,34 @@ print("Number of logical errors of our decoder: ", n_logical_errors)
 print("Number of logical errors of oracle decoder: ", n_logical_errors_oracle)
 print("Number of logical errors of static decoder: ", n_logical_errors_static)
 print("Number of logical flips: ", n_logical_flips)
+print("Relative LER (Our) = ", n_logical_errors/n_logical_errors_oracle)
+print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_oracle)
+
+# Generate the correct x-axis steps for the detached plot
+start_plot_idx = 1000
+x_steps = steps_array[start_plot_idx:]
 
 # Plotting
 plt.figure()
-plt.plot(steps_array, avg_reward)
+plt.plot(x_steps, avg_reward[start_plot_idx:])
 plt.xlabel("Step")
 plt.ylabel("Average reward")
 plt.grid()
 plt.show()
 
 plt.figure()
-plt.loglog(np.arange(n_shots + 1), weights_mse_error)
+plt.loglog(x_steps, weights_mse_error[start_plot_idx+1:])
 plt.xlabel("Step")
 plt.ylabel("Weight Error (MSE)")
 plt.grid()
 plt.show()
 
-# Generate the correct x-axis steps for the detached plot
-start_plot_idx = 1000
-x_steps = steps_array[start_plot_idx:]
+plt.figure()
+plt.plot(x_steps, weights_mse_error[start_plot_idx+1:])
+plt.xlabel("Step")
+plt.ylabel("Weight Error (MSE)")
+plt.grid()
+plt.show()
 
 plt.figure()
 plt.loglog(x_steps, logical_error_rate[start_plot_idx:], label="Our")

@@ -3,7 +3,7 @@ In this file, we build a Gymnasium environment for reweighting the decoding grap
 statistics and the first MWPM pass selected edges.
 '''
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -107,7 +107,7 @@ class DriftedMatchingEnv(gym.Env):
         # Define a dictionary that maps the index of each detector to its 3D coordinates
         self.detector_coords = self.base_circuit.get_detector_coordinates()
 
-        # Extract the decoding edge weights, arrays, and fast lookup matrix natively
+        # Extract the decoding edge weights, fault ids array, and fast lookup matrix natively
         (
             self.dec_edge_list, 
             self.pair_to_idx_matrix, 
@@ -182,6 +182,22 @@ class DriftedMatchingEnv(gym.Env):
     
 
     def _index_decoding_graph_edges(self, matching: pymatching.Matching):
+        """
+        Indexes the decoding graph and constructs the Sparse Parity Check Matrix (H).
+
+        Maps physical detectors to graph edges to define the lattice topology and identify 
+        logical fault mechanisms. The H matrix uses `h_rows` (detector IDs) 
+        and `h_cols` (edge indices) to define the syndrome-to-error relationship.
+
+        Args:
+            matching: PyMatching graph object derived from the Stim noise model.
+
+        Returns:
+            tuple: (dec_edge_list, pair_to_idx, weights, error_probs, fault_array, H)
+                - dec_edge_list: List of edge pairs (u, v), with -1 as boundary.
+                - fault_array: Boolean mask for edges flipping a logical observable.
+                - H: Sparse CSC incidence matrix of shape (n_detectors, n_edges).
+        """
         dec_edge_list = []
         weights = []
         error_probs = []
@@ -221,12 +237,11 @@ class DriftedMatchingEnv(gym.Env):
             else:
                 f_ids = set(int(f) for f in f_ids)
             fault_ids.append(f_ids)
-
             idx += 1
 
         # Build the ultra-fast array
         fault_array = np.array([len(f) > 0 for f in fault_ids], dtype=bool)
-
+    
         # Build the actual sparse C-matrix
         h_data = np.ones(len(h_rows), dtype=np.int8)
         H = sp.csc_matrix((h_data, (h_rows, h_cols)), shape=(self.n_detectors, idx))
