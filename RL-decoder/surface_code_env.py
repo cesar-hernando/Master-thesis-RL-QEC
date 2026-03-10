@@ -764,7 +764,7 @@ if __name__ == '__main__':
     env = SurfaceCodeEnv(
         d = 3,
         p_phys = 0.1,
-        error_model='X',
+        error_model='depolarizing',
         include_masks=False
     )
     env.render(play_mode=True)
