@@ -10,24 +10,21 @@ This repository contains the codebase of my master's thesis project in the Appli
 
 - **Approach:** We use a graph-based Soft Actor-Critic (SAC) agent with a Graph Neural Network (GNN) encoder to output continuous reweightings for decoding-graph edges. The environment applies those actions only on a local subset of edges determined by an `action_mask` and the `local_action_hops` parameter (see `drifted_matching_env.py`). After applying the learned, local edge reweighting, a second MWPM pass is performed. This hybrid workflow preserves MWPM's strengths while letting a learned, local policy adapt edge weights to compensate for drift and capture short-range correlations that global weights miss.
 
-**Status:** research prototype — tools and notebooks for reproducible experiments.
-
-**Quick Links**
-- Stim wrappers: `surface_code_stim.py`, `syndrome_data_generation.py`
-- Environment: `drifted_matching_env.py`
-- Test: `test_env.py`
-
 **Project layout (high level)**
 - `surface_code_stim.py` — Stim-based rotated surface-code circuit builder used throughout experiments.
 - `syndrome_data_generation.py` — Generate drifted circuits, sample detector syndrome volumes, and extract MWPM-selected edges.
 - `drifted_matching_env.py` — Gym-compatible environment exposing graph observations (node/edge features) and applying local edge reweighting actions. 
 - `decoding_graph.ipynb` — interactive experiments and visualizations.
 
-**Core pipeline**
+**Project pipeline**
 
-1. Build a Stim rotated-surface-code memory circuit and extract its Detector Error Model (DEM).
-2. Build a PyMatching `Matching` from the DEM and run a first-pass MWPM decode.
-3. Convert the matching → NetworkX graph → graph tensors for a GNN.
-4. The policy outputs a continuous action vector over decoding-graph edges (shape = number of decoding edges). The environment masks these actions to a local subset (via `action_mask` and `local_action_hops`) and scales them to produce edge-weight deltas.
-5. Reweight decoding edges using `w'(e) = clip(w(e) + scale * delta_e)` for masked edges and build a reweighted `Matching`.
-6. Run second-pass MWPM on the reweighted graph and compute reward (logical success).
+1. Build a Stim rotated-surface-code memory circuit and extract its Detector Error Model (DEM) and decoding graph.
+2. Simulate drift by multiplying each of the error probabilities defined in the Stim circuit by a mismatch factor N sampled log-uniformly between 1/N and N.
+3. Use this drifted circuit to a run memory experiment, generating both the syndrome volume and a label representing whether the logical observable has flipped.
+2. Run a first pass of MWPM to predict which edges in the decoding graph have been activated.
+3. Define a graph where the nodes are the decoding graph edges, and the edges between nodes are defined if the DEM determines that those edges share a hyperedge and are thus correlated.
+4. This graph has as node attributes the weight/probability and a label indicating whether the edge was selected in the first MWPM pass. The edge attributes are the co-occurrences/covariances of the edges, calculated from the decoding history.
+5. This graph is used as input of a GNN-SAC agent that predicts a change in weight in the nodes. For scalability and generalization, this change is only applied to nodes that are local to nodes that were selected in the first pass.
+6. With the new weights, we run a second pass of MWPM. The RL reward is computed based on whether there is a logical error, or based on the -log(LER) and only provided every k steps.
+7. The edges predicted by the second pass are also used to periodically update the probabilities/weights of the decoding graph edges (GNN nodes) and the co-occurrences/covariances of the GNN edges.
+8. Steps 3-7 are performed n_shots times, which constitutes an episode of the Markov Decision Process. This is performed n_episodes times in order to learn an optimal reweighting policy
