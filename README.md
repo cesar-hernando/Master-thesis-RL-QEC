@@ -1,6 +1,6 @@
 # Master's thesis: *Adaptive quantum error decoding under drift noise via Graph Reinforcement Learning* 
 
-This repository contains the codebase of my master's thesis project in the Applied Quantum Algorithms Group (AQA) in Leiden University. It is part of the master programme in Quantum Information Science and Technology jointly organized by TU Delft and Leiden University.
+This repository contains the codebase of my master's thesis project in the Applied Quantum Algorithms Group (AQA) in Leiden University. It is part of the master's programme in Quantum Information Science and Technology jointly organized by TU Delft and Leiden University.
 
 **Problem Statement & Approach**
 
