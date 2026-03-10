@@ -10,12 +10,6 @@ This repository contains the codebase of my master's thesis project in the Appli
 
 - **Approach:** We use a graph-based Soft Actor-Critic (SAC) agent with a Graph Neural Network (GNN) encoder to output continuous reweightings for decoding-graph edges. The environment applies those actions only on a local subset of edges determined by an `action_mask` and the `local_action_hops` parameter (see `drifted_matching_env.py`). After applying the learned, local edge reweighting, a second MWPM pass is performed. This hybrid workflow preserves MWPM's strengths while letting a learned, local policy adapt edge weights to compensate for drift and capture short-range correlations that global weights miss.
 
-**Project layout (high level)**
-- `surface_code_stim.py` — Stim-based rotated surface-code circuit builder used throughout experiments.
-- `syndrome_data_generation.py` — Generate drifted circuits, sample detector syndrome volumes, and extract MWPM-selected edges.
-- `drifted_matching_env.py` — Gym-compatible environment exposing graph observations (node/edge features) and applying local edge reweighting actions. 
-- `decoding_graph.ipynb` — interactive experiments and visualizations.
-
 **Project pipeline**
 
 1. Build a Stim rotated-surface-code memory circuit and extract its Detector Error Model (DEM) and decoding graph.
@@ -28,3 +22,9 @@ This repository contains the codebase of my master's thesis project in the Appli
 6. With the new weights, we run a second pass of MWPM. The RL reward is computed based on whether there is a logical error, or based on the -log(LER) and only provided every k steps.
 7. The edges predicted by the second pass are also used to periodically update the probabilities/weights of the decoding graph edges (GNN nodes) and the co-occurrences/covariances of the GNN edges.
 8. Steps 3-7 are performed n_shots times, which constitutes an episode of the Markov Decision Process. This is performed n_episodes times in order to learn an optimal reweighting policy
+
+**Project layout (high level)**
+- `surface_code_stim.py` — Stim-based rotated surface-code circuit builder used throughout experiments.
+- `syndrome_data_generation.py` — Generate drifted circuits, sample detector syndrome volumes, and extract MWPM-selected edges.
+- `drifted_matching_env.py` — Gym-compatible environment exposing graph observations (node/edge features) and applying local edge reweighting actions. 
+- `decoding_graph.ipynb` — interactive experiments and visualizations.
