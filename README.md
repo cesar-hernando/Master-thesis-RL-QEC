@@ -1,4 +1,4 @@
-**Master's thesis: *Adaptive quantum error decoding under drift noise via Graph Reinforcement Learning***
+# Master's thesis: *Adaptive quantum error decoding under drift noise via Graph Reinforcement Learning* 
 
 This repository contains the codebase of my master's thesis project in the Applied Quantum Algorithms Group (AQA) in Leiden University. It is part of the master programme in Quantum Information Science and Technology jointly organized by TU Delft and Leiden University.
 
@@ -9,6 +9,13 @@ This repository contains the codebase of my master's thesis project in the Appli
 - **Goal:** Build a decoder that adapts online to slow noise drift and can handle short-range correlations by adjusting how MWPM perceives the decoding graph, while retaining the efficiency and interpretability of matching-based decoders.
 
 - **Approach:** We use a graph-based Soft Actor-Critic (SAC) agent with a Graph Neural Network (GNN) encoder to output continuous reweightings for decoding-graph edges. The environment applies those actions only on a local subset of edges determined by an `action_mask` and the `local_action_hops` parameter (see `drifted_matching_env.py`). After applying the learned, local edge reweighting, a second MWPM pass is performed. This hybrid workflow preserves MWPM's strengths while letting a learned, local policy adapt edge weights to compensate for drift and capture short-range correlations that global weights miss.
+
+**Status:** research prototype — tools and notebooks for reproducible experiments.
+
+**Quick Links**
+- Stim wrappers: `surface_code_stim.py`, `syndrome_data_generation.py`
+- Environment: `drifted_matching_env.py`
+- Test: `test_env.py`
 
 **Project layout (high level)**
 - `surface_code_stim.py` — Stim-based rotated surface-code circuit builder used throughout experiments.
