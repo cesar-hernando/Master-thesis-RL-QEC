@@ -68,6 +68,7 @@ class DriftedMatchingEnv(gym.Env):
         syndrome_data_generator: SyndromeDataGenerator,
         local_action_only: bool = True,
         local_action_hops: int = 1,
+        action_scale: float = 1.0,
         update_period: int = 1000,
         prior_shots: int = 1000,
         min_weight: float = 1e-6,
@@ -95,6 +96,7 @@ class DriftedMatchingEnv(gym.Env):
         self.max_steps = self.syndrome_data_generator.n_shots
         self.local_action_only = local_action_only
         self.local_action_hops = local_action_hops
+        self.action_scale = action_scale
         self.update_period = update_period
         self.prior_shots = prior_shots
         self.min_weight = min_weight
@@ -125,18 +127,8 @@ class DriftedMatchingEnv(gym.Env):
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
         # Build the line graph adding edges based on the DEM
-        self.line_edge_index, self.initial_corr_tracer = self._build_line_graph_edges()
+        self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges()
         self.n_line_edges = self.line_edge_index.shape[1]
-
-        # Build a base 1-hop adjacency matrix
-        adj_mat = np.eye(self.n_dec_edges, dtype=int)
-        for u, v in zip(self.line_edge_index[0], self.line_edge_index[1]):
-            adj_mat[u, v] = 1
-            adj_mat[v, u] = 1
-            
-        # Compute K-hops instantly using Matrix Power
-        # (path of length K exists if the Kth power of the matrix > 0)
-        self.k_hop_adj_mat = np.linalg.matrix_power(adj_mat, self.local_action_hops) > 0
 
         # Pre-calculate geometry for render method
         self._calculate_rendering_geometry()
@@ -252,7 +244,7 @@ class DriftedMatchingEnv(gym.Env):
             np.asarray(weights, dtype=np.float32), 
             np.asarray(error_probs, dtype=np.float32), 
             fault_array,
-            H 
+            H
         )
     
 
@@ -265,6 +257,12 @@ class DriftedMatchingEnv(gym.Env):
             line_edge_index: [2, M_line] array of edges
             initial_correlations: [M_line] array of baseline probabilities from the DEM
         """
+
+        ##########################################################
+        # 1. Parse the DEM to define the line graph connectivity #
+        # and extract the joint probabilities                    #
+        ##########################################################
+
         correlation_dict = {}
         
         for inst in self.base_dem.flattened():
@@ -274,7 +272,7 @@ class DriftedMatchingEnv(gym.Env):
             p = inst.args_copy()[0]
             targets = inst.targets_copy()
             
-            # 2. Parse targets separated by '^' (Stim's correlation separator)
+            # Parse targets separated by '^' (Stim's correlation separator)
             components = []
             current_component = []
             
@@ -293,7 +291,7 @@ class DriftedMatchingEnv(gym.Env):
             if len(components) < 2:
                 continue
                 
-            # 3. Map components to our decoding graph edges (GNN nodes)
+            # Map components to our decoding graph edges (GNN nodes)
             node_indices = []
             for comp in components:
                 # Resolve the endpoints. If 1 detector, the other is the boundary
@@ -305,7 +303,7 @@ class DriftedMatchingEnv(gym.Env):
                 if idx != -1:
                     node_indices.append(idx)
                     
-            # 4. Create pairwise connections in the line graph for this hyperedge
+            # Create pairwise connections in the line graph for this hyperedge
             for a in range(len(node_indices)):
                 for b in range(a + 1, len(node_indices)):
                     na, nb = node_indices[a], node_indices[b]
@@ -325,13 +323,60 @@ class DriftedMatchingEnv(gym.Env):
         if not correlation_dict:
             return np.zeros((2, 0), dtype=np.int64), np.zeros(0, dtype=np.float32)
             
-        # 5. Format into PyTorch Geometric expected arrays
+        # Format into PyTorch Geometric expected arrays
         sorted_edges = sorted(correlation_dict.keys())
         
         line_edges = np.array(sorted_edges, dtype=np.int64).T
-        initial_correlations = np.array([correlation_dict[e] for e in sorted_edges], dtype=np.float32)
         
-        return line_edges, initial_correlations
+        ##################################################################
+        # 2. Transform the joint probabilities into Pearson correlations #
+        ##################################################################
+
+        # Extract joint probabilities into a flat array
+        p_joint = np.array([correlation_dict[e] for e in sorted_edges], dtype=np.float32)
+        
+        # Instant array lookup for baseline probabilities
+        src, dst = line_edges[0], line_edges[1]
+        p_u = self.base_p[src]
+        p_v = self.base_p[dst]
+        
+        # Vectorized Math (Covariance & Standard Deviations)
+        cov = p_joint - (p_u * p_v)
+        std_u = np.sqrt(p_u * (1.0 - p_u))
+        std_v = np.sqrt(p_v * (1.0 - p_v))
+        denom = std_u * std_v
+        
+        # Safe division and clipping
+        safe_denom = np.where(denom > 1e-9, denom, 1.0)
+        corr = cov / safe_denom
+        initial_correlations = np.clip(corr, 0.0, 1.0).astype(np.float32)
+
+        #########################################################
+        # 3. Construcy a k-hops adjacency matrix to compute the #
+        # action mask fast                                      #
+        #########################################################
+
+        # Efficiently build the sparse matrix using coordinate arrays (avoids SparseEfficiencyWarning)
+        # We concatenate the forward edges, backward edges, and the self-loops (diagonal)
+        diag_idx = np.arange(self.n_dec_edges)
+        rows = np.concatenate([src, dst, diag_idx])
+        cols = np.concatenate([dst, src, diag_idx])
+        data = np.ones(len(rows), dtype=np.int8)
+        
+        # Create the CSR matrix instantly in one shot
+        adj_mat = sp.csr_matrix((data, (rows, cols)), shape=(self.n_dec_edges, self.n_dec_edges))
+            
+        # Compute K-hops instantly using sparse matrix power
+        k_hop_sparse = adj_mat ** self.local_action_hops
+        
+        # Safely convert to a dense boolean mask
+        # (Checks if SciPy kept it sparse or secretly converted it to a dense array)
+        if sp.issparse(k_hop_sparse):
+            k_hop_adj_mat = k_hop_sparse.toarray() > 0
+        else:
+            k_hop_adj_mat = k_hop_sparse > 0
+        
+        return line_edges, initial_correlations, k_hop_adj_mat
     
 
     def _calculate_rendering_geometry(self):
@@ -495,11 +540,21 @@ class DriftedMatchingEnv(gym.Env):
                 src = self.line_edge_index[0]
                 dst = self.line_edge_index[1]
                 
-                # Covariance formula: P(A ∩ B) - (P(A) * P(B))
-                covariance = self.corr_tracer - (self.occ_tracer[src] * self.occ_tracer[dst])
+                p_src = self.occ_tracer[src]
+                p_dst = self.occ_tracer[dst]
                 
-                # Clip at 0.0 to prevent negative finite-sampling noise
-                dgr_edge_feat = np.clip(covariance, 0.0, None)
+                # Raw covariance
+                covariance = self.corr_tracer - (p_src * p_dst)
+                
+                # Normalize (Pearson Correlation)
+                std_src = np.sqrt(p_src * (1.0 - p_src))
+                std_dst = np.sqrt(p_dst * (1.0 - p_dst))
+                denom = std_src * std_dst
+                
+                safe_denom = np.where(denom > 1e-9, denom, 1.0)
+                correlation = covariance / safe_denom
+                
+                dgr_edge_feat = np.clip(correlation, 0.0, 1.0)
             else:
                 dgr_edge_feat = np.zeros(0, dtype=np.float32)
         else:
@@ -576,18 +631,15 @@ class DriftedMatchingEnv(gym.Env):
 
         if self.local_action_only:
             mask = self.current_action_mask.astype(np.float32)
-            applied_delta = action * mask
+            applied_delta = action * mask * self.action_scale
         else:
-            applied_delta = action
+            applied_delta = action * self.action_scale
         
         if not np.any(applied_delta):
             second_pass_matching = self.current_matching
         else:
             second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
             second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
-        
-        #second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-        #second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
 
         ##############################################
         # 2) Run 2nd pass MWPM with reweighted edges #

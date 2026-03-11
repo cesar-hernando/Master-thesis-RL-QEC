@@ -11,20 +11,20 @@ from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 
 
-n_shots = 100_000
+n_shots = 1_000_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
     distance=3, 
     n_rounds=3, 
-    mismatch=10.0,  # Drift multiplier
+    mismatch=30.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.0,
-        "before_measure_flip_probability": 0.005,
-        "after_reset_flip_probability": 0.0,
-        "before_round_data_depolarization": 0.005,
+        "after_clifford_depolarization": 0.001,
+        "before_measure_flip_probability": 0.001,
+        "after_reset_flip_probability": 0.001,
+        "before_round_data_depolarization": 0.001,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
@@ -35,11 +35,12 @@ env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
     local_action_hops=1,
-    update_period=100,
-    prior_shots=1000,
-    oracle_reward_coef=0.5,
+    action_scale = 1.0,
+    update_period=10_000,
+    prior_shots=100,
+    oracle_reward_coef=0.0,
     use_covariance=True,
-    use_syndrome_features=True,
+    use_syndrome_features=False,
     update_with='DGR',
     render_mode="human"
 )
@@ -67,10 +68,6 @@ terminated = False
 truncated = False
 step_idx = 0
 
-print("\nStatic weights: ", env.current_weights)
-print("\nOracle weights: ", env.oracle_weights)
-
-
 print("\n--- Starting Episode Loop ---")
 while not (terminated or truncated) and step_idx < n_shots:
     #if (step_idx + 1) % (n_shots // 10) == 0:
@@ -92,7 +89,6 @@ while not (terminated or truncated) and step_idx < n_shots:
         
     step_idx += 1
 
-print("\nOur decoder final weights: ", env.current_weights)
 end_time = time.time()
 print(f"\nEpisode finished! Time taken: {end_time - start_time:.2f} seconds")
 
@@ -111,6 +107,9 @@ print("Number of logical errors of our decoder: ", n_logical_errors)
 print("Number of logical errors of oracle decoder: ", n_logical_errors_oracle)
 print("Number of logical errors of static decoder: ", n_logical_errors_static)
 print("Number of logical flips: ", n_logical_flips)
+print("LER (Our) = ", n_logical_errors/n_shots)
+print("LER (Oracle) = ", n_logical_errors_oracle/n_shots)
+print("LER (Static) = ", n_logical_errors_static/n_shots)
 print("Relative LER (Our) = ", n_logical_errors/n_logical_errors_oracle)
 print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_oracle)
 
