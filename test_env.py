@@ -18,7 +18,7 @@ verbose = False
 generator = SyndromeDataGenerator(
     distance=3, 
     n_rounds=3, 
-    mismatch=30.0,  # Drift multiplier
+    mismatch=20.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
         "after_clifford_depolarization": 0.001,
@@ -35,11 +35,11 @@ env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
     local_action_hops=1,
-    action_scale = 1.0,
-    update_period=10_000,
-    prior_shots=100,
-    oracle_reward_coef=0.0,
-    use_covariance=True,
+    action_scale = 3.0,
+    update_period=1_000,
+    prior_shots=1_000,
+    oracle_reward_coef=1.0,
+    use_pearson_correlation=True,
     use_syndrome_features=False,
     update_with='DGR',
     render_mode="human"
@@ -55,40 +55,49 @@ logical_errors = np.zeros(n_shots, dtype=np.float32)
 oracle_errors = np.zeros(n_shots, dtype=np.float32)
 static_errors = np.zeros(n_shots, dtype=np.float32)
 weights_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
+corr_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
 
 n_logical_flips = 0
 
 start_time = time.time()
 obs, info = env.reset(seed=42)
 
-# Record the starting weight error
+# Record the starting weight error and correlation error
 weights_mse_error[0] = info["weights_mse_error"]
+corr_mse_error[0] = info["corr_mse_error"]
 
 terminated = False
 truncated = False
 step_idx = 0
 
+#print("\nOracle Pearson correlations:\n", env.oracle_correlations)
+#print("\nInitial Pearson correlations:\n", env.pearson_correlations)
+
 print("\n--- Starting Episode Loop ---")
-while not (terminated or truncated) and step_idx < n_shots:
+while not (terminated or truncated):
     #if (step_idx + 1) % (n_shots // 10) == 0:
     #    print(f"Completed {100 * (step_idx + 1) / n_shots:.0f}% of the episode")
     
     # Step the environment
-    action = np.zeros(env.n_dec_edges, dtype=np.float32)
+    action = env.action_space.sample() 
+    #action = np.zeros(env.n_dec_edges, dtype=np.float32)
     next_obs, reward, terminated, truncated, step_info = env.step(action)
 
     # Store step information
     rewards[step_idx] = reward
     weights_mse_error[step_idx + 1] = step_info["weights_mse_error"]
+    corr_mse_error[step_idx + 1] = step_info["corr_mse_error"]
     logical_errors[step_idx] = float(step_info["logical_error"])
     oracle_errors[step_idx] = float(step_info["oracle_pred_obs"] != step_info["true_obs"])
     static_errors[step_idx] = float(step_info["static_pred_obs"] != step_info["true_obs"])
     
     if step_info["true_obs"]:
         n_logical_flips += 1
-        
+
     step_idx += 1
 
+
+#print("Final Pearson Correlations:\n", env.pearson_correlations)
 end_time = time.time()
 print(f"\nEpisode finished! Time taken: {end_time - start_time:.2f} seconds")
 
@@ -117,7 +126,19 @@ print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_o
 start_plot_idx = 1000
 x_steps = steps_array[start_plot_idx:]
 
-# Plotting
+############
+# PLOTTING #
+############
+
+# 1. Reward evolution
+plt.figure()
+plt.plot(x_steps, rewards[start_plot_idx:])
+plt.xlabel("Step")
+plt.ylabel("Average reward")
+plt.grid()
+plt.show()
+
+# 2. Average reward
 plt.figure()
 plt.plot(x_steps, avg_reward[start_plot_idx:])
 plt.xlabel("Step")
@@ -125,13 +146,7 @@ plt.ylabel("Average reward")
 plt.grid()
 plt.show()
 
-plt.figure()
-plt.loglog(x_steps, weights_mse_error[start_plot_idx+1:])
-plt.xlabel("Step")
-plt.ylabel("Weight Error (MSE)")
-plt.grid()
-plt.show()
-
+# 3. Weights error
 plt.figure()
 plt.plot(x_steps, weights_mse_error[start_plot_idx+1:])
 plt.xlabel("Step")
@@ -139,10 +154,35 @@ plt.ylabel("Weight Error (MSE)")
 plt.grid()
 plt.show()
 
+# Semi-Log y scale
 plt.figure()
-plt.loglog(x_steps, logical_error_rate[start_plot_idx:], label="Our")
-plt.loglog(x_steps, logical_error_rate_oracle[start_plot_idx:], label="Oracle")
-plt.loglog(x_steps, logical_error_rate_static[start_plot_idx:], label="Static")
+plt.semilogy(x_steps, weights_mse_error[start_plot_idx+1:])
+plt.xlabel("Step")
+plt.ylabel("Weight Error (MSE)")
+plt.grid()
+plt.show()
+
+# 4. Correlations error
+plt.figure()
+plt.plot(x_steps, corr_mse_error[start_plot_idx+1:])
+plt.xlabel("Step")
+plt.ylabel("Correlation Error (MSE)")
+plt.grid()
+plt.show()
+
+# Semi-log y scale
+plt.figure()
+plt.semilogy(x_steps, corr_mse_error[start_plot_idx+1:])
+plt.xlabel("Step")
+plt.ylabel("Correlation Error (MSE)")
+plt.grid()
+plt.show()
+
+# 5. Logical error rate comparison
+plt.figure()
+plt.semilogy(x_steps, logical_error_rate[start_plot_idx:], label="Our")
+plt.semilogy(x_steps, logical_error_rate_oracle[start_plot_idx:], label="Oracle")
+plt.semilogy(x_steps, logical_error_rate_static[start_plot_idx:], '--', label="Static")
 plt.xlabel("Step")
 plt.ylabel("Logical error rate")
 plt.grid()

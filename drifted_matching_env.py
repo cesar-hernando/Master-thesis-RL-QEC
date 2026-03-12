@@ -74,7 +74,7 @@ class DriftedMatchingEnv(gym.Env):
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         oracle_reward_coef: float = 0.0,
-        use_covariance: bool = True,
+        use_pearson_correlation: bool = True,
         use_syndrome_features: bool = False,
         update_with: str = 'DGR',
         render_mode = None
@@ -102,7 +102,7 @@ class DriftedMatchingEnv(gym.Env):
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.oracle_reward_coef = oracle_reward_coef
-        self.use_covariance = use_covariance
+        self.use_pearson_correlation = use_pearson_correlation
         self.use_syndrome_features = use_syndrome_features
         self.update_with = update_with
 
@@ -127,7 +127,7 @@ class DriftedMatchingEnv(gym.Env):
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
         # Build the line graph adding edges based on the DEM
-        self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges()
+        self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges(self.base_dem)
         self.n_line_edges = self.line_edge_index.shape[1]
 
         # Pre-calculate geometry for render method
@@ -248,14 +248,15 @@ class DriftedMatchingEnv(gym.Env):
         )
     
 
-    def _build_line_graph_edges(self) -> tuple[np.ndarray, np.ndarray]:
+    def _build_line_graph_edges(self, dem, return_k_hop_adj_mat=True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Build line-graph connectivity exclusively from correlated hyperedges 
         in the Stim Detector Error Model (DEM).
         
         Returns:
             line_edge_index: [2, M_line] array of edges
-            initial_correlations: [M_line] array of baseline probabilities from the DEM
+            initial_correlations: [M_line] array of baseline raw joint probabilities from the DEM
+            k_hop_adj_mat: [N_edges, N_edges] boolean adjacency mask
         """
 
         ##########################################################
@@ -265,7 +266,7 @@ class DriftedMatchingEnv(gym.Env):
 
         correlation_dict = {}
         
-        for inst in self.base_dem.flattened():
+        for inst in dem.flattened():
             if inst.type != "error":
                 continue
                 
@@ -313,49 +314,33 @@ class DriftedMatchingEnv(gym.Env):
                     edge_key = (na, nb) if na <= nb else (nb, na)
                     
                     # Combine probabilities using logical OR: P(A ∪ B) = P(A) + P(B) - 2*P(A)*P(B)
-                    # (in case multiple physical mechanisms trigger the exact same correlation)
                     if edge_key in correlation_dict:
                         existing_p = correlation_dict[edge_key]
                         correlation_dict[edge_key] = existing_p * (1 - p) + p * (1 - existing_p)
                     else:
                         correlation_dict[edge_key] = p
         
+        # Ensure we return all 3 expected items if there are no correlations
         if not correlation_dict:
-            return np.zeros((2, 0), dtype=np.int64), np.zeros(0, dtype=np.float32)
+            dummy_adj = np.eye(self.n_dec_edges, dtype=bool)
+            return np.zeros((2, 0), dtype=np.int64), np.zeros(0, dtype=np.float32), dummy_adj
             
         # Format into PyTorch Geometric expected arrays
         sorted_edges = sorted(correlation_dict.keys())
-        
         line_edges = np.array(sorted_edges, dtype=np.int64).T
-        
-        ##################################################################
-        # 2. Transform the joint probabilities into Pearson correlations #
-        ##################################################################
+        src, dst = line_edges[0], line_edges[1]
 
         # Extract joint probabilities into a flat array
-        p_joint = np.array([correlation_dict[e] for e in sorted_edges], dtype=np.float32)
-        
-        # Instant array lookup for baseline probabilities
-        src, dst = line_edges[0], line_edges[1]
-        p_u = self.base_p[src]
-        p_v = self.base_p[dst]
-        
-        # Vectorized Math (Covariance & Standard Deviations)
-        cov = p_joint - (p_u * p_v)
-        std_u = np.sqrt(p_u * (1.0 - p_u))
-        std_v = np.sqrt(p_v * (1.0 - p_v))
-        denom = std_u * std_v
-        
-        # Safe division and clipping
-        safe_denom = np.where(denom > 1e-9, denom, 1.0)
-        corr = cov / safe_denom
-        initial_correlations = np.clip(corr, 0.0, 1.0).astype(np.float32)
+        initial_correlations = np.array([correlation_dict[e] for e in sorted_edges], dtype=np.float32)
 
         #########################################################
-        # 3. Construcy a k-hops adjacency matrix to compute the #
+        # 2. Construct a k-hops adjacency matrix to compute the #
         # action mask fast                                      #
         #########################################################
 
+        if not(return_k_hop_adj_mat):
+            return line_edges, initial_correlations
+        
         # Efficiently build the sparse matrix using coordinate arrays (avoids SparseEfficiencyWarning)
         # We concatenate the forward edges, backward edges, and the self-loops (diagonal)
         diag_idx = np.arange(self.n_dec_edges)
@@ -432,16 +417,20 @@ class DriftedMatchingEnv(gym.Env):
         super().reset(seed=seed)
 
         # Generate a new drifted circuit and the corresponding decoding graph
-        self.drifted_circuit, self.drifted_matching = self.syndrome_data_generator.generate_drifted_circuit(
+        drifted_circuit, drifted_dem, drifted_matching = self.syndrome_data_generator.generate_drifted_circuit(
             base_circuit=self.base_circuit,
             seed=seed
             )
         
         # Retrieve the weights of the oracle decoding graph
-        _, _, self.oracle_weights, _, _, _ = self._index_decoding_graph_edges(self.drifted_matching)
+        _, _, self.oracle_weights, oracle_probs, _, _ = self._index_decoding_graph_edges(drifted_matching)
+
+        # Calculate the joint probabilities and Pearson correlations between the oracle edge weights
+        _, oracle_joint_probs = self._build_line_graph_edges(drifted_dem, return_k_hop_adj_mat=False)
+        self.oracle_correlations = self.compute_pearson_correlations(oracle_probs, oracle_joint_probs)
         
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
-        self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(self.drifted_circuit)
+        self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit)
 
         # Pre-compute physics chunks and initialize trackers
         if self.use_syndrome_features:
@@ -451,9 +440,9 @@ class DriftedMatchingEnv(gym.Env):
 
         # Pre-generate the oracle solution edges and predicted observable for each shot in the episode using the drifted matching
         self.oracle_solution_edges_batch, self.oracle_predicted_obs_batch = self.syndrome_data_generator.get_solution_edges_batch(
-            matching=self.drifted_matching, 
+            matching=drifted_matching, 
             syndrome_volume_batch=self.syndrome_batch, 
-            enable_correlations=False, 
+            enable_correlations=True, 
             return_predicted_obs=True,
             pair_to_idx_matrix=self.pair_to_idx_matrix,
             fault_array=self.fault_array
@@ -484,6 +473,12 @@ class DriftedMatchingEnv(gym.Env):
         self.occ_tracer = self.base_p.copy()
         self.corr_tracer = self.initial_corr_tracer.copy()
 
+        # Compute initial Pearson correlations of our adaptive decoder
+        self.pearson_correlations = self.compute_pearson_correlations(self.occ_tracer, self.corr_tracer)
+
+        # Compute the MSE error between the initial Pearson correlations of our decoder and the oracle decoder
+        self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
+
         # Reset Syndrome Physics Tracers
         if self.use_syndrome_features:
             self.spitz_tracer = self.initial_base_weights.copy()
@@ -495,7 +490,8 @@ class DriftedMatchingEnv(gym.Env):
         info = {
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
-            "weights_mse_error": weights_mse_error
+            "weights_mse_error": weights_mse_error,
+            "corr_mse_error": self.corr_mse_error
         }
         return obs, info
     
@@ -535,7 +531,7 @@ class DriftedMatchingEnv(gym.Env):
         self.current_action_mask = action_mask
 
         # Evaluate the DGR (Decoder) Edge Feature
-        if self.use_covariance:
+        if self.use_pearson_correlation:
             if self.n_line_edges > 0:
                 src = self.line_edge_index[0]
                 dst = self.line_edge_index[1]
@@ -644,7 +640,7 @@ class DriftedMatchingEnv(gym.Env):
         ##############################################
         # 2) Run 2nd pass MWPM with reweighted edges #
         ##############################################
-
+        
         selected_edges_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
             matching=second_pass_matching,
             syndrome_volume=self.current_syndrome,
@@ -667,27 +663,49 @@ class DriftedMatchingEnv(gym.Env):
         if self.shots_since_update >= self.update_period:
             self._apply_cma_and_update_graph()
             self.shots_since_update = 0
+            self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
                                                  
         #########################
         # 4) Compute the reward #
         #########################
 
-        logical_error = pred_obs != self.current_true_obs
-        logical_reward = 1.0 if logical_error == 0 else -1.0
+        # 1. Evaluate Truth
+        agent_correct = (pred_obs == self.current_true_obs)
+        static_correct = (self.static_predicted_obs_batch[self.step_count] == self.current_true_obs)
+
+        # 2. Differential Logical Reward
+        if agent_correct and not static_correct:
+            logical_reward = +1.0 
+        elif not agent_correct and static_correct:
+            logical_reward = -1.0
+        else:
+            logical_reward = 0.0   # Trivial success or completely uncorrectable. Agent didn't matter.
 
         reward = logical_reward
 
+        # 3. Oracle Imitation Reward (Dense Shaping)
         oracle_similarity = None
         if self.oracle_reward_coef > 0.0:
             # Pull the pre-calculated oracle edges for this exact shot
             oracle_edges = self.oracle_solution_edges_batch[self.step_count]
             oracle_idx = self._selected_edge_indices_from_pairs(oracle_edges)
             
-            # Compute Jaccard similarity between the second-pass selected edges and the oracle solution edges
+            # Compute Jaccard similarity (0.0 to 1.0)
             oracle_similarity = self._edge_set_jaccard(selected_idx_2, oracle_idx)
-            oracle_reward = 2.0 * oracle_similarity - 1.0
+            
+            # Map to [-1, 1] for zero-centered neural network stability
+            oracle_reward = (2.0 * oracle_similarity) - 1.0
+            
+            # Combine the rewards
             reward += self.oracle_reward_coef * oracle_reward
-        
+
+        # Optional: Clip the final reward to [-1, 1] to keep Q-values extremely stable during early training
+        # reward = np.clip(reward, -1.0, 1.0)
+
+        ############################################################
+        # 5) Prepare information about current step to be returned #
+        ############################################################
+
         weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
 
         # Increment step count after processing the shot
@@ -695,12 +713,8 @@ class DriftedMatchingEnv(gym.Env):
         terminated = False
         truncated = self.step_count >= self.max_steps # Episode ends when batch is empty
 
-        ############################################################
-        # 5) Prepare information about current step to be returned #
-        ############################################################
-
         info = {
-            "logical_error": logical_error,
+            "logical_error": not(agent_correct),
             "true_obs": self.current_true_obs,
             "pred_obs": pred_obs,
             "oracle_pred_obs": self.oracle_predicted_obs_batch[self.step_count - 1],
@@ -711,7 +725,8 @@ class DriftedMatchingEnv(gym.Env):
             "selected_edges_first_pass_idx": self.current_first_pass_selected_idx.copy() if self.current_first_pass_selected_idx is not None else None,
             "selected_edges_second_pass_idx": selected_idx_2.copy(),
             "action_mask": self.current_action_mask.copy() if self.current_action_mask is not None else None,
-            "weights_mse_error": weights_mse_error
+            "weights_mse_error": weights_mse_error,
+            "corr_mse_error": self.corr_mse_error
         }
 
         ############################################################
@@ -845,6 +860,35 @@ class DriftedMatchingEnv(gym.Env):
             self.precomputed_spitz[i] = spitz
             self.precomputed_remm[i] = remm
 
+    
+    def compute_pearson_correlations(self, occ_array: np.ndarray, corr_array: np.ndarray) -> np.ndarray:
+        """
+        Computes Pearson correlations for a given set of marginal and joint probabilities
+        using the environment's fixed line graph topology.
+        """
+        if not self.use_pearson_correlation:
+            return corr_array.copy()
+
+        if self.n_line_edges == 0:
+            return np.zeros(0, dtype=np.float32)
+
+        src = self.line_edge_index[0]
+        dst = self.line_edge_index[1]
+        
+        p_src = occ_array[src]
+        p_dst = occ_array[dst]
+        
+        # Raw covariance
+        covariance = corr_array - (p_src * p_dst)
+        
+        # Normalize (Pearson Correlation)
+        std_src = np.sqrt(p_src * (1.0 - p_src))
+        std_dst = np.sqrt(p_dst * (1.0 - p_dst))
+        denom = std_src * std_dst
+        
+        safe_denom = np.where(denom > 1e-9, denom, 1.0)
+        return np.clip(covariance / safe_denom, 0.0, 1.0).astype(np.float32)
+
 
     def _apply_cma_and_update_graph(self):
         # 1. Calculate the decaying CMA learning rate (alpha)
@@ -883,6 +927,9 @@ class DriftedMatchingEnv(gym.Env):
         
         self.occ_batch_counts.fill(0.0)
         self.corr_batch_counts.fill(0.0)
+
+        # 5. Update the new Pearson correlations from the updated tracers
+        self.pearson_correlations = self.compute_pearson_correlations(self.occ_tracer, self.corr_tracer)
     
 
     @staticmethod
@@ -943,23 +990,25 @@ class DriftedMatchingEnv(gym.Env):
             edge_y.extend([y0, y1, None])
             edge_z.extend([z0, z1, None])
             
-            # Fetch Edge Feature (Correlation)
-            corr_val = self.corr_tracer[i]
+            # Fetch Edge Feature (Pearson Correlation instead of raw joint prob)
+            pearson_val = self.pearson_correlations[i]
+            raw_joint = self.corr_tracer[i]
             
             txt = (
                 f"<b>Line Edge ID:</b> {i}<br>"
                 f"<b>Connects Nodes:</b> {u_idx} &mdash; {v_idx}<br>"
-                f"<b>Correlation (edge_attr):</b> {corr_val:.4f}"
+                f"<b>Pearson Correlation (GNN Input):</b> {pearson_val:.4f}<br>"
+                f"<b>Raw Joint Prob:</b> {raw_joint:.5f}"
             )
             
             # Apply the color and text to both ends of the line segment
             # The third value (0.0 / "") corresponds to the 'None' coordinate gap
-            edge_colors.extend([corr_val, corr_val, 0.0])
+            edge_colors.extend([pearson_val, pearson_val, 0.0])
             edge_hover_text.extend([txt, txt, ""])
 
         fig = go.Figure()
 
-        # Add the Edges (Colored dynamically based on correlation)
+        # Add the Edges (Colored dynamically based on Pearson correlation)
         fig.add_trace(go.Scatter3d(
             x=edge_x, y=edge_y, z=edge_z,
             mode='lines',
@@ -969,7 +1018,7 @@ class DriftedMatchingEnv(gym.Env):
                 colorscale='Viridis', 
                 width=4,              
                 showscale=True,
-                colorbar=dict(title="Correlation<br>", x=0.85, thickness=15, len=0.5)
+                colorbar=dict(title="Pearson<br>Correlation", x=0.85, thickness=15, len=0.5)
             ),
             text=edge_hover_text,
             hoverinfo='text',
@@ -995,8 +1044,8 @@ class DriftedMatchingEnv(gym.Env):
             
             node_hover_text.append(
                 f"<b>Node ID:</b> {i} ({self.edge_types[i]})<br>"
-                f"<b>Current Base Weight:</b> {weight:.3f}<br>"
-                f"<b>Occurrence:</b> {occ:.4f}<br>"
+                f"<b>Current Weight:</b> {weight:.3f}<br>"
+                f"<b>Occurrence prob:</b> {occ:.4f}<br>"
                 f"<b>1st Pass Fired:</b> {fired}"
             )
 
@@ -1019,7 +1068,7 @@ class DriftedMatchingEnv(gym.Env):
         # 3. Layout Formatting
         # ---------------------------------------------------------
         fig.update_layout(
-            title="<b>GNN Line Graph Topology & Features</b><br><sup>Hover over nodes for state features, hover over lines for correlations</sup>",
+            title="<b>GNN Line Graph Topology & Features</b><br><sup>Hover over nodes for state features, hover over lines for Pearson correlations</sup>",
             scene=dict(
                 xaxis_title="X (Space)",
                 yaxis_title="Y (Space)",
