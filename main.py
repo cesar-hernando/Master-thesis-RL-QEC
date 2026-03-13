@@ -56,17 +56,22 @@ def plot_training_metrics(metrics, config):
 
 
 def plot_testing_metrics(test_results):
-    """Generates a bar chart of LER and a cumulative error timeline."""
+    """Generates a bar chart and timeline for all 5 evaluation metrics."""
     os.makedirs('plots', exist_ok=True)
     
-    fig, axs = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle("Decoder Performance Evaluation", fontsize=16)
+    fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+    fig.suptitle("Comprehensive Decoder Evaluation (Ablation Study)", fontsize=16)
+    
+    # Define the 5 categories
+    labels = ['GNN (Ours)', 'Oracle', 'Zero (CMA Only)', 'Static', 'Random']
+    keys = ['gnn', 'oracle', 'zero', 'static', 'random']
+    
+    # Colors: Green (Win), Blue (Target), Purple (Ablation), Red (Baseline), Orange (Worst)
+    colors = ['#2ca02c', '#1f77b4', '#9467bd', '#d62728', '#ff7f0e']
+    
+    lers = [test_results[f'ler_{k}'] for k in keys]
     
     # Plot 1: Bar Chart of Logical Error Rates
-    labels = ['GNN (Our)', 'Oracle', 'Static']
-    lers = [test_results['ler_gnn'], test_results['ler_oracle'], test_results['ler_static']]
-    colors = ['#2ca02c', '#1f77b4', '#d62728']
-    
     bars = axs[0].bar(labels, lers, color=colors, alpha=0.8)
     axs[0].set_title('Logical Error Rate (LER)')
     axs[0].set_ylabel('LER')
@@ -79,9 +84,11 @@ def plot_testing_metrics(test_results):
 
     # Plot 2: Cumulative Errors Over Time
     shots = np.arange(1, len(test_results['cum_gnn']) + 1)
-    axs[1].plot(shots, test_results['cum_gnn'], label='GNN (Our)', color='#2ca02c', linewidth=2)
-    axs[1].plot(shots, test_results['cum_oracle'], label='Oracle', color='#1f77b4', linewidth=2, linestyle='--')
-    axs[1].plot(shots, test_results['cum_static'], label='Static', color='#d62728', linewidth=2, linestyle='-.')
+    
+    for label, key, color in zip(labels, keys, colors):
+        # Use dashed/dotted lines for the static baselines to make the GNN stand out
+        linestyle = '-' if key in ['gnn', 'zero', 'random'] else '--'
+        axs[1].plot(shots, test_results[f'cum_{key}'], label=label, color=color, linewidth=2, linestyle=linestyle)
     
     axs[1].set_title('Cumulative Logical Errors')
     axs[1].set_xlabel('Total Shots Evaluated')
@@ -90,8 +97,8 @@ def plot_testing_metrics(test_results):
     axs[1].grid(True, linestyle='--', alpha=0.7)
     
     plt.tight_layout()
-    plt.savefig('plots/testing_metrics.png', dpi=300)
-    print("Testing plots saved to 'plots/testing_metrics.png'")
+    plt.savefig('plots/testing_metrics_comprehensive.png', dpi=300)
+    print("Testing plots saved to 'plots/testing_metrics_comprehensive.png'")
     plt.close()
 
 
@@ -156,89 +163,96 @@ def train(env, agent, buffer, config):
 
 
 def test(env, agent, config):
-    print(f"\n{'='*40}")
-    print(f"STARTING TESTING (Episodes: {config['test_episodes']})")
-    print(f"{'='*40}")
+    print(f"\n{'='*50}")
+    print(f"STARTING COMPREHENSIVE ABLATION TEST (Episodes: {config['test_episodes']})")
+    print(f"{'='*50}")
     
     # Load the best weights
     agent.load_models(config['model_path'])
     
     total_shots = config['test_episodes'] * env.max_steps
+    policies = ['GNN', 'Zero', 'Random']
     
-    # Arrays to track cumulative errors shot-by-shot for plotting
-    cum_gnn = np.zeros(total_shots, dtype=np.int32)
-    cum_oracle = np.zeros(total_shots, dtype=np.int32)
-    cum_static = np.zeros(total_shots, dtype=np.int32)
-    
-    total_logical_errors, total_oracle_errors, total_static_errors = 0, 0, 0
-    total_flips = 0
-    global_shot_idx = 0
-    
-    for episode in range(config['test_episodes']):
-        obs, info = env.reset()
-        done = False
-        
-        ep_logical_errs, ep_oracle_errs, ep_static_errs = 0, 0, 0
-        
-        while not done:
-            # evaluate=True outputs strictly optimal deterministic actions
-            action = agent.select_action(obs, evaluate=True) 
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            
-            # Step errors
-            err_gnn = int(info["logical_error"])
-            err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
-            err_static = int(info["static_pred_obs"] != info["true_obs"])
-            
-            # Accumulate for episode printing
-            ep_logical_errs += err_gnn
-            ep_oracle_errs += err_oracle
-            ep_static_errs += err_static
-            
-            if info["true_obs"]:
-                total_flips += 1
-                
-            # Update global trackers
-            total_logical_errors += err_gnn
-            total_oracle_errors += err_oracle
-            total_static_errors += err_static
-            
-            cum_gnn[global_shot_idx] = total_logical_errors
-            cum_oracle[global_shot_idx] = total_oracle_errors
-            cum_static[global_shot_idx] = total_static_errors
-            
-            obs = next_obs
-            global_shot_idx += 1
-            
-        print(f"Test Ep {episode+1:02d}: GNN Errs: {ep_logical_errs} | Oracle Errs: {ep_oracle_errs} | Static Errs: {ep_static_errs}")
-
-    # Compile final results
-    test_results = {
-        'ler_gnn': total_logical_errors / total_shots,
-        'ler_oracle': total_oracle_errors / total_shots,
-        'ler_static': total_static_errors / total_shots,
-        'cum_gnn': cum_gnn,
-        'cum_oracle': cum_oracle,
-        'cum_static': cum_static
+    # Initialize data trackers
+    raw_results = {
+        'Oracle': {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)},
+        'Static': {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)}
     }
+    for p in policies:
+        raw_results[p] = {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)}
 
-    print("\n--- FINAL TEST REPORT ---")
-    print(f"Total Shots: {total_shots}")
-    print(f"Number of logical flips: {total_flips}")
-    print(f"LER (Our GNN)  = {test_results['ler_gnn']:.5f}")
-    print(f"LER (Oracle)   = {test_results['ler_oracle']:.5f}")
-    print(f"LER (Static)   = {test_results['ler_static']:.5f}")
-    print(f"Relative LER (Our vs Oracle)   = {total_logical_errors / max(1, total_oracle_errors):.3f}")
-    print(f"Relative LER (Static vs Oracle)= {total_static_errors / max(1, total_oracle_errors):.3f}")
+    # Evaluate each policy sequentially
+    for policy in policies:
+        print(f"\n[*] Evaluating Policy: {policy}")
+        global_shot_idx = 0
+        policy_errors = 0
+        oracle_errors = 0
+        static_errors = 0
+        
+        for episode in range(config['test_episodes']):
+            obs, info = env.reset()
+            done = False
+            ep_policy_errs = 0
+            
+            while not done:
+                # Choose action based on the current policy pass
+                if policy == 'GNN':
+                    action = agent.select_action(obs, evaluate=True)
+                elif policy == 'Zero':
+                    action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                elif policy == 'Random':
+                    action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
+                    
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+                
+                # Track Errors
+                err_policy = int(info["logical_error"])
+                policy_errors += err_policy
+                ep_policy_errs += err_policy
+                
+                # Only track Oracle and Static during the GNN run so we don't calculate them 3 times
+                if policy == 'GNN':
+                    err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
+                    err_static = int(info["static_pred_obs"] != info["true_obs"])
+                    oracle_errors += err_oracle
+                    static_errors += err_static
+                    
+                    raw_results['Oracle']['cum'][global_shot_idx] = oracle_errors
+                    raw_results['Static']['cum'][global_shot_idx] = static_errors
 
-    # Plot the final evaluation
-    plot_testing_metrics(test_results)
+                raw_results[policy]['cum'][global_shot_idx] = policy_errors
+                
+                obs = next_obs
+                global_shot_idx += 1
+                
+            print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_policy_errs} errors")
+            
+        raw_results[policy]['errors'] = policy_errors
+        
+        if policy == 'GNN':
+            raw_results['Oracle']['errors'] = oracle_errors
+            raw_results['Static']['errors'] = static_errors
+
+    # Format the final dictionary for the plotter
+    final_metrics = {}
+    for k in ['GNN', 'Zero', 'Random', 'Oracle', 'Static']:
+        final_metrics[f'ler_{k.lower()}'] = raw_results[k]['errors'] / total_shots
+        final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
+
+    # Print Final Report
+    print("\n--- FINAL ABLATION TEST REPORT ---")
+    print(f"Total Shots Evaluated per Policy: {total_shots}")
+    print(f"LER (GNN)     = {final_metrics['ler_gnn']:.5f}  <-- Our Agent")
+    print(f"LER (Oracle)  = {final_metrics['ler_oracle']:.5f}  <-- Perfect Marginal Knowledge")
+    print(f"LER (Zero)    = {final_metrics['ler_zero']:.5f}  <-- CMA Tracer Only")
+    print(f"LER (Static)  = {final_metrics['ler_static']:.5f}  <-- Undrifted Baseline")
+    print(f"LER (Random)  = {final_metrics['ler_random']:.5f}  <-- Chaos Baseline")
+
+    plot_testing_metrics(final_metrics)
 
 
-##################
-# MAIN EXECUTION #
-##################
+
 
 if __name__ == "__main__":
 
@@ -247,7 +261,7 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train' or 'test'
-        'MODE': 'train',  
+        'MODE': 'test',  
         'model_path': 'models/sac_gnn_best.pth',
         
         # Environment Settings
