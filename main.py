@@ -4,107 +4,13 @@ It handles hyperparameters, execution modes, and performance visualization.
 """
 
 import time
-import os
 import numpy as np
-import matplotlib.pyplot as plt
 
 from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 from gnn_sac_agent import SACAgent, GraphReplayBuffer
+from plot_utils import plot_weight_correlations, plot_training_metrics, plot_testing_metrics
 
-###################################
-# 1. VISUALIZATION HELPERS        #
-###################################
-
-def plot_training_metrics(metrics, config):
-    """Generates a 3-panel plot showing training health over episodes."""
-    os.makedirs('plots', exist_ok=True)
-    
-    episodes = range(1, len(metrics['rewards']) + 1)
-    
-    fig, axs = plt.subplots(1, 3, figsize=(18, 5))
-    fig.suptitle(f"SAC-GNN Training Metrics ({config['train_episodes']} Episodes)", fontsize=16)
-    
-    # Plot 1: Total Reward
-    axs[0].plot(episodes, metrics['rewards'], color='blue', linewidth=2)
-    axs[0].set_title('Episode Reward')
-    axs[0].set_xlabel('Episode')
-    axs[0].set_ylabel('Total Reward')
-    axs[0].grid(True, linestyle='--', alpha=0.7)
-    
-    # Plot 2: Losses
-    axs[1].plot(episodes, metrics['c_losses'], label='Critic Loss', color='red', alpha=0.8)
-    axs[1].plot(episodes, metrics['a_losses'], label='Actor Loss', color='green', alpha=0.8)
-    axs[1].set_title('Network Losses')
-    axs[1].set_xlabel('Episode')
-    axs[1].set_ylabel('Loss')
-    axs[1].set_yscale('log')
-    axs[1].legend()
-    axs[1].grid(True, linestyle='--', alpha=0.7)
-    
-    # Plot 3: Weight MSE to Oracle
-    axs[2].plot(episodes, metrics['mses'], color='purple', linewidth=2)
-    axs[2].set_title('Final Weight MSE vs Oracle')
-    axs[2].set_xlabel('Episode')
-    axs[2].set_ylabel('Mean Squared Error')
-    axs[2].grid(True, linestyle='--', alpha=0.7)
-    
-    plt.tight_layout()
-    plt.savefig('plots/training_metrics.png', dpi=300)
-    print("Training plots saved to 'plots/training_metrics.png'")
-    plt.close()
-
-
-def plot_testing_metrics(test_results):
-    """Generates a bar chart and timeline for all 5 evaluation metrics."""
-    os.makedirs('plots', exist_ok=True)
-    
-    fig, axs = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle("Comprehensive Decoder Evaluation (Ablation Study)", fontsize=16)
-    
-    # Define the 5 categories
-    labels = ['GNN (Ours)', 'Oracle', 'Zero (CMA Only)', 'Static', 'Random']
-    keys = ['gnn', 'oracle', 'zero', 'static', 'random']
-    
-    # Colors: Green (Win), Blue (Target), Purple (Ablation), Red (Baseline), Orange (Worst)
-    colors = ['#2ca02c', '#1f77b4', '#9467bd', '#d62728', '#ff7f0e']
-    
-    lers = [test_results[f'ler_{k}'] for k in keys]
-    
-    # Plot 1: Bar Chart of Logical Error Rates
-    bars = axs[0].bar(labels, lers, color=colors, alpha=0.8)
-    axs[0].set_title('Logical Error Rate (LER)')
-    axs[0].set_ylabel('LER')
-    axs[0].grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Annotate bars with exact values
-    for bar in bars:
-        yval = bar.get_height()
-        axs[0].text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:.5f}', ha='center', va='bottom', fontweight='bold')
-
-    # Plot 2: Cumulative Errors Over Time
-    shots = np.arange(1, len(test_results['cum_gnn']) + 1)
-    
-    for label, key, color in zip(labels, keys, colors):
-        # Use dashed/dotted lines for the static baselines to make the GNN stand out
-        linestyle = '-' if key in ['gnn', 'zero', 'random'] else '--'
-        axs[1].plot(shots, test_results[f'cum_{key}'], label=label, color=color, linewidth=2, linestyle=linestyle)
-    
-    axs[1].set_title('Cumulative Logical Errors')
-    axs[1].set_xlabel('Total Shots Evaluated')
-    axs[1].set_ylabel('Cumulative Errors')
-    axs[1].legend()
-    axs[1].grid(True, linestyle='--', alpha=0.7)
-    
-    plt.tight_layout()
-    plt.savefig('plots/testing_metrics_comprehensive.png', dpi=300)
-    print("Testing plots saved to 'plots/testing_metrics_comprehensive.png'")
-    plt.close()
-
-
-###################################
-# 2. TRAINING & TESTING FUNCTIONS #
-###################################
 
 def train(env, agent, buffer, config):
     print(f"\n{'='*40}")
@@ -164,92 +70,89 @@ def train(env, agent, buffer, config):
 
 def test(env, agent, config):
     print(f"\n{'='*50}")
-    print(f"STARTING COMPREHENSIVE ABLATION TEST (Episodes: {config['test_episodes']})")
+    print(f"STARTING COMPREHENSIVE ABLATION TEST")
     print(f"{'='*50}")
     
-    # Load the best weights
     agent.load_models(config['model_path'])
-    
     total_shots = config['test_episodes'] * env.max_steps
     policies = ['GNN', 'Zero', 'Random']
     
-    # Initialize data trackers
-    raw_results = {
-        'Oracle': {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)},
-        'Static': {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)}
+    raw_results = {p: {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} for p in policies + ['Oracle', 'Static']}
+    
+    # Data structure for the 12 tracked metrics
+    weight_metrics = {
+        'mse_gnn_oracle': [], 'mse_zero_oracle': [], 'mse_random_oracle': [],
+        'mse_gnn_static': [], 'mse_zero_static': [], 'mse_random_static': [],
+        'p_gnn_oracle': [], 'p_zero_oracle': [], 'p_random_oracle': [],
+        'p_gnn_static': [], 'p_zero_static': [], 'p_random_static': []
     }
-    for p in policies:
-        raw_results[p] = {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)}
 
-    # Evaluate each policy sequentially
     for policy in policies:
         print(f"\n[*] Evaluating Policy: {policy}")
         global_shot_idx = 0
-        policy_errors = 0
-        oracle_errors = 0
-        static_errors = 0
+        policy_errors, oracle_errors, static_errors = 0, 0, 0
         
         for episode in range(config['test_episodes']):
             obs, info = env.reset()
             done = False
             ep_policy_errs = 0
             
+            # Temporary trackers for the current episode
+            ep_weights_mse_oracle, ep_weights_mse_static = [], []
+            ep_corr_mse_oracle, ep_corr_mse_static = [], []
+            
             while not done:
-                # Choose action based on the current policy pass
-                if policy == 'GNN':
-                    action = agent.select_action(obs, evaluate=True)
-                elif policy == 'Zero':
-                    action = np.zeros(env.n_dec_edges, dtype=np.float32)
-                elif policy == 'Random':
-                    action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
+                if policy == 'GNN': action = agent.select_action(obs, evaluate=True)
+                elif policy == 'Zero': action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                elif policy == 'Random': action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
                     
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 
-                # Track Errors
                 err_policy = int(info["logical_error"])
                 policy_errors += err_policy
                 ep_policy_errs += err_policy
                 
-                # Only track Oracle and Static during the GNN run so we don't calculate them 3 times
                 if policy == 'GNN':
-                    err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
-                    err_static = int(info["static_pred_obs"] != info["true_obs"])
-                    oracle_errors += err_oracle
-                    static_errors += err_static
-                    
+                    oracle_errors += int(info["oracle_pred_obs"] != info["true_obs"])
+                    static_errors += int(info["static_pred_obs"] != info["true_obs"])
                     raw_results['Oracle']['cum'][global_shot_idx] = oracle_errors
                     raw_results['Static']['cum'][global_shot_idx] = static_errors
 
-                raw_results[policy]['cum'][global_shot_idx] = policy_errors
+                # Track weight and correlations MSE errors with respect to oracle and static
+                ep_weights_mse_oracle.append(info["weights_mse_error"])
+                ep_weights_mse_static.append(info["weights_mse_error_static"])
                 
+                ep_corr_mse_oracle.append(info["corr_mse_error"])
+                ep_corr_mse_static.append(info["corr_mse_error_static"])
+
+                raw_results[policy]['cum'][global_shot_idx] = policy_errors
                 obs = next_obs
                 global_shot_idx += 1
                 
             print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_policy_errs} errors")
             
+            # Append the entire episode's array of steps.
+            pol_key = policy.lower()
+            weight_metrics[f'mse_{pol_key}_oracle'].append(ep_weights_mse_oracle)
+            weight_metrics[f'mse_{pol_key}_static'].append(ep_weights_mse_static)
+            weight_metrics[f'p_{pol_key}_oracle'].append(ep_corr_mse_oracle)
+            weight_metrics[f'p_{pol_key}_static'].append(ep_corr_mse_static)
+            
         raw_results[policy]['errors'] = policy_errors
-        
         if policy == 'GNN':
             raw_results['Oracle']['errors'] = oracle_errors
             raw_results['Static']['errors'] = static_errors
 
-    # Format the final dictionary for the plotter
+    # Format the final LER metrics
     final_metrics = {}
     for k in ['GNN', 'Zero', 'Random', 'Oracle', 'Static']:
         final_metrics[f'ler_{k.lower()}'] = raw_results[k]['errors'] / total_shots
         final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
 
-    # Print Final Report
-    print("\n--- FINAL ABLATION TEST REPORT ---")
-    print(f"Total Shots Evaluated per Policy: {total_shots}")
-    print(f"LER (GNN)     = {final_metrics['ler_gnn']:.5f}  <-- Our Agent")
-    print(f"LER (Oracle)  = {final_metrics['ler_oracle']:.5f}  <-- Perfect Marginal Knowledge")
-    print(f"LER (Zero)    = {final_metrics['ler_zero']:.5f}  <-- CMA Tracer Only")
-    print(f"LER (Static)  = {final_metrics['ler_static']:.5f}  <-- Undrifted Baseline")
-    print(f"LER (Random)  = {final_metrics['ler_random']:.5f}  <-- Chaos Baseline")
-
+    # Generate both plots
     plot_testing_metrics(final_metrics)
+    plot_weight_correlations(weight_metrics)
 
 
 
@@ -262,7 +165,7 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train' or 'test'
         'MODE': 'test',  
-        'model_path': 'models/sac_gnn_best.pth',
+        'model_path': 'models/sac_gnn_best_uncorr_or.pth',
         
         # Environment Settings
         'distance': 3,
@@ -273,7 +176,7 @@ if __name__ == "__main__":
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
-        'oracle_reward_coef': 1.0, # Phase 1: High imitation reward
+        'oracle_reward_coef': 0.0, # Phase 1: High imitation reward
         
         # Agent / NN Settings
         'hidden_dim': 64,

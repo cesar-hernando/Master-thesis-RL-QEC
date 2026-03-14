@@ -11,7 +11,7 @@ from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 
 
-n_shots = 1_000_000
+n_shots = 60_000
 verbose = False
 
 # Setup the physical simulation
@@ -79,8 +79,8 @@ while not (terminated or truncated):
     #    print(f"Completed {100 * (step_idx + 1) / n_shots:.0f}% of the episode")
     
     # Step the environment
-    action = env.action_space.sample() 
-    #action = np.zeros(env.n_dec_edges, dtype=np.float32)
+    #action = env.action_space.sample() 
+    action = np.zeros(env.n_dec_edges, dtype=np.float32)
     next_obs, reward, terminated, truncated, step_info = env.step(action)
 
     # Store step information

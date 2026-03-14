@@ -129,6 +129,7 @@ class DriftedMatchingEnv(gym.Env):
         # Build the line graph adding edges based on the DEM
         self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges(self.base_dem)
         self.n_line_edges = self.line_edge_index.shape[1]
+        self.initial_pearson_corr = self.compute_pearson_correlations(self.base_p, self.initial_corr_tracer)
 
         # Pre-calculate geometry for render method
         self._calculate_rendering_geometry()
@@ -442,7 +443,7 @@ class DriftedMatchingEnv(gym.Env):
         self.oracle_solution_edges_batch, self.oracle_predicted_obs_batch = self.syndrome_data_generator.get_solution_edges_batch(
             matching=drifted_matching, 
             syndrome_volume_batch=self.syndrome_batch, 
-            enable_correlations=True, 
+            enable_correlations=False, 
             return_predicted_obs=True,
             pair_to_idx_matrix=self.pair_to_idx_matrix,
             fault_array=self.fault_array
@@ -461,8 +462,9 @@ class DriftedMatchingEnv(gym.Env):
         self.current_weights = self.initial_base_weights.copy()
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
-        # Calculate the initial weights mse error between oracle and base
-        weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
+        # Calculate the initial weights mse error between adaptive (base initially) and oracle decoder
+        self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
+        self.weights_mse_error_static = 0
 
         # Initialize absolute counters for the actual observed MWPM shots
         self.shots_since_update = 0
@@ -476,8 +478,9 @@ class DriftedMatchingEnv(gym.Env):
         # Compute initial Pearson correlations of our adaptive decoder
         self.pearson_correlations = self.compute_pearson_correlations(self.occ_tracer, self.corr_tracer)
 
-        # Compute the MSE error between the initial Pearson correlations of our decoder and the oracle decoder
+        # Compute the MSE error between the Pearson correlations of our decoder and the oracle decoder
         self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
+        self.corr_mse_error_static = 0
 
         # Reset Syndrome Physics Tracers
         if self.use_syndrome_features:
@@ -490,7 +493,7 @@ class DriftedMatchingEnv(gym.Env):
         info = {
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
-            "weights_mse_error": weights_mse_error,
+            "weights_mse_error": self.weights_mse_error,
             "corr_mse_error": self.corr_mse_error
         }
         return obs, info
@@ -664,6 +667,9 @@ class DriftedMatchingEnv(gym.Env):
             self._apply_cma_and_update_graph()
             self.shots_since_update = 0
             self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
+            self.corr_mse_error_static = np.mean((self.pearson_correlations - self.initial_pearson_corr)**2)
+            self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
+            self.weights_mse_error_static = np.mean((self.current_weights - self.initial_base_weights)**2)
                                                  
         #########################
         # 4) Compute the reward #
@@ -706,8 +712,6 @@ class DriftedMatchingEnv(gym.Env):
         # 5) Prepare information about current step to be returned #
         ############################################################
 
-        weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
-
         # Increment step count after processing the shot
         self.step_count += 1
         terminated = False
@@ -725,8 +729,10 @@ class DriftedMatchingEnv(gym.Env):
             "selected_edges_first_pass_idx": self.current_first_pass_selected_idx.copy() if self.current_first_pass_selected_idx is not None else None,
             "selected_edges_second_pass_idx": selected_idx_2.copy(),
             "action_mask": self.current_action_mask.copy() if self.current_action_mask is not None else None,
-            "weights_mse_error": weights_mse_error,
-            "corr_mse_error": self.corr_mse_error
+            "weights_mse_error": self.weights_mse_error,
+            "corr_mse_error": self.corr_mse_error,
+            "weights_mse_error_static": self.weights_mse_error_static,
+            "corr_mse_error_static": self.corr_mse_error_static,
         }
 
         ############################################################
