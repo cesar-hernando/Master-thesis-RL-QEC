@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch_geometric.data import Data, Batch
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, global_add_pool
 
 ##########################
 # 1. GRAPH REPLAY BUFFER #
@@ -90,7 +90,8 @@ class GNNActor(nn.Module):
         action = torch.tanh(z) * action_mask
         
         log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
-        log_prob = log_prob.sum(dim=-1, keepdim=True) 
+        log_prob = log_prob.sum(dim=-1, keepdim=True)
+        log_prob = log_prob * action_mask
         
         return action, log_prob
 
@@ -172,7 +173,7 @@ class SACAgent:
         # CRITIC UPDATE
         with torch.no_grad():
             next_action, next_log_prob = self.actor(next_x, next_edge_index, next_edge_attr, next_mask)
-            next_log_prob_pooled = global_mean_pool(next_log_prob, batch.batch)
+            next_log_prob_pooled = global_add_pool(next_log_prob, batch.batch)
             
             target_q1 = self.target_critic1(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
             target_q2 = self.target_critic2(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
@@ -191,7 +192,7 @@ class SACAgent:
 
         # ACTOR UPDATE
         new_action, log_prob = self.actor(x, edge_index, edge_attr, action_mask)
-        log_prob_pooled = global_mean_pool(log_prob, batch.batch)
+        log_prob_pooled = global_add_pool(log_prob, batch.batch)
         
         q1_new = self.critic1(x, edge_index, edge_attr, new_action, batch.batch)
         q2_new = self.critic2(x, edge_index, edge_attr, new_action, batch.batch)

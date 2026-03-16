@@ -165,18 +165,20 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train' or 'test'
         'MODE': 'test',  
-        'model_path': 'models/sac_gnn_best_uncorr_or.pth',
+        'model_path': 'models/sac_gnn_3.pth',
         
         # Environment Settings
-        'distance': 3,
-        'n_rounds': 3,
-        'p': 0.001,
-        'mismatch': 20.0,
-        'n_shots': 60_000,       # Shots per episode
+        'distance': 5,
+        'n_rounds': 5,
+        'p': 0.002,
+        'mismatch': 30.0,
+        'n_shots': 20_000,       # Shots per episode
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
         'oracle_reward_coef': 0.0, # Phase 1: High imitation reward
+        'local_action_only': True,
+        'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
         'hidden_dim': 64,
@@ -188,8 +190,8 @@ if __name__ == "__main__":
         'update_frequency': 10,
         
         # Episode Settings
-        'train_episodes': 50,
-        'test_episodes': 10
+        'train_episodes': 100,
+        'test_episodes': 50
     }
 
     #######################################
@@ -214,8 +216,8 @@ if __name__ == "__main__":
     
     env = DriftedMatchingEnv(
         syndrome_data_generator=generator,
-        local_action_only=True,
-        local_action_hops=1,
+        local_action_only=CONFIG['local_action_only'],
+        local_action_hops=CONFIG['local_action_hops'],
         action_scale=CONFIG['action_scale'],
         update_period=CONFIG['update_period'],
         prior_shots=CONFIG['prior_shots'],            

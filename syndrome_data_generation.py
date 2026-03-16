@@ -104,7 +104,7 @@ class SyndromeDataGenerator:
                 drifted_circuit.append(inst)
 
         drifted_dem = drifted_circuit.detector_error_model(decompose_errors=True)
-        drifted_matching = pymatching.Matching.from_detector_error_model(drifted_dem, enable_correlations=False) # Use correlated-matching for ground truth decoding
+        drifted_matching = pymatching.Matching.from_detector_error_model(drifted_dem, enable_correlations=True) # Use correlated-matching for ground truth decoding
 
         return drifted_circuit, drifted_dem, drifted_matching
     

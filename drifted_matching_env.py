@@ -443,7 +443,7 @@ class DriftedMatchingEnv(gym.Env):
         self.oracle_solution_edges_batch, self.oracle_predicted_obs_batch = self.syndrome_data_generator.get_solution_edges_batch(
             matching=drifted_matching, 
             syndrome_volume_batch=self.syndrome_batch, 
-            enable_correlations=False, 
+            enable_correlations=True, 
             return_predicted_obs=True,
             pair_to_idx_matrix=self.pair_to_idx_matrix,
             fault_array=self.fault_array
