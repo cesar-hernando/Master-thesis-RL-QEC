@@ -29,6 +29,15 @@ def train(env, agent, buffer, config):
         ep_c_loss, ep_a_loss = [], []
         
         while not done:
+            # Add burn-in period where the tracers are updated but there is no reweighting yet
+            if step_count < config['burn_in_steps']:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                obs = next_obs
+                step_count += 1
+                done = terminated or truncated
+                continue
+
             # evaluate=False enables Gaussian exploration
             action = agent.select_action(obs, evaluate=False) 
             next_obs, reward, terminated, truncated, info = env.step(action)
@@ -74,12 +83,20 @@ def test(env, agent, config):
     print(f"{'='*50}")
     
     agent.load_models(config['model_path'])
-    total_shots = config['test_episodes'] * env.max_steps
+
+    test_seeds = [int(np.random.randint(0, 1_000_000)) for _ in range(config['test_episodes'])]
+    
+    n_shots = config['n_shots']
+    burn_in_steps = config.get('burn_in_steps', 0)
+    eval_shots_per_ep = n_shots - burn_in_steps
+    
+    total_shots = config['test_episodes'] * n_shots
+    total_eval_shots = config['test_episodes'] * eval_shots_per_ep # For LER math
+    
     policies = ['GNN', 'Zero', 'Random']
     
-    raw_results = {p: {'errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} for p in policies + ['Oracle', 'Static']}
+    raw_results = {p: {'errors': 0, 'eval_errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} for p in policies + ['Oracle', 'Static']}
     
-    # Data structure for the 12 tracked metrics
     weight_metrics = {
         'mse_gnn_oracle': [], 'mse_zero_oracle': [], 'mse_random_oracle': [],
         'mse_gnn_static': [], 'mse_zero_static': [], 'mse_random_static': [],
@@ -91,66 +108,84 @@ def test(env, agent, config):
         print(f"\n[*] Evaluating Policy: {policy}")
         global_shot_idx = 0
         policy_errors, oracle_errors, static_errors = 0, 0, 0
+        policy_eval_errs, oracle_eval_errs, static_eval_errs = 0, 0, 0
         
         for episode in range(config['test_episodes']):
-            obs, info = env.reset()
+            obs, info = env.reset(seed=test_seeds[episode])
             done = False
-            ep_policy_errs = 0
+            step_count = 0
+            ep_eval_policy_errs = 0 
             
-            # Temporary trackers for the current episode
             ep_weights_mse_oracle, ep_weights_mse_static = [], []
             ep_corr_mse_oracle, ep_corr_mse_static = [], []
             
             while not done:
-                if policy == 'GNN': action = agent.select_action(obs, evaluate=True)
-                elif policy == 'Zero': action = np.zeros(env.n_dec_edges, dtype=np.float32)
-                elif policy == 'Random': action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
+                # --- 1. BURN-IN VS ACTIVE LOGIC ---
+                if step_count < burn_in_steps:
+                    action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                else:
+                    if policy == 'GNN': action = agent.select_action(obs, evaluate=True)
+                    elif policy == 'Zero': action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                    elif policy == 'Random': action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
                     
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 
+                # --- 2. ERROR TRACKING ---
                 err_policy = int(info["logical_error"])
-                policy_errors += err_policy
-                ep_policy_errs += err_policy
                 
+                # Global Tracking (For the Cumulative Plot)
+                policy_errors += err_policy
+                raw_results[policy]['cum'][global_shot_idx] = policy_errors
+                
+                # Eval Tracking (For the LER Bar Chart - Only count post-burn-in)
+                if step_count >= burn_in_steps:
+                    policy_eval_errs += err_policy
+                    ep_eval_policy_errs += err_policy
+
                 if policy == 'GNN':
-                    oracle_errors += int(info["oracle_pred_obs"] != info["true_obs"])
-                    static_errors += int(info["static_pred_obs"] != info["true_obs"])
+                    err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
+                    err_static = int(info["static_pred_obs"] != info["true_obs"])
+                    
+                    oracle_errors += err_oracle
+                    static_errors += err_static
                     raw_results['Oracle']['cum'][global_shot_idx] = oracle_errors
                     raw_results['Static']['cum'][global_shot_idx] = static_errors
+                    
+                    if step_count >= burn_in_steps:
+                        oracle_eval_errs += err_oracle
+                        static_eval_errs += err_static
 
-                # Track weight and correlations MSE errors with respect to oracle and static
-                ep_weights_mse_oracle.append(info["weights_mse_error"])
-                ep_weights_mse_static.append(info["weights_mse_error_static"])
-                
-                ep_corr_mse_oracle.append(info["corr_mse_error"])
-                ep_corr_mse_static.append(info["corr_mse_error_static"])
+                # Track weight and correlations MSE errors
+                if step_count >= burn_in_steps:
+                    ep_weights_mse_oracle.append(info["weights_mse_error"])
+                    ep_weights_mse_static.append(info["weights_mse_error_static"])
+                    ep_corr_mse_oracle.append(info["corr_mse_error"])
+                    ep_corr_mse_static.append(info["corr_mse_error_static"])
 
-                raw_results[policy]['cum'][global_shot_idx] = policy_errors
                 obs = next_obs
+                step_count += 1
                 global_shot_idx += 1
                 
-            print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_policy_errs} errors")
+            print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_eval_policy_errs} active errors")
             
-            # Append the entire episode's array of steps.
             pol_key = policy.lower()
             weight_metrics[f'mse_{pol_key}_oracle'].append(ep_weights_mse_oracle)
             weight_metrics[f'mse_{pol_key}_static'].append(ep_weights_mse_static)
             weight_metrics[f'p_{pol_key}_oracle'].append(ep_corr_mse_oracle)
             weight_metrics[f'p_{pol_key}_static'].append(ep_corr_mse_static)
             
-        raw_results[policy]['errors'] = policy_errors
+        raw_results[policy]['eval_errors'] = policy_eval_errs
         if policy == 'GNN':
-            raw_results['Oracle']['errors'] = oracle_errors
-            raw_results['Static']['errors'] = static_errors
+            raw_results['Oracle']['eval_errors'] = oracle_eval_errs
+            raw_results['Static']['eval_errors'] = static_eval_errs
 
-    # Format the final LER metrics
+    # Format the final LER metrics using ONLY the active evaluation shots
     final_metrics = {}
     for k in ['GNN', 'Zero', 'Random', 'Oracle', 'Static']:
-        final_metrics[f'ler_{k.lower()}'] = raw_results[k]['errors'] / total_shots
+        final_metrics[f'ler_{k.lower()}'] = raw_results[k]['eval_errors'] / total_eval_shots
         final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
 
-    # Generate both plots
     plot_testing_metrics(final_metrics)
     plot_weight_correlations(weight_metrics)
 
@@ -164,19 +199,20 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train' or 'test'
-        'MODE': 'test',  
-        'model_path': 'models/sac_gnn_3.pth',
+        'MODE': 'train',  
+        'model_path': 'models/sac_gnn_6.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
         'p': 0.002,
         'mismatch': 30.0,
-        'n_shots': 20_000,       # Shots per episode
+        'n_shots': 30_000,       # Shots per episode
+        'burn_in_steps': 15_000,
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
-        'oracle_reward_coef': 0.0, # Phase 1: High imitation reward
+        'oracle_reward_coef': 0.2, # Phase 1: High imitation reward
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
@@ -185,7 +221,7 @@ if __name__ == "__main__":
         'lr': 3e-4,
         'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
-        'alpha': 0.2,          # Entropy tuning
+        'alpha': 0.02,          # Entropy tuning
         'batch_size': 64,
         'update_frequency': 10,
         
@@ -241,6 +277,11 @@ if __name__ == "__main__":
         alpha=CONFIG['alpha']
     )
 
+    total_params = sum(p.numel() for p in agent.actor.parameters())
+    print(f"Total Parameters: {total_params:,}")
+    #print(len(agent.critic1.parameters()))
+
+    '''
     ############################
     # 3. EXECUTE SELECTED MODE #
     ############################
@@ -260,3 +301,5 @@ if __name__ == "__main__":
         print(f"Test run time = {test_runtime:.2f} s")
     else:
         print(f"Unknown MODE: {CONFIG['MODE']}. Please select 'train' or 'test'.")
+
+    '''

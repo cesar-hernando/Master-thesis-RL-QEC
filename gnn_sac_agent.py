@@ -138,11 +138,23 @@ class SACAgent:
         self.critic1 = GNNCritic(node_dim, hidden_dim).to(self.device)
         self.critic2 = GNNCritic(node_dim, hidden_dim).to(self.device)
         self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=lr)
+
+        # Target entropy is -1.0 because we use global_mean_pool (average over edges)
+        self.target_entropy = -1.0 
         
-        self.target_critic1 = GNNCritic(node_dim, hidden_dim).to(self.device)
-        self.target_critic2 = GNNCritic(node_dim, hidden_dim).to(self.device)
-        self.target_critic1.load_state_dict(self.critic1.state_dict())
-        self.target_critic2.load_state_dict(self.critic2.state_dict())
+        # Initialize log_alpha as a learnable PyTorch tensor
+        self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+        self.alpha_optimizer = Adam([self.log_alpha], lr=lr)
+        
+        # Conditionally initialize target networks ONLY if gamma > 0
+        if self.gamma > 0.0:
+            self.target_critic1 = GNNCritic(node_dim, hidden_dim).to(self.device)
+            self.target_critic2 = GNNCritic(node_dim, hidden_dim).to(self.device)
+            self.target_critic1.load_state_dict(self.critic1.state_dict())
+            self.target_critic2.load_state_dict(self.critic2.state_dict())
+        else:
+            self.target_critic1 = None
+            self.target_critic2 = None
 
     def select_action(self, obs, evaluate=False):
         """Used during environment interaction. evaluate=True disables Gaussian noise."""
@@ -168,18 +180,23 @@ class SACAgent:
         reward = batch.reward.view(-1, 1)
         done = batch.done.view(-1, 1)
         
-        next_x, next_edge_index, next_edge_attr, next_mask = batch.next_x, batch.next_edge_index, batch.next_edge_attr, batch.next_action_mask
-
         # CRITIC UPDATE
-        with torch.no_grad():
-            next_action, next_log_prob = self.actor(next_x, next_edge_index, next_edge_attr, next_mask)
-            next_log_prob_pooled = global_add_pool(next_log_prob, batch.batch)
-            
-            target_q1 = self.target_critic1(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
-            target_q2 = self.target_critic2(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
-            target_q = torch.min(target_q1, target_q2) - self.alpha * next_log_prob_pooled
-            
-            y = reward + (1 - done) * self.gamma * target_q
+        if self.gamma > 0.0:
+            # Full RL Mode: Compute target Q-values with future states
+            next_x, next_edge_index, next_edge_attr, next_mask = batch.next_x, batch.next_edge_index, batch.next_edge_attr, batch.next_action_mask
+
+            with torch.no_grad():
+                next_action, next_log_prob = self.actor(next_x, next_edge_index, next_edge_attr, next_mask)
+                next_log_prob_pooled = global_add_pool(next_log_prob, batch.batch)
+                
+                target_q1 = self.target_critic1(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
+                target_q2 = self.target_critic2(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
+                target_q = torch.min(target_q1, target_q2) - self.alpha * next_log_prob_pooled
+                
+                y = reward + (1 - done) * self.gamma * target_q
+        else:
+            # Contextual Bandit Mode: Fast path, target is just the immediate reward
+            y = reward
             
         current_q1 = self.critic1(x, edge_index, edge_attr, action, batch.batch)
         current_q2 = self.critic2(x, edge_index, edge_attr, action, batch.batch)
@@ -191,8 +208,9 @@ class SACAgent:
         self.critic_optimizer.step()
 
         # ACTOR UPDATE
+        alpha = self.log_alpha.exp().detach()
         new_action, log_prob = self.actor(x, edge_index, edge_attr, action_mask)
-        log_prob_pooled = global_add_pool(log_prob, batch.batch)
+        log_prob_pooled = global_mean_pool(log_prob, batch.batch)
         
         q1_new = self.critic1(x, edge_index, edge_attr, new_action, batch.batch)
         q2_new = self.critic2(x, edge_index, edge_attr, new_action, batch.batch)
@@ -204,23 +222,36 @@ class SACAgent:
         actor_loss.backward()
         self.actor_optimizer.step()
 
+        # ALPHA AUTOTUNER UPDATE
+        # Alpha tries to push log_prob_pooled to exactly match the target_entropy
+        alpha_loss = -(self.log_alpha * (log_prob_pooled.detach() + self.target_entropy)).mean()
+        
+        self.alpha_optimizer.zero_grad()
+        alpha_loss.backward()
+        self.alpha_optimizer.step()
+
         # TARGET SOFT UPDATE
-        for target_param, param in zip(self.target_critic1.parameters(), self.critic1.parameters()):
-            target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
-        for target_param, param in zip(self.target_critic2.parameters(), self.critic2.parameters()):
-            target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
+        if self.gamma > 0.0:
+            for target_param, param in zip(self.target_critic1.parameters(), self.critic1.parameters()):
+                target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
+            for target_param, param in zip(self.target_critic2.parameters(), self.critic2.parameters()):
+                target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
             
         return critic_loss.item(), actor_loss.item()
 
     def save_models(self, path="models/sac_model.pth"):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save({
+        save_dict = {
             'actor': self.actor.state_dict(),
             'critic1': self.critic1.state_dict(),
-            'critic2': self.critic2.state_dict(),
-            'target_critic1': self.target_critic1.state_dict(),
-            'target_critic2': self.target_critic2.state_dict(),
-        }, path)
+            'critic2': self.critic2.state_dict()
+        }
+        # Only save target networks if they exist
+        if self.gamma > 0.0:
+            save_dict['target_critic1'] = self.target_critic1.state_dict()
+            save_dict['target_critic2'] = self.target_critic2.state_dict()
+            
+        torch.save(save_dict, path)
         print(f"[*] Models successfully saved to {path}")
 
     def load_models(self, path="models/sac_model.pth"):
@@ -229,8 +260,12 @@ class SACAgent:
             self.actor.load_state_dict(checkpoint['actor'])
             self.critic1.load_state_dict(checkpoint['critic1'])
             self.critic2.load_state_dict(checkpoint['critic2'])
-            self.target_critic1.load_state_dict(checkpoint['target_critic1'])
-            self.target_critic2.load_state_dict(checkpoint['target_critic2'])
+
+            # Safely load target networks if both the agent and the checkpoint support them
+            if self.gamma > 0.0 and 'target_critic1' in checkpoint:
+                self.target_critic1.load_state_dict(checkpoint['target_critic1'])
+                self.target_critic2.load_state_dict(checkpoint['target_critic2'])
+
             print(f"[*] Models successfully loaded from {path}")
         else:
             print(f"[!] Warning: No model found at {path}. Proceeding with random initialization.")

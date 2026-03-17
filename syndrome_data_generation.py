@@ -109,13 +109,13 @@ class SyndromeDataGenerator:
         return drifted_circuit, drifted_dem, drifted_matching
     
 
-    def simulate_syndrome_data(self, drifted_circuit: stim.Circuit):
+    def simulate_syndrome_data(self, drifted_circuit: stim.Circuit, seed=42):
         """
         Simulate syndrome data by sampling from the drifted circuit and storing the true logical error labels
         """
 
         # Sample syndromes from the drifted circuit
-        sampler = drifted_circuit.compile_detector_sampler()
+        sampler = drifted_circuit.compile_detector_sampler(seed=seed)
         syndrome_volume_batch, true_obs_batch = sampler.sample(shots=self.n_shots, separate_observables=True)
         true_obs_batch = true_obs_batch.flatten()
 

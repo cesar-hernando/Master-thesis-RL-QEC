@@ -431,7 +431,7 @@ class DriftedMatchingEnv(gym.Env):
         self.oracle_correlations = self.compute_pearson_correlations(oracle_probs, oracle_joint_probs)
         
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
-        self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit)
+        self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit, seed)
 
         # Pre-compute physics chunks and initialize trackers
         if self.use_syndrome_features:
@@ -505,11 +505,13 @@ class DriftedMatchingEnv(gym.Env):
         true_obs = self.true_obs_batch[self.step_count]
 
         # First pass MWPM still uses the current matching (no drift knowledge)
-        selected_edges_1 = self.syndrome_data_generator.get_solution_edges(
+        selected_edges_1, first_pass_pred_obs = self.syndrome_data_generator.get_solution_edges(
             matching=self.current_matching, 
             syndrome_volume=syndrome, 
             enable_correlations=False,
-            return_predicted_obs=False
+            return_predicted_obs=True,
+            pair_to_idx_matrix=self.pair_to_idx_matrix,
+            fault_array=self.fault_array
         )
         
         # Determine the indices of the selected edges
@@ -530,6 +532,7 @@ class DriftedMatchingEnv(gym.Env):
         # Cache
         self.current_syndrome = syndrome
         self.current_true_obs = true_obs
+        self.current_first_pass_pred_obs = first_pass_pred_obs
         self.current_first_pass_selected_idx = selected_idx_1
         self.current_action_mask = action_mask
 
@@ -677,12 +680,12 @@ class DriftedMatchingEnv(gym.Env):
 
         # 1. Evaluate Truth
         agent_correct = (pred_obs == self.current_true_obs)
-        static_correct = (self.static_predicted_obs_batch[self.step_count] == self.current_true_obs)
+        first_pass_correct = (self.current_first_pass_pred_obs == self.current_true_obs)
 
         # 2. Differential Logical Reward
-        if agent_correct and not static_correct:
+        if agent_correct and not first_pass_correct:
             logical_reward = +1.0 
-        elif not agent_correct and static_correct:
+        elif not agent_correct and first_pass_correct:
             logical_reward = -1.0
         else:
             logical_reward = 0.0   # Trivial success or completely uncorrectable. Agent didn't matter.
@@ -721,6 +724,7 @@ class DriftedMatchingEnv(gym.Env):
             "logical_error": not(agent_correct),
             "true_obs": self.current_true_obs,
             "pred_obs": pred_obs,
+            "first_pass_obs":self.current_first_pass_pred_obs,
             "oracle_pred_obs": self.oracle_predicted_obs_batch[self.step_count - 1],
             "static_pred_obs":self.static_predicted_obs_batch[self.step_count - 1],
             "reward_logical": logical_reward,
