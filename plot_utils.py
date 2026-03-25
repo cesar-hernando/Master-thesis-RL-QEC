@@ -9,10 +9,147 @@ import os
 import numpy as np
 
 
-import scipy.stats as stats
-import numpy as np
-import matplotlib.pyplot as plt
-import os
+def plot_action_topography(direct, neighbors, filename='action_topography_hist.png'):
+    """Adds a visual comparison of how the GNN treats selected edges vs context edges."""
+    import matplotlib.pyplot as plt
+    
+    if not direct and not neighbors:
+        print("No active actions collected for topography plot.")
+        return
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    
+    ax1.hist(direct, bins=50, color='royalblue', alpha=0.7, log=True)
+    ax1.set_title("Direct Actions\n(Edges MWPM Selected in Pass 1)")
+    ax1.set_xlabel("Action Value")
+    ax1.set_ylabel("Frequency (log scale)")
+    ax1.grid(True, which='both', linestyle='--', alpha=0.5)
+    
+    ax2.hist(neighbors, bins=50, color='darkorange', alpha=0.7, log=True)
+    ax2.set_title("Neighbor Actions\n(Contextual Masked Edges)")
+    ax2.set_xlabel("Action Value")
+    ax2.grid(True, which='both', linestyle='--', alpha=0.5)
+    
+    plt.suptitle("Action Topography Breakdown", fontsize=16)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.show()
+    
+
+
+def plot_syndrome_count_histogram(syndrome_counts, bypass_threshold=4, filename='syndrome_counts_hist.png'):
+    """
+    Plots a histogram of the number of active syndrome flashes per shot.
+    Centers the bins on integers and marks the GNN bypass threshold.
+    """
+    if not len(syndrome_counts):
+        print("No syndrome data to plot!")
+        return
+        
+    print("\nGenerating syndrome count histogram...")
+    plt.figure(figsize=(10, 6))
+    
+    # Calculate integer bins so the bars align perfectly with discrete counts
+    min_val = int(np.min(syndrome_counts))
+    max_val = int(np.max(syndrome_counts))
+    bins = np.arange(min_val, max_val + 2) - 0.5 # Shift by 0.5 to center bars on integers
+    
+    # Plot the histogram
+    plt.hist(syndrome_counts, bins=bins, color='darkorange', edgecolor='black', alpha=0.75)
+    
+    # Add a vertical line for the proposed GNN bypass threshold
+    plt.axvline(x=bypass_threshold + 0.5, color='red', linestyle='dashed', linewidth=2, 
+                label=f'Bypass Threshold (N={bypass_threshold})')
+    
+    plt.title('Distribution of Syndrome Flashes per Shot', fontsize=14)
+    plt.xlabel('Number of Active Syndromes (Defects)', fontsize=12)
+    plt.ylabel('Frequency (Number of Shots)', fontsize=12)
+    
+    # Ensure x-axis ticks are integers so it looks clean
+    step = max(1, (max_val - min_val) // 15)
+    plt.xticks(np.arange(min_val, max_val + 1, step=step))
+    
+    plt.legend()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.show()
+    print(f"Saved syndrome count histogram to '{filename}'")
+
+
+def plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson, filename='tracer_histograms.png'):
+    """
+    Plots overlaid histograms comparing the initial DEM physics to the learned CMA tracers.
+    """
+    if len(initial_joint) == 0:
+        print("No line graph edges found. Cannot plot correlations.")
+        return
+
+    print("\nGenerating tracer evolution histograms...")
+    plt.figure(figsize=(14, 6))
+    
+    # --- Plot 1: Joint Probabilities ---
+    plt.subplot(1, 2, 1)
+    # Use alpha=0.6 for transparent overlays
+    plt.hist(initial_joint, bins=100, alpha=0.6, label='Initial (Stim DEM)', color='slategray')
+    plt.hist(final_joint, bins=100, alpha=0.6, label='Final (CMA Learned)', color='darkorange')
+    plt.title('Line Graph: Joint Probabilities', fontsize=14)
+    plt.xlabel('Probability (P_AB)', fontsize=12)
+    plt.ylabel('Frequency (Log Scale)', fontsize=12)
+    plt.yscale('log') # Crucial for seeing the rare, high-correlation hyperedges
+    plt.legend(loc='upper right')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    # --- Plot 2: Pearson Correlations ---
+    plt.subplot(1, 2, 2)
+    plt.hist(initial_pearson, bins=100, alpha=0.6, label='Initial (Stim DEM)', color='slategray')
+    plt.hist(final_pearson, bins=100, alpha=0.6, label='Final (CMA Learned)', color='crimson')
+    plt.title('Line Graph: Pearson Correlations', fontsize=14)
+    plt.xlabel('Correlation Coefficient [0, 1]', fontsize=12)
+    plt.ylabel('Frequency (Log Scale)', fontsize=12)
+    plt.yscale('log')
+    plt.legend(loc='upper right')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.show()
+    print(f"Saved tracer histograms to '{filename}'")
+
+def plot_action_histogram(raw_actions, active_actions, filename='action_histogram.png'):
+    """
+    Plots a dual histogram of the raw GNN actions and the actively applied actions.
+    """
+    if not raw_actions and not active_actions:
+        print("No actions to plot!")
+        return
+        
+    print("\nGenerating action histograms...")
+    plt.figure(figsize=(14, 6))
+    
+    # Plot 1: Every single action output by the Actor (The full 3000+ vector)
+    plt.subplot(1, 2, 1)
+    plt.hist(raw_actions, bins=100, color='royalblue', alpha=0.8, log=True)
+    plt.title('All Raw Actions (Output by GNN)', fontsize=14)
+    plt.xlabel('Action Value (tanh bounded [-1, 1])', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    # Plot 2: Only the actions that were applied (Where action_mask == 1)
+    plt.subplot(1, 2, 2)
+    if active_actions:
+        plt.hist(active_actions, bins=100, color='forestgreen', alpha=0.8, log=True)
+    plt.title('Active Actions (Where Mask == 1)', fontsize=14)
+    plt.xlabel('Action Value (Applied to Graph)', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.show()
+    print(f"Saved action histogram to '{filename}'")
+
 
 def plot_weight_correlations(wm):
     """Generates a 2x2 plot showing step-by-step evolution of weights over an average episode."""
@@ -109,7 +246,6 @@ def plot_training_metrics(metrics, config):
     axs[1].set_title('Network Losses')
     axs[1].set_xlabel('Episode')
     axs[1].set_ylabel('Loss')
-    axs[1].set_yscale('log')
     axs[1].legend()
     axs[1].grid(True, linestyle='--', alpha=0.7)
     

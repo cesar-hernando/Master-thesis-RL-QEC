@@ -9,7 +9,7 @@ import numpy as np
 from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
 from gnn_sac_agent import SACAgent, GraphReplayBuffer
-from plot_utils import plot_weight_correlations, plot_training_metrics, plot_testing_metrics
+from plot_utils import *
 
 
 def train(env, agent, buffer, config):
@@ -20,6 +20,7 @@ def train(env, agent, buffer, config):
     # Tracking dictionaries for plotting
     metrics = {'rewards': [], 'c_losses': [], 'a_losses': [], 'mses': []}
     start_time = time.time()
+    bypass_threshold = config.get('bypass_threshold', 4)
     
     for episode in range(config['train_episodes']):
         obs, info = env.reset()
@@ -38,12 +39,20 @@ def train(env, agent, buffer, config):
                 done = terminated or truncated
                 continue
 
-            # evaluate=False enables Gaussian exploration
-            action = agent.select_action(obs, evaluate=False) 
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            
-            buffer.push(obs, action, reward, next_obs if not done else None, done)
+            # Check syndrome flashes directly from the environment cache
+            n_flashes = np.sum(env.current_syndrome != 0)
+
+            if n_flashes <= bypass_threshold:
+                # TRIVIAL SHOT: Bypass GNN, feed zero action, and DO NOT push to replay buffer
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+            else:
+                # COMPLEX SHOT: Wake up SAC, evaluate graph, and SAVE to replay buffer
+                action = agent.select_action(obs, evaluate=False) 
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+                buffer.push(obs, action, reward, next_obs if not done else None, done)
             
             # Staggered updates
             if len(buffer) > config['batch_size'] and step_count % config['update_frequency'] == 0:
@@ -65,9 +74,11 @@ def train(env, agent, buffer, config):
         metrics['mses'].append(info['weights_mse_error'])
             
         print(f"Train Ep: {episode+1:03d}/{config['train_episodes']} | "
-              f"Reward: {episode_reward:6.1f} | "
-              f"MSE: {info['weights_mse_error']:.4f} | "
-              f"C_Loss: {avg_c_loss:.3f}")
+            f"Reward: {episode_reward:6.1f} | "
+            f"MSE: {info['weights_mse_error']:.4f} | "
+            f"C_Loss: {avg_c_loss:.3f} | "
+            f"A_Loss: {avg_a_loss:.3f} | "
+            f"Alpha: {agent.log_alpha.exp().item():.4f}")
 
     run_time = time.time() - start_time
     print(f"\nTraining complete in {run_time:.2f} seconds.")
@@ -83,6 +94,7 @@ def test(env, agent, config):
     print(f"{'='*50}")
     
     agent.load_models(config['model_path'])
+    bypass_threshold = config.get('bypass_threshold', 4)
 
     test_seeds = [int(np.random.randint(0, 1_000_000)) for _ in range(config['test_episodes'])]
     
@@ -120,11 +132,19 @@ def test(env, agent, config):
             ep_corr_mse_oracle, ep_corr_mse_static = [], []
             
             while not done:
+                # Count flashes for the gating mechanism
+                n_flashes = np.sum(env.current_syndrome != 0)
+
                 # --- 1. BURN-IN VS ACTIVE LOGIC ---
                 if step_count < burn_in_steps:
                     action = np.zeros(env.n_dec_edges, dtype=np.float32)
                 else:
-                    if policy == 'GNN': action = agent.select_action(obs, evaluate=True)
+                    if policy == 'GNN': 
+                        # HYBRID DECODER LOGIC: Bypass GNN for trivial shots
+                        if n_flashes <= bypass_threshold:
+                            action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                        else:
+                            action = agent.select_action(obs, evaluate=True)
                     elif policy == 'Zero': action = np.zeros(env.n_dec_edges, dtype=np.float32)
                     elif policy == 'Random': action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
                     
@@ -190,6 +210,88 @@ def test(env, agent, config):
     plot_weight_correlations(weight_metrics)
 
 
+def analyze_policy(env, agent, config):
+    print(f"\n{'='*50}")
+    print(f"STARTING POLICY ANALYSIS (Action Histogram & Syndrome Counts)")
+    print(f"CATEGORIZING: Direct (Pass 1 Selected) vs. Neighbor (Masked Only)")
+    print(f"{'='*50}")
+    
+    try:
+        agent.load_models(config['model_path'])
+        print(f"Successfully loaded model from {config['model_path']}")
+    except Exception as e:
+        print(f"Could not load model: {e}")
+        return
+
+    burn_in_steps = config.get('burn_in_steps', 0)
+    bypass_threshold = config.get('bypass_threshold', 4)
+    
+    # Original Trackers
+    all_raw_actions = []
+    all_active_actions = []
+    all_syndrome_counts = []
+    
+    # New Topography Trackers
+    direct_actions = []    # Actions on edges MWPM actually picked (Flag=1)
+    neighbor_actions = []  # Actions on edges that are neighbors (Mask=1, Flag=0)
+
+    episodes_to_run = min(5, config['test_episodes'])
+    
+    for episode in range(episodes_to_run):
+        obs, info = env.reset()
+        done = False
+        step_count = 0
+        
+        print(f"Collecting data from Episode {episode+1}/{episodes_to_run}...")
+        
+        while not done:
+            n_flashes = np.sum(env.current_syndrome != 0) 
+            all_syndrome_counts.append(n_flashes)
+            
+            if step_count >= burn_in_steps:
+                if n_flashes <= bypass_threshold:
+                    action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                else:
+                    action = agent.select_action(obs, evaluate=True)
+                
+                # --- EXISTING LOGIC: General Histograms ---
+                mask = obs['action_mask']
+                active_acts = action[mask > 0]
+                
+                if len(active_acts) > 0:
+                    all_active_actions.extend(active_acts.tolist())
+                all_raw_actions.extend(action.tolist())
+
+                # --- NEW LOGIC: Topography Breakdown ---
+                # flags: [:, 1] is the Pass 1 Flag (0 or 1)
+                flags = obs['node_features'][:, 1]
+                
+                # 1. Direct: Nodes MWPM selected (Flag=1, implies Mask=1)
+                direct_mask = (flags > 0)
+                if np.any(direct_mask):
+                    direct_actions.extend(action[direct_mask].tolist())
+                
+                # 2. Neighbors: Masked nodes that MWPM did NOT select
+                neighbor_mask = (mask > 0) & (flags == 0)
+                if np.any(neighbor_mask):
+                    neighbor_actions.extend(action[neighbor_mask].tolist())
+                
+            else:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            obs = next_obs
+            step_count += 1
+            
+    # Standard Plots
+    plot_action_histogram(all_raw_actions, all_active_actions)
+    plot_syndrome_count_histogram(all_syndrome_counts, bypass_threshold=bypass_threshold)
+    
+    # New Comparative Plot
+    plot_action_topography(direct_actions, neighbor_actions)
+
+
 
 
 if __name__ == "__main__":
@@ -200,34 +302,36 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train' or 'test'
         'MODE': 'train',  
-        'model_path': 'models/sac_gnn_6.pth',
+        'model_path': 'models/sac_gnn_9.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.002,
+        'p': 0.003,
         'mismatch': 30.0,
-        'n_shots': 30_000,       # Shots per episode
+        'n_shots': 65_000,       # Shots per episode
         'burn_in_steps': 15_000,
+        'bypass_threshold': 2,
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
-        'oracle_reward_coef': 0.2, # Phase 1: High imitation reward
-        'local_action_only': True,
+        'oracle_reward_coef': 2.0, # Phase 1: High imitation reward
+        'local_action_only': False,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
         'hidden_dim': 64,
-        'lr': 3e-4,
+        'lr': 1e-4,
         'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
-        'alpha': 0.02,          # Entropy tuning
+        'alpha': 0.2,          # Entropy tuning
         'batch_size': 64,
+        'buffer_capacity': 50_000,
         'update_frequency': 10,
         
         # Episode Settings
-        'train_episodes': 100,
-        'test_episodes': 50
+        'train_episodes': 25,
+        'test_episodes': 5
     }
 
     #######################################
@@ -277,17 +381,15 @@ if __name__ == "__main__":
         alpha=CONFIG['alpha']
     )
 
-    total_params = sum(p.numel() for p in agent.actor.parameters())
-    print(f"Total Parameters: {total_params:,}")
-    #print(len(agent.critic1.parameters()))
+    #total_params = sum(p.numel() for p in agent.actor.parameters())
+    #print(f"Total Parameters: {total_params:,}")
 
-    '''
     ############################
     # 3. EXECUTE SELECTED MODE #
     ############################
     if CONFIG['MODE'] == 'train':
         start_train = time.time()
-        buffer = GraphReplayBuffer(capacity=50_000)
+        buffer = GraphReplayBuffer(capacity=CONFIG['buffer_capacity'])
         train(env, agent, buffer, CONFIG)
         end_train = time.time()
         train_runtime = end_train - start_train
@@ -299,7 +401,15 @@ if __name__ == "__main__":
         end_test = time.time()
         test_runtime = end_test - start_test
         print(f"Test run time = {test_runtime:.2f} s")
+
+    elif CONFIG['MODE'] == 'analyze_policy':
+        start_analysis = time.time()
+        analyze_policy(env, agent, CONFIG)
+        end_analysis = time.time()
+        analysis_runtime = end_analysis - start_analysis
+        print(f"Analyisis run time = {analysis_runtime:.2f} s")
+
     else:
         print(f"Unknown MODE: {CONFIG['MODE']}. Please select 'train' or 'test'.")
 
-    '''
+    

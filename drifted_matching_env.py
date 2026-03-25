@@ -179,8 +179,8 @@ class DriftedMatchingEnv(gym.Env):
         Indexes the decoding graph and constructs the Sparse Parity Check Matrix (H).
 
         Maps physical detectors to graph edges to define the lattice topology and identify 
-        logical fault mechanisms. The H matrix uses `h_rows` (detector IDs) 
-        and `h_cols` (edge indices) to define the syndrome-to-error relationship.
+        logical fault mechanisms. The H matrix uses h_rows (detector IDs) 
+        and h_cols (edge indices) to define the syndrome-to-error relationship.
 
         Args:
             matching: PyMatching graph object derived from the Stim noise model.
@@ -314,7 +314,7 @@ class DriftedMatchingEnv(gym.Env):
                         
                     edge_key = (na, nb) if na <= nb else (nb, na)
                     
-                    # Combine probabilities using logical OR: P(A ∪ B) = P(A) + P(B) - 2*P(A)*P(B)
+                    # Combine probabilities using logical XOR: P(A ∪ B) = P(A) + P(B) - 2*P(A)*P(B)
                     if edge_key in correlation_dict:
                         existing_p = correlation_dict[edge_key]
                         correlation_dict[edge_key] = existing_p * (1 - p) + p * (1 - existing_p)
@@ -424,7 +424,19 @@ class DriftedMatchingEnv(gym.Env):
             )
         
         # Retrieve the weights of the oracle decoding graph
-        _, _, self.oracle_weights, oracle_probs, _, _ = self._index_decoding_graph_edges(drifted_matching)
+        #_, _, self.oracle_weights, oracle_probs, _, _ = self._index_decoding_graph_edges(drifted_matching)
+        # Safely align Oracle weights to the Base Topology
+        self.oracle_weights = np.full(self.n_dec_edges, self.max_weight, dtype=np.float32)
+        oracle_probs = np.zeros(self.n_dec_edges, dtype=np.float32)
+        for u, v, data in drifted_matching.edges():
+            u = -1 if u is None else u
+            v = -1 if v is None else v
+            
+            # Use your lookup matrix to find where this edge lives in OUR arrays
+            idx = self.pair_to_idx_matrix[u, v]
+            if idx != -1:
+                self.oracle_weights[idx] = data["weight"]
+                oracle_probs[idx] = data["error_probability"]
 
         # Calculate the joint probabilities and Pearson correlations between the oracle edge weights
         _, oracle_joint_probs = self._build_line_graph_edges(drifted_dem, return_k_hop_adj_mat=False)
@@ -432,6 +444,7 @@ class DriftedMatchingEnv(gym.Env):
         
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit, seed)
+        #self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data_from_dem(drifted_dem, seed)
 
         # Pre-compute physics chunks and initialize trackers
         if self.use_syndrome_features:
@@ -484,7 +497,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # Reset Syndrome Physics Tracers
         if self.use_syndrome_features:
-            self.spitz_tracer = self.initial_base_weights.copy()
+            self.spitz_tracer = self.base_p.copy()
             self.remm_tracer = self.initial_corr_tracer.copy()
 
         # Prepare the first shot and build the initial observation
@@ -684,7 +697,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # 2. Differential Logical Reward
         if agent_correct and not first_pass_correct:
-            logical_reward = +1.0 
+            logical_reward = +10.0 
         elif not agent_correct and first_pass_correct:
             logical_reward = -1.0
         else:

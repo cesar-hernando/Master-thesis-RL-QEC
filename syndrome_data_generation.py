@@ -120,6 +120,18 @@ class SyndromeDataGenerator:
         true_obs_batch = true_obs_batch.flatten()
 
         return np.asarray(syndrome_volume_batch, dtype=np.uint8), true_obs_batch
+    
+    def simulate_syndrome_data_from_dem(self, drifted_dem: stim.Circuit, seed=42):
+        """
+        Simulate syndrome data by sampling from the DEM and storing the true logical error labels
+        """
+
+        # Sample syndromes from the drifted circuit
+        sampler_dem = drifted_dem.compile_sampler(seed=seed)
+        syndrome_volume_batch, true_obs_batch, true_errors = sampler_dem.sample(shots=self.n_shots)
+        true_obs_batch = true_obs_batch.flatten()
+
+        return np.asarray(syndrome_volume_batch, dtype=np.uint8), true_obs_batch
 
     @staticmethod
     def _predict_obs_from_selected_edges(

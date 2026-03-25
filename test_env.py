@@ -9,9 +9,10 @@ import time
 
 from syndrome_data_generation import SyndromeDataGenerator
 from drifted_matching_env import DriftedMatchingEnv
+from plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 20_000
+n_shots = 50_000
 verbose = False
 
 # Setup the physical simulation
@@ -21,10 +22,10 @@ generator = SyndromeDataGenerator(
     mismatch=30.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.002,
-        "before_measure_flip_probability": 0.002,
-        "after_reset_flip_probability": 0.002,
-        "before_round_data_depolarization": 0.002,
+        "after_clifford_depolarization": 0.003,
+        "before_measure_flip_probability": 0.003,
+        "after_reset_flip_probability": 0.003,
+        "before_round_data_depolarization": 0.003,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
@@ -33,12 +34,12 @@ generator = SyndromeDataGenerator(
 
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
-    local_action_only=True,
+    local_action_only=False,
     local_action_hops=1,
     action_scale = 3.0,
-    update_period=1_000,
-    prior_shots=1_000,
-    oracle_reward_coef=0.0,
+    update_period=1000,
+    prior_shots=1000,
+    oracle_reward_coef=2.0,
     use_pearson_correlation=True,
     use_syndrome_features=False,
     update_with='DGR',
@@ -61,6 +62,8 @@ n_logical_flips = 0
 
 start_time = time.time()
 obs, info = env.reset(seed=42)
+end_time_reset = time.time()
+print(f"Reset time = {end_time_reset - start_time} s")
 
 # Record the starting weight error and correlation error
 weights_mse_error[0] = info["weights_mse_error"]
@@ -95,7 +98,6 @@ while not (terminated or truncated):
         n_logical_flips += 1
 
     step_idx += 1
-
 
 #print("Final Pearson Correlations:\n", env.pearson_correlations)
 end_time = time.time()
@@ -188,5 +190,13 @@ plt.ylabel("Logical error rate")
 plt.grid()
 plt.legend()
 plt.show()
+
+# We pull the initial physics generated at reset() vs the final tracers at the end of the episodes
+initial_joint = env.initial_corr_tracer
+final_joint = env.corr_tracer
+initial_pearson = env.initial_pearson_corr
+final_pearson = env.pearson_correlations
+
+plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson)
 
 env.render()

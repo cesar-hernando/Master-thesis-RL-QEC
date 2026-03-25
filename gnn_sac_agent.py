@@ -7,6 +7,7 @@ pass MWPM decoder.
 import os
 import random
 from collections import deque
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -63,25 +64,39 @@ class GNNActor(nn.Module):
     def __init__(self, node_dim, hidden_dim):
         super().__init__()
         self.conv1 = GCNConv(node_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        #self.conv2 = GCNConv(hidden_dim, hidden_dim)
         
-        self.mu_head = nn.Linear(hidden_dim, 1)
-        self.log_std_head = nn.Linear(hidden_dim, 1)
+        self.mu_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim*2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim*2, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+        self.log_std_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim*2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim*2, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
 
     def forward(self, x, edge_index, edge_attr, action_mask, evaluate=False):
         edge_weight = edge_attr.squeeze(-1) if edge_attr.dim() > 1 else edge_attr
         
-        x = F.relu(self.conv1(x, edge_index, edge_weight=edge_weight))
-        x = F.relu(self.conv2(x, edge_index, edge_weight=edge_weight))
+        # Capture the neighbor context
+        h = F.relu(self.conv1(x, edge_index, edge_weight=edge_weight))
         
-        mu = self.mu_head(x)
+        mu = self.mu_head(h)
         
         # If testing, act deterministically (no exploration noise)
         if evaluate:
             action = torch.tanh(mu) * action_mask
             return action, None
             
-        log_std = torch.clamp(self.log_std_head(x), -20, 2)
+        log_std = torch.clamp(self.log_std_head(h), -20, 2)
         std = torch.exp(log_std)
         
         normal = torch.distributions.Normal(mu, std)
@@ -100,10 +115,12 @@ class GNNCritic(nn.Module):
     def __init__(self, node_dim, hidden_dim):
         super().__init__()
         self.conv1 = GCNConv(node_dim + 1, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        #self.conv2 = GCNConv(hidden_dim, hidden_dim)
         
         self.q_head = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim*2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim*2, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 1)
         )
@@ -111,11 +128,13 @@ class GNNCritic(nn.Module):
     def forward(self, x, edge_index, edge_attr, action, batch_index):
         edge_weight = edge_attr.squeeze(-1) if edge_attr.dim() > 1 else edge_attr
         
+        # Combine state and action
         xu = torch.cat([x, action], dim=-1)
         
+        # Extract graph context
         h = F.relu(self.conv1(xu, edge_index, edge_weight=edge_weight))
-        h = F.relu(self.conv2(h, edge_index, edge_weight=edge_weight))
         
+        # Global Pool and Predict Q
         pooled = global_mean_pool(h, batch_index)
         q = self.q_head(pooled)
         return q
@@ -143,7 +162,7 @@ class SACAgent:
         self.target_entropy = -1.0 
         
         # Initialize log_alpha as a learnable PyTorch tensor
-        self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+        self.log_alpha = torch.tensor([np.log(alpha)], requires_grad=True, device=self.device)
         self.alpha_optimizer = Adam([self.log_alpha], lr=lr)
         
         # Conditionally initialize target networks ONLY if gamma > 0
@@ -187,11 +206,17 @@ class SACAgent:
 
             with torch.no_grad():
                 next_action, next_log_prob = self.actor(next_x, next_edge_index, next_edge_attr, next_mask)
-                next_log_prob_pooled = global_add_pool(next_log_prob, batch.batch)
+                # Calculate average entropy for the NEXT state
+                next_log_prob_sum = global_add_pool(next_log_prob, batch.batch)
+                next_active_count = global_add_pool(next_mask, batch.batch)
+                next_log_prob_avg = next_log_prob_sum / torch.clamp(next_active_count, min=1.0)
                 
                 target_q1 = self.target_critic1(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
                 target_q2 = self.target_critic2(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
-                target_q = torch.min(target_q1, target_q2) - self.alpha * next_log_prob_pooled
+                
+                # Use tuned alpha and the average entropy ---
+                current_alpha = self.log_alpha.exp().detach()
+                target_q = torch.min(target_q1, target_q2) - current_alpha * next_log_prob_avg
                 
                 y = reward + (1 - done) * self.gamma * target_q
         else:
@@ -205,21 +230,36 @@ class SACAgent:
         
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), max_norm=1.0)
         self.critic_optimizer.step()
 
         # ACTOR UPDATE
         alpha = self.log_alpha.exp().detach()
         new_action, log_prob = self.actor(x, edge_index, edge_attr, action_mask)
-        log_prob_pooled = global_mean_pool(log_prob, batch.batch)
+
+        # MASKED MEAN POOLING 
+        # 1. Sum the log probabilities per graph in the batch
+        log_prob_sum = global_add_pool(log_prob, batch.batch)
+        
+        # 2. Count how many active edges (mask == 1) exist per graph in the batch
+        active_nodes_per_graph = global_add_pool(action_mask, batch.batch)
+        
+        # 3. Prevent division by zero (if a graph has no active edges, divide by 1)
+        safe_divisor = torch.clamp(active_nodes_per_graph, min=1.0)
+        
+        # 4. Calculate the true average entropy of ONLY the active edges
+        log_prob_pooled = log_prob_sum / safe_divisor
         
         q1_new = self.critic1(x, edge_index, edge_attr, new_action, batch.batch)
         q2_new = self.critic2(x, edge_index, edge_attr, new_action, batch.batch)
         q_new = torch.min(q1_new, q2_new)
         
-        actor_loss = (self.alpha * log_prob_pooled - q_new).mean()
+        actor_loss = (alpha * log_prob_pooled - q_new).mean()
         
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
         self.actor_optimizer.step()
 
         # ALPHA AUTOTUNER UPDATE
@@ -229,6 +269,10 @@ class SACAgent:
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         self.alpha_optimizer.step()
+
+        with torch.no_grad():
+            # np.log(0.05) ≈ -3.0, np.log(0.2) ≈ -1.6
+            self.log_alpha.clamp_(np.log(0.05), np.log(0.2))
 
         # TARGET SOFT UPDATE
         if self.gamma > 0.0:
