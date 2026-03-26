@@ -38,7 +38,7 @@ info = {
     "url": "https://github.com/cesar-hernando/Master-thesis-RL-QEC",
     "license": "Apache 2.0",
     "provides": ["adaptiveQRL"],
-    #"install_requires": install_requires,
+    "install_requires": install_requires,
     #"extras_require": extras_require,
     "packages": find_packages(where='src'),
     "package_dir": {'': 'src'},
