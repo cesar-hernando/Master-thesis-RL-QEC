@@ -1,4 +1,4 @@
-
+reward = 10 if logical success with respect to the 1st pass
 
 CONFIG = {
         # Execution Mode: 'train' or 'test'

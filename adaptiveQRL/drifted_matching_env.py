@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import pymatching
 import scipy.sparse as sp
 
-from syndrome_data_generation import SyndromeDataGenerator
+from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 
 
 
@@ -697,7 +697,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # 2. Differential Logical Reward
         if agent_correct and not first_pass_correct:
-            logical_reward = +10.0 
+            logical_reward = +1.0 
         elif not agent_correct and first_pass_correct:
             logical_reward = -1.0
         else:

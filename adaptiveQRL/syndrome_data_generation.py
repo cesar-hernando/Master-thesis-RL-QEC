@@ -9,7 +9,7 @@ import stim
 import pymatching
 import plotly.graph_objects as go
 
-from surface_code_stim import SurfaceCode
+from adaptiveQRL.surface_code_stim import SurfaceCode
 
 
 class SyndromeDataGenerator:

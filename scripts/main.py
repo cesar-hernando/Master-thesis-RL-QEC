@@ -6,10 +6,10 @@ It handles hyperparameters, execution modes, and performance visualization.
 import time
 import numpy as np
 
-from syndrome_data_generation import SyndromeDataGenerator
-from drifted_matching_env import DriftedMatchingEnv
-from gnn_sac_agent import SACAgent, GraphReplayBuffer
-from plot_utils import *
+from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
+from adaptiveQRL.gnn_sac_agent import SACAgent, GraphReplayBuffer
+from scripts.plot_utils import *
 
 
 def train(env, agent, buffer, config):
@@ -235,7 +235,7 @@ def analyze_policy(env, agent, config):
     direct_actions = []    # Actions on edges MWPM actually picked (Flag=1)
     neighbor_actions = []  # Actions on edges that are neighbors (Mask=1, Flag=0)
 
-    episodes_to_run = min(5, config['test_episodes'])
+    episodes_to_run = min(1, config['test_episodes'])
     
     for episode in range(episodes_to_run):
         obs, info = env.reset()
@@ -301,13 +301,13 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train' or 'test'
-        'MODE': 'train',  
+        'MODE': 'analyze_policy',  
         'model_path': 'models/sac_gnn_9.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.003,
+        'p': 0.004,
         'mismatch': 30.0,
         'n_shots': 65_000,       # Shots per episode
         'burn_in_steps': 15_000,
@@ -331,7 +331,7 @@ if __name__ == "__main__":
         
         # Episode Settings
         'train_episodes': 25,
-        'test_episodes': 5
+        'test_episodes': 10
     }
 
     #######################################

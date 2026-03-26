@@ -7,9 +7,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-from syndrome_data_generation import SyndromeDataGenerator
-from drifted_matching_env import DriftedMatchingEnv
-from plot_utils import plot_tracer_evolution_histograms
+from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
+from scripts.plot_utils import plot_tracer_evolution_histograms
 
 
 n_shots = 50_000
@@ -22,10 +22,10 @@ generator = SyndromeDataGenerator(
     mismatch=30.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.003,
-        "before_measure_flip_probability": 0.003,
-        "after_reset_flip_probability": 0.003,
-        "before_round_data_depolarization": 0.003,
+        "after_clifford_depolarization": 0.004,
+        "before_measure_flip_probability": 0.004,
+        "after_reset_flip_probability": 0.004,
+        "before_round_data_depolarization": 0.004,
     }, 
     memory_type='z', 
     n_shots=n_shots, 
