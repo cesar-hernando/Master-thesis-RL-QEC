@@ -9,7 +9,7 @@ import time
 
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from scripts.plot_utils import plot_tracer_evolution_histograms
+from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
 n_shots = 50_000

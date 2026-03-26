@@ -1,61 +1,53 @@
 from setuptools import setup, find_packages
-import pathlib
 
 # Read the version from the VERSION file
 def read_version():
     with open('VERSION', 'r') as version_file:
         return version_file.read().strip()
 
-version = "0.1.0"
+version = 0.1 #read_version()
 
 install_requires = [
-    "numpy>=1.21",
-    "scipy>=1.8",
-    "networkx>=2.8",
-    "stim>=1.9",
-    "pymatching>=0.16",
-    "plotly>=5.0",
-    "torch>=1.13",
+
+    "numpy",
+    "matplotlib",
+    "stim",
+    "pymatching",
+    "gymnasium",
+    "plotly",
+    "scipy",
 ]
 
 extras_require = {
-    "dev": [
-        "ipykernel",
-        "matplotlib",
-        "pytest",
-        "black",
-    ],
-    "torch_geom": [
-        "torch-scatter",
-        "torch-sparse",
-        "torch-cluster",
-        "torch-spline-conv",
-        "torch-geometric",
-    ],
+    "torch": [
+        "torch>=2.9",
+        "torchvision>=0.24",
+    ]
 }
 
 
 
 info = {
-    "name": "master-thesis-rl-qec",
+    "name": "adaptiveQRL",
     "version": version,
     "author": "Cesar Hernando",
-    "author_email": "",
-    "description": "Adaptive MWPM reweighting with a GNN+SAC agent (master thesis code)",
-    "long_description": open('README.md').read() if (pathlib.Path('README.md')).exists() else "",
+    "author_email": "chernandodelaf@tudelft.nl",
+    "description": "Adaptive quantum error decoding under drift noise via Graph Reinforcement Learning",
+    "long_description": open('README.md').read(),
     "long_description_content_type": "text/markdown",
     "url": "https://github.com/cesar-hernando/Master-thesis-RL-QEC",
-    "license": "MIT",
-    "packages": find_packages(),
-    "python_requires": ">=3.8",
-    "install_requires": install_requires,
-    "extras_require": extras_require,
-    "include_package_data": True,
+    "license": "Apache 2.0",
+    "provides": ["adaptiveQRL"],
+    #"install_requires": install_requires,
+    #"extras_require": extras_require,
+    "packages": find_packages(where='src'),
+    "package_dir": {'': 'src'},
+    "keywords": ["QEC", "Quantum", "Reinforcement Learning"],
 }
 
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: Apache Software License",
     "Intended Audience :: Science/Research",
 ]

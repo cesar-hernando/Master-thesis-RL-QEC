@@ -1,0 +1,46 @@
+Metadata-Version: 2.1
+Name: adaptiveQRL
+Version: 0.1
+Summary: A package for machine learning for quantum chemisrty using quantum data
+Home-page: https://github.com/StefanoPolla/dftqml
+Author: Stefano Polla
+Author-email: polla@lorentz.leidenuniv.nl
+License: Apache 2.0
+Keywords: DFT,Quantum,Machine Learning
+Classifier: Development Status :: 3 - Alpha
+Classifier: Programming Language :: Python :: 3.9
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Intended Audience :: Science/Research
+Provides: adaptiveQRL
+Description-Content-Type: text/markdown
+
+# Master's thesis: *Adaptive quantum error decoding under drift noise via Graph Reinforcement Learning* 
+
+This repository contains the codebase of my master's thesis project in the Applied Quantum Algorithms Group (AQA) in Leiden University. It is part of the master's programme in Quantum Information Science and Technology jointly organized by TU Delft and Leiden University.
+
+**Problem Statement & Approach**
+
+- **Problem:** Quantum decoders based on Minimum-Weight Perfect Matching (MWPM) assume a static, independent error model. Real quantum devices often experience slowly drifting error rates and local correlations, which degrade MWPM performance because fixed global edge weights cannot capture evolving correlations or spatially/temporally varying error behavior.
+
+- **Goal:** Build a decoder that adapts online to slow noise drift and can handle short-range correlations by adjusting how MWPM perceives the decoding graph, while retaining the efficiency and interpretability of matching-based decoders.
+
+- **Approach:** We use a graph-based Soft Actor-Critic (SAC) agent with a Graph Neural Network (GNN) encoder to output continuous reweightings for decoding-graph edges. The environment applies those actions only on a local subset of edges determined by an `action_mask` and the `local_action_hops` parameter (see `drifted_matching_env.py`). After applying the learned, local edge reweighting, a second MWPM pass is performed. This hybrid workflow preserves MWPM's strengths while letting a learned, local policy adapt edge weights to compensate for drift and capture short-range correlations that global weights miss.
+
+**Project pipeline**
+
+1. Build a Stim rotated-surface-code memory circuit and extract its Detector Error Model (DEM) and decoding graph.
+2. Simulate drift by multiplying each of the error probabilities defined in the Stim circuit by a mismatch factor N sampled log-uniformly between 1/N and N.
+3. Use this drifted circuit to a run memory experiment, generating both the syndrome volume and a label representing whether the logical observable has flipped.
+2. Run a first pass of MWPM to predict which edges in the decoding graph have been activated.
+3. Define a graph where the nodes are the decoding graph edges, and the edges between nodes are defined if the DEM determines that those edges share a hyperedge and are thus correlated.
+4. This graph has as node attributes the weight/probability and a label indicating whether the edge was selected in the first MWPM pass. The edge attributes are the co-occurrences/covariances of the edges, calculated from the decoding history.
+5. This graph is used as input of a GNN-SAC agent that predicts a change in weight in the nodes. For scalability and generalization, this change is only applied to nodes that are local to nodes that were selected in the first pass.
+6. With the new weights, we run a second pass of MWPM. The RL reward is computed based on whether there is a logical error, or based on the -log(LER) and only provided every k steps.
+7. The edges predicted by the second pass are also used to periodically update the probabilities/weights of the decoding graph edges (GNN nodes) and the co-occurrences/covariances of the GNN edges.
+8. Steps 3-7 are performed n_shots times, which constitutes an episode of the Markov Decision Process. This is performed n_episodes times in order to learn an optimal reweighting policy
+
+**Project layout (high level)**
+- `surface_code_stim.py` â€” Stim-based rotated surface-code circuit builder used throughout experiments.
+- `syndrome_data_generation.py` â€” Generate drifted circuits, sample detector syndrome volumes, and extract MWPM-selected edges.
+- `drifted_matching_env.py` â€” Gym-compatible environment exposing graph observations (node/edge features) and applying local edge reweighting actions. 
+- `decoding_graph.ipynb` â€” interactive experiments and visualizations.
