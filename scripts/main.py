@@ -9,7 +9,7 @@ import numpy as np
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.gnn_sac_agent import SACAgent, GraphReplayBuffer
-from scripts.plot_utils import *
+from src.adaptiveQRL.plot_utils import *
 
 
 def train(env, agent, buffer, config):
