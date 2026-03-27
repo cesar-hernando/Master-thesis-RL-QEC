@@ -9,7 +9,7 @@ import numpy as np
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.gnn_sac_agent import SACAgent, GraphReplayBuffer
-from src.adaptiveQRL.plot_utils import *
+from adaptiveQRL.plot_utils import *
 
 
 def train(env, agent, buffer, config):
@@ -300,9 +300,9 @@ if __name__ == "__main__":
     # 1. HYPERPARAMETERS & CONFIGURATION #
     ######################################
     CONFIG = {
-        # Execution Mode: 'train' or 'test'
-        'MODE': 'analyze_policy',  
-        'model_path': 'models/sac_gnn_9.pth',
+        # Execution Mode: 'train','test' or 'analyze_policy'
+        'MODE': 'test',  
+        'model_path': 'models/sac_gnn_10.pth',
         
         # Environment Settings
         'distance': 5,
@@ -315,23 +315,23 @@ if __name__ == "__main__":
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
-        'oracle_reward_coef': 2.0, # Phase 1: High imitation reward
-        'local_action_only': False,
+        'oracle_reward_coef': 1.0, # Phase 1: High imitation reward
+        'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
         'hidden_dim': 64,
         'lr': 1e-4,
-        'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
+        'gamma': 0.99,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
         'alpha': 0.2,          # Entropy tuning
         'batch_size': 64,
-        'buffer_capacity': 50_000,
-        'update_frequency': 10,
+        'buffer_capacity': 100_000,
+        'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 25,
-        'test_episodes': 10
+        'train_episodes': 50,
+        'test_episodes': 50
     }
 
     #######################################

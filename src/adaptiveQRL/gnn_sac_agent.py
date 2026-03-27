@@ -162,7 +162,7 @@ class SACAgent:
         self.target_entropy = -1.0 
         
         # Initialize log_alpha as a learnable PyTorch tensor
-        self.log_alpha = torch.tensor([np.log(alpha)], requires_grad=True, device=self.device)
+        self.log_alpha = torch.tensor([np.log(alpha)], dtype=torch.float32, requires_grad=True, device=self.device)
         self.alpha_optimizer = Adam([self.log_alpha], lr=lr)
         
         # Conditionally initialize target networks ONLY if gamma > 0

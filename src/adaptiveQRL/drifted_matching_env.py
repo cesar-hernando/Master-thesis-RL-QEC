@@ -663,7 +663,7 @@ class DriftedMatchingEnv(gym.Env):
         selected_edges_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
             matching=second_pass_matching,
             syndrome_volume=self.current_syndrome,
-            enable_correlations=False,
+            enable_correlations=True,
             return_predicted_obs=True,
             pair_to_idx_matrix=self.pair_to_idx_matrix,
             fault_array=self.fault_array
