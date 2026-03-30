@@ -18,7 +18,7 @@ def train(env, agent, buffer, config):
     print(f"{'='*40}")
     
     # Tracking dictionaries for plotting
-    metrics = {'rewards': [], 'c_losses': [], 'a_losses': [], 'mses': []}
+    metrics = {'rewards': [], 'c_losses': [], 'a_losses': [], 'mses': [], 'alphas': []}
     start_time = time.time()
     bypass_threshold = config.get('bypass_threshold', 4)
     
@@ -72,6 +72,7 @@ def train(env, agent, buffer, config):
         metrics['c_losses'].append(avg_c_loss)
         metrics['a_losses'].append(avg_a_loss)
         metrics['mses'].append(info['weights_mse_error'])
+        metrics['alphas'].append(agent.log_alpha.exp().item())
             
         print(f"Train Ep: {episode+1:03d}/{config['train_episodes']} | "
             f"Reward: {episode_reward:6.1f} | "
@@ -301,8 +302,8 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'test',  
-        'model_path': 'models/sac_gnn_10.pth',
+        'MODE': 'analyze_policy',  
+        'model_path': 'models/sac_gnn_11.pth',
         
         # Environment Settings
         'distance': 5,
@@ -316,7 +317,7 @@ if __name__ == "__main__":
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
         'oracle_reward_coef': 1.0, # Phase 1: High imitation reward
-        'local_action_only': True,
+        'local_action_only': False,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
@@ -330,8 +331,8 @@ if __name__ == "__main__":
         'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 50,
-        'test_episodes': 50
+        'train_episodes': 70,
+        'test_episodes': 20
     }
 
     #######################################

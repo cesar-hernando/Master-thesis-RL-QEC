@@ -224,39 +224,58 @@ def plot_weight_correlations(wm):
     plt.close()
     
 
+import os
+import matplotlib.pyplot as plt
+
 def plot_training_metrics(metrics, config):
-    """Generates a 3-panel plot showing training health over episodes."""
+    """Generates a 4-panel plot showing training health over episodes."""
     os.makedirs('plots', exist_ok=True)
     
     episodes = range(1, len(metrics['rewards']) + 1)
     
-    fig, axs = plt.subplots(1, 3, figsize=(18, 5))
-    fig.suptitle(f"SAC-GNN Training Metrics ({config['train_episodes']} Episodes)", fontsize=16)
+    # Create a 2x2 grid of subplots
+    fig, axs = plt.subplots(2, 2, figsize=(16, 10))
+    axs = axs.flatten()  # Flattens the 2x2 array into 1D for easier indexing
     
-    # Plot 1: Total Reward
+    fig.suptitle(f"SAC-GNN Training Metrics ({config['train_episodes']} Episodes)", fontsize=16, fontweight='bold', y=0.98)
+    
+    # Plot 1 (Top-Left): Total Reward
     axs[0].plot(episodes, metrics['rewards'], color='blue', linewidth=2)
     axs[0].set_title('Episode Reward')
     axs[0].set_xlabel('Episode')
     axs[0].set_ylabel('Total Reward')
     axs[0].grid(True, linestyle='--', alpha=0.7)
     
-    # Plot 2: Losses
-    axs[1].plot(episodes, metrics['c_losses'], label='Critic Loss', color='red', alpha=0.8)
-    axs[1].plot(episodes, metrics['a_losses'], label='Actor Loss', color='green', alpha=0.8)
-    axs[1].set_title('Network Losses')
-    axs[1].set_xlabel('Episode')
-    axs[1].set_ylabel('Loss')
-    axs[1].legend()
-    axs[1].grid(True, linestyle='--', alpha=0.7)
+    # Plot 2 (Top-Right): Alpha Evolution
+    # (Assuming you are storing alpha values in metrics['alphas'])
+    if 'alphas' in metrics:
+        axs[1].plot(episodes, metrics['alphas'], color='purple', linewidth=2)
+        axs[1].set_title('Alpha (Entropy Temperature)')
+        axs[1].set_xlabel('Episode')
+        axs[1].set_ylabel('Alpha Value')
+        axs[1].grid(True, linestyle='--', alpha=0.7)
+    else:
+        axs[1].text(0.5, 0.5, "Alpha metrics not found in dictionary", ha='center', va='center')
+        axs[1].set_title('Alpha (Entropy Temperature)')
     
-    # Plot 3: Weight MSE to Oracle
-    axs[2].plot(episodes, metrics['mses'], color='purple', linewidth=2)
-    axs[2].set_title('Final Weight MSE vs Oracle')
+    # Plot 3 (Bottom-Left): Critic Loss
+    axs[2].plot(episodes, metrics['c_losses'], label='Critic Loss', color='red', linewidth=2)
+    axs[2].set_title('Critic Loss (MSE)')
     axs[2].set_xlabel('Episode')
-    axs[2].set_ylabel('Mean Squared Error')
+    axs[2].set_ylabel('Loss')
     axs[2].grid(True, linestyle='--', alpha=0.7)
+
+    # Plot 4 (Bottom-Right): Actor Loss
+    axs[3].plot(episodes, metrics['a_losses'], label='Actor Loss', color='green', linewidth=2)
+    axs[3].set_title('Actor Loss')
+    axs[3].set_xlabel('Episode')
+    axs[3].set_ylabel('Loss')
+    axs[3].grid(True, linestyle='--', alpha=0.7)
     
+    # Adjust layout to prevent overlapping
     plt.tight_layout()
+    plt.subplots_adjust(top=0.92) # Give the suptitle a bit of breathing room
+    
     plt.savefig('plots/training_metrics.png', dpi=300)
     print("Training plots saved to 'plots/training_metrics.png'")
     plt.close()
