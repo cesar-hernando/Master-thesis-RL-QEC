@@ -324,8 +324,8 @@ class SurfaceCode:
         """
         Perform n_rounds rounds of stabilizer measurements, including gate operations and associated errors.
         """
-        residual_zz = [self.multiplier*(1 - np.pow(1 - 0.0025, 1 / 3)), self.multiplier*(1 - np.pow(1 - 0.0006, 1 / 3))]
-        zz_errors = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, residual_zz[0]]
+        residual_zz = self.multiplier*(1 - (1 - 0.0025)**(1/3))
+        zz_errors = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, residual_zz]
 
         # First, apply the X and Z stabilizers in an interleaved way.
         x_directions = [(-1, 1), (-1, -1), (1, 1), (1, -1)]

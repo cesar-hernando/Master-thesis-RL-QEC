@@ -78,7 +78,7 @@ def plot_syndrome_count_histogram(syndrome_counts, bypass_threshold=4, filename=
     print(f"Saved syndrome count histogram to '{filename}'")
 
 
-def plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson, filename='tracer_histograms.png'):
+def plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson, filename='./plots/tracer_histograms.png'):
     """
     Plots overlaid histograms comparing the initial DEM physics to the learned CMA tracers.
     """

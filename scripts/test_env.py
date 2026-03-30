@@ -17,17 +17,18 @@ verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=5, 
-    n_rounds=5, 
-    mismatch=30.0,  # Drift multiplier
+    distance=3, 
+    n_rounds=3, 
+    mismatch=10.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.004,
-        "before_measure_flip_probability": 0.004,
-        "after_reset_flip_probability": 0.004,
-        "before_round_data_depolarization": 0.004,
+        "after_clifford_depolarization": 0.002,
+        "before_measure_flip_probability": 0.002,
+        "after_reset_flip_probability": 0.002,
+        "before_round_data_depolarization": 0.002,
+        "p_gate_zz": 0.001,  # Crosstalk ZZ error probability
     }, 
-    memory_type='z', 
+    memory_type='x', 
     n_shots=n_shots, 
     qec_code='surface_code'
 )
@@ -132,6 +133,8 @@ x_steps = steps_array[start_plot_idx:]
 # PLOTTING #
 ############
 
+env.render()
+
 # 1. Reward evolution
 plt.figure()
 plt.plot(x_steps, rewards[start_plot_idx:])
@@ -198,5 +201,3 @@ initial_pearson = env.initial_pearson_corr
 final_pearson = env.pearson_correlations
 
 plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson)
-
-env.render()

@@ -46,6 +46,9 @@ class SyndromeDataGenerator:
                         after_reset_flip_probability=self.noise_model["after_reset_flip_probability"],
                         before_round_data_depolarization=self.noise_model["before_round_data_depolarization"],
                     )
+                if self.noise_model["p_gate_zz"] > 0:
+                    base_circuit = self.add_crosstalk_to_circuit(base_circuit, p_gate_zz=self.noise_model["p_gate_zz"])
+
             elif self.noise_model["version"] == 'custom':
                 sc = SurfaceCode(
                     hardware_params=self.noise_model["hardware_params"],
@@ -66,6 +69,38 @@ class SyndromeDataGenerator:
         base_matching = pymatching.Matching.from_detector_error_model(base_dem, enable_correlations=False)
 
         return base_circuit, base_dem, base_matching
+    
+    def add_crosstalk_to_circuit(self, circuit: stim.Circuit, p_gate_zz: float):
+        """
+        Takes a stim.Circuit.generated() circuit and injects gate-based crosstalk 
+        between data and ancilla qubits, based on: 
+
+        Zhou, Z., Ji, A., & Ding, Y. (2025). Surface code error correction with 
+        crosstalk noise.
+        """
+
+        new_circuit = stim.Circuit()
+
+        for instruction in circuit:
+            new_circuit.append(instruction)
+
+            # After every 2Q gate, inject correlated ZZ on the active pair
+            if instruction.name in ('CX', 'CZ', 'CNOT'):
+                targets = instruction.targets_copy()
+
+                # Targets come in pairs: [control, target, control, target, ...]
+                pairs = [(targets[i].value, targets[i+1].value)
+                        for i in range(0, len(targets), 2)]
+
+                # Type I from paper: ZZ after each 2Q gate, rate p_ZZ ~ 1e-3
+                for q1, q2 in pairs:
+                    new_circuit.append(
+                        'CORRELATED_ERROR',
+                        [stim.target_z(q1), stim.target_z(q2)],
+                        p_gate_zz
+                    )
+
+        return new_circuit
 
 
     def generate_drifted_circuit(self, base_circuit: stim.Circuit, seed: int=42):

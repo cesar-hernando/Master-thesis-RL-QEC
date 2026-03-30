@@ -309,6 +309,7 @@ if __name__ == "__main__":
         'distance': 5,
         'n_rounds': 5,
         'p': 0.004,
+        'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
         'mismatch': 30.0,
         'n_shots': 65_000,       # Shots per episode
         'burn_in_steps': 15_000,
@@ -349,6 +350,7 @@ if __name__ == "__main__":
             "before_measure_flip_probability": CONFIG["p"],
             "after_reset_flip_probability": CONFIG["p"],
             "before_round_data_depolarization": CONFIG["p"],
+            "p_gate_zz": CONFIG["p_gate_zz"]
         }, 
         memory_type='z', 
         n_shots=CONFIG['n_shots'], 

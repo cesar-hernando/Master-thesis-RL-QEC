@@ -1104,5 +1104,5 @@ class DriftedMatchingEnv(gym.Env):
         )
 
         # Save silently to an HTML file instead of opening a new tab
-        filename = "live_graph.html"
+        filename = ".\plots\live_graph.html"
         fig.write_html(filename)
