@@ -26,7 +26,7 @@ generator = SyndromeDataGenerator(
         "before_measure_flip_probability": 0.002,
         "after_reset_flip_probability": 0.002,
         "before_round_data_depolarization": 0.002,
-        "p_gate_zz": 0.001,  # Crosstalk ZZ error probability
+        "p_gate_zz": 0.0,  # Crosstalk ZZ error probability
     }, 
     memory_type='x', 
     n_shots=n_shots, 

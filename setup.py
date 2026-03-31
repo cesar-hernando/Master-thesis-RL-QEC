@@ -39,7 +39,7 @@ info = {
     "license": "Apache 2.0",
     "provides": ["adaptiveQRL"],
     "install_requires": install_requires,
-    #"extras_require": extras_require,
+    "extras_require": extras_require,
     "packages": find_packages(where='src'),
     "package_dir": {'': 'src'},
     "keywords": ["QEC", "Quantum", "Reinforcement Learning"],
