@@ -16,6 +16,8 @@ install_requires = [
     "gymnasium",
     "plotly",
     "scipy",
+    "torch",
+    "torch_geometric",
 ]
 
 extras_require = {
