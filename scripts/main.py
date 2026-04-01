@@ -17,8 +17,8 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'train',  
-        'model_path': 'models/sac_gnn_12.pth',
+        'MODE': 'analyze_policy',  
+        'model_path': 'models/sac_gnn_15.pth',
         
         # Environment Settings
         'distance': 5,
@@ -30,14 +30,14 @@ if __name__ == "__main__":
         'burn_in_steps': 15_000,
         'bypass_threshold': 2,
         'action_scale': 3.0,
-        'update_period': 100,  # CMA update frequency
-        'prior_shots': 100,
+        'update_period': 1000,  # CMA update frequency
+        'prior_shots': 1000,
         'oracle_reward_coef': 1.0, # Phase 1: High imitation reward
         'local_action_only': True,
-        'local_action_hops': 2, # if local_action_only = False, this parameter is ignored
+        'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
-        'hidden_dim': 64,
+        'hidden_dim': 128,
         'lr': 1e-4,
         'gamma': 0.99,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
@@ -47,8 +47,8 @@ if __name__ == "__main__":
         'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 30,
-        'test_episodes': 10
+        'train_episodes': 50,
+        'test_episodes': 20
     }
 
     #######################################

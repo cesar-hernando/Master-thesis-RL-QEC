@@ -233,7 +233,7 @@ def analyze_policy(env, agent, config):
     direct_actions = []    # Actions on edges MWPM actually picked (Flag=1)
     neighbor_actions = []  # Actions on edges that are neighbors (Mask=1, Flag=0)
 
-    episodes_to_run = min(1, config['test_episodes'])
+    episodes_to_run = min(3, config['test_episodes'])
     
     for episode in range(episodes_to_run):
         obs, info = env.reset()

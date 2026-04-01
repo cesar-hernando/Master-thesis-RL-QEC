@@ -17,18 +17,18 @@ verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
-    distance=3, 
-    n_rounds=3, 
-    mismatch=10.0,  # Drift multiplier
+    distance=5, 
+    n_rounds=5, 
+    mismatch=30.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.002,
-        "before_measure_flip_probability": 0.002,
-        "after_reset_flip_probability": 0.002,
-        "before_round_data_depolarization": 0.002,
+        "after_clifford_depolarization": 0.004,
+        "before_measure_flip_probability": 0.004,
+        "after_reset_flip_probability": 0.004,
+        "before_round_data_depolarization": 0.004,
         "p_gate_zz": 0.0,  # Crosstalk ZZ error probability
     }, 
-    memory_type='x', 
+    memory_type='z', 
     n_shots=n_shots, 
     qec_code='surface_code'
 )
@@ -40,7 +40,7 @@ env = DriftedMatchingEnv(
     action_scale = 3.0,
     update_period=1000,
     prior_shots=1000,
-    oracle_reward_coef=2.0,
+    oracle_reward_coef=1.0,
     use_pearson_correlation=True,
     use_syndrome_features=False,
     update_with='DGR',
