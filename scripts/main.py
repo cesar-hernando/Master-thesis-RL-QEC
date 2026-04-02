@@ -18,7 +18,7 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
         'MODE': 'train',  
-        'model_path': 'models/sac_gnn_16.pth',
+        'model_path': 'models/sac_gnn_18.pth',
         
         # Environment Settings
         'distance': 5,
@@ -39,7 +39,7 @@ if __name__ == "__main__":
         # Agent / NN Settings
         'hidden_dim': 128,
         'lr': 1e-4,
-        'gamma': 0.99,          # 0.0 for Contextual Bandit (Crucial for QEC!)
+        'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
         'alpha': 0.2,          # Entropy tuning
         'batch_size': 64,
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 100,
+        'train_episodes': 50,
         'test_episodes': 20
     }
 

@@ -344,11 +344,11 @@ if __name__ == "__main__":
     # 1. HYPERPARAMETERS & CONFIGURATION #
     ######################################
     CONFIG = {
-        'model_path': 'models/sac_gnn_16.pth',
+        'model_path': 'models/sac_gnn_17.pth',
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.01,
-        'p_gate_zz': 0.005,
+        'p': 0.004,
+        'p_gate_zz': 0.0,
         'mismatch': 1.0,
         'n_shots': 20_000,
         'burn_in_steps': 0,

@@ -1,6 +1,6 @@
 .venv
 .gitignore
-plots/
-models/
+#plots/
+#models/
 .github
 __pycache__
