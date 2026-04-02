@@ -72,16 +72,21 @@ def train(env, agent, buffer, config):
         metrics['alphas'].append(agent.log_alpha.exp().item())
             
         print(f"Train Ep: {episode+1:03d}/{config['train_episodes']} | "
-            f"Reward: {episode_reward:6.1f} | "
-            f"MSE: {info['weights_mse_error']:.4f} | "
-            f"C_Loss: {avg_c_loss:.3f} | "
-            f"A_Loss: {avg_a_loss:.3f} | "
-            f"Alpha: {agent.log_alpha.exp().item():.4f}")
+              f"Reward: {episode_reward:6.1f} | "
+              f"MSE: {info['weights_mse_error']:.4f} | "
+              f"C_Loss: {avg_c_loss:.3f} | "
+              f"A_Loss: {avg_a_loss:.3f} | "
+              f"Alpha: {agent.log_alpha.exp().item():.4f}")
+
+        # Save model every 5 episodes ---
+        if (episode + 1) % 5 == 0:
+            print(f"  -> Checkpointing model at Episode {episode+1}...")
+            agent.save_models(config['model_path'])
 
     run_time = time.time() - start_time
     print(f"\nTraining complete in {run_time:.2f} seconds.")
     
-    # Save the trained model and plot metrics
+    # Save the final trained model and plot metrics
     agent.save_models(config['model_path'])
     plot_training_metrics(metrics, config)
 
@@ -92,7 +97,7 @@ def test(env, agent, config):
     print(f"{'='*50}")
     
     agent.load_models(config['model_path'])
-    bypass_threshold = config.get('bypass_threshold', 4)
+    bypass_threshold = config.get('bypass_threshold', 2)
 
     test_seeds = [int(np.random.randint(0, 1_000_000)) for _ in range(config['test_episodes'])]
     
@@ -101,11 +106,14 @@ def test(env, agent, config):
     eval_shots_per_ep = n_shots - burn_in_steps
     
     total_shots = config['test_episodes'] * n_shots
-    total_eval_shots = config['test_episodes'] * eval_shots_per_ep # For LER math
+    total_eval_shots = config['test_episodes'] * eval_shots_per_ep 
     
     policies = ['GNN', 'Zero', 'Random']
     
-    raw_results = {p: {'errors': 0, 'eval_errors': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} for p in policies + ['Oracle', 'Static']}
+    raw_results = {
+        p: {'errors': 0, 'eval_errors': 0, 'fixed_count': 0, 'broken_count': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} 
+        for p in policies + ['Oracle', 'Static']
+    }
     
     weight_metrics = {
         'mse_gnn_oracle': [], 'mse_zero_oracle': [], 'mse_random_oracle': [],
@@ -120,25 +128,28 @@ def test(env, agent, config):
         policy_errors, oracle_errors, static_errors = 0, 0, 0
         policy_eval_errs, oracle_eval_errs, static_eval_errs = 0, 0, 0
         
+        policy_fixed_count = 0 
+        policy_broken_count = 0 
+        
         for episode in range(config['test_episodes']):
             obs, info = env.reset(seed=test_seeds[episode])
             done = False
             step_count = 0
+            
             ep_eval_policy_errs = 0 
+            ep_fixed_count = 0
+            ep_broken_count = 0
             
             ep_weights_mse_oracle, ep_weights_mse_static = [], []
             ep_corr_mse_oracle, ep_corr_mse_static = [], []
             
             while not done:
-                # Count flashes for the gating mechanism
                 n_flashes = np.sum(env.current_syndrome != 0)
 
-                # --- 1. BURN-IN VS ACTIVE LOGIC ---
                 if step_count < burn_in_steps:
                     action = np.zeros(env.n_dec_edges, dtype=np.float32)
                 else:
                     if policy == 'GNN': 
-                        # HYBRID DECODER LOGIC: Bypass GNN for trivial shots
                         if n_flashes <= bypass_threshold:
                             action = np.zeros(env.n_dec_edges, dtype=np.float32)
                         else:
@@ -149,17 +160,26 @@ def test(env, agent, config):
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 
-                # --- 2. ERROR TRACKING ---
                 err_policy = int(info["logical_error"])
                 
-                # Global Tracking (For the Cumulative Plot)
                 policy_errors += err_policy
                 raw_results[policy]['cum'][global_shot_idx] = policy_errors
                 
-                # Eval Tracking (For the LER Bar Chart - Only count post-burn-in)
                 if step_count >= burn_in_steps:
                     policy_eval_errs += err_policy
                     ep_eval_policy_errs += err_policy
+                    
+                    if policy == 'GNN':
+                        true_obs = info["true_obs"]
+                        pass1_correct = (info["first_pass_obs"] == true_obs)
+                        pass2_correct = (info["pred_obs"] == true_obs)
+                        
+                        if pass2_correct and not pass1_correct:
+                            policy_fixed_count += 1
+                            ep_fixed_count += 1
+                        elif pass1_correct and not pass2_correct:
+                            policy_broken_count += 1
+                            ep_broken_count += 1
 
                 if policy == 'GNN':
                     err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
@@ -174,7 +194,6 @@ def test(env, agent, config):
                         oracle_eval_errs += err_oracle
                         static_eval_errs += err_static
 
-                # Track weight and correlations MSE errors
                 if step_count >= burn_in_steps:
                     ep_weights_mse_oracle.append(info["weights_mse_error"])
                     ep_weights_mse_static.append(info["weights_mse_error_static"])
@@ -185,7 +204,11 @@ def test(env, agent, config):
                 step_count += 1
                 global_shot_idx += 1
                 
-            print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_eval_policy_errs} active errors")
+            # Clean printing logic
+            if policy == 'GNN':
+                print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_eval_policy_errs} errors | Fixed: {ep_fixed_count} | Broken: {ep_broken_count}")
+            else:
+                print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_eval_policy_errs} errors")
             
             pol_key = policy.lower()
             weight_metrics[f'mse_{pol_key}_oracle'].append(ep_weights_mse_oracle)
@@ -194,11 +217,22 @@ def test(env, agent, config):
             weight_metrics[f'p_{pol_key}_static'].append(ep_corr_mse_static)
             
         raw_results[policy]['eval_errors'] = policy_eval_errs
+        
+        # Clean summary logic
+        print(f"\n  -> {policy} Summary:")
+        print(f"     * LER: {policy_eval_errs / total_eval_shots:.6f} ({policy_eval_errs}/{total_eval_shots})")
+        if policy == 'GNN':
+            fixed_pct = (policy_fixed_count / total_eval_shots) * 100
+            broken_pct = (policy_broken_count / total_eval_shots) * 100
+            raw_results[policy]['fixed_count'] = policy_fixed_count
+            raw_results[policy]['broken_count'] = policy_broken_count
+            print(f"     * Fixed CMA Errors:  {policy_fixed_count} times ({fixed_pct:.3f}% of eval shots)")
+            print(f"     * Broken CMA Succes: {policy_broken_count} times ({broken_pct:.3f}% of eval shots)")
+
         if policy == 'GNN':
             raw_results['Oracle']['eval_errors'] = oracle_eval_errs
             raw_results['Static']['eval_errors'] = static_eval_errs
 
-    # Format the final LER metrics using ONLY the active evaluation shots
     final_metrics = {}
     for k in ['GNN', 'Zero', 'Random', 'Oracle', 'Static']:
         final_metrics[f'ler_{k.lower()}'] = raw_results[k]['eval_errors'] / total_eval_shots

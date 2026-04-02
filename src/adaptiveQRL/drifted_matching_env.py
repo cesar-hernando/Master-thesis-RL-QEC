@@ -625,10 +625,25 @@ class DriftedMatchingEnv(gym.Env):
         if selected_idx.size == 0:
             return np.zeros(self.n_dec_edges, dtype=np.float32)
 
-        # Slice the K-hop matrix rows for the selected edges, 
-        # collapse them with .any(), and cast to float mask!
+        # 1. Base mask: Includes selected edges and their K-hop neighbors
         mask = self.k_hop_adj_mat[selected_idx].any(axis=0).astype(np.float32)
         
+        # 2. Extract the S x S subgraph of ONLY the selected edges
+        # This tells us which selected edges are connected to OTHER selected edges
+        selected_subgraph = self.k_hop_adj_mat[selected_idx][:, selected_idx]
+        
+        # 3. Sum the connections. Because k_hop_adj_mat has self-loops, 
+        # a sum of 1 means the edge is isolated (it only connects to itself).
+        # A sum > 1 means it has at least one other selected edge in its neighborhood.
+        selected_neighbor_counts = selected_subgraph.sum(axis=1)
+        
+        # 4. Identify the isolated selected edges
+        isolated_selected_idx = selected_idx[selected_neighbor_counts == 1]
+        
+        # 5. Mask them out
+        if isolated_selected_idx.size > 0:
+            mask[isolated_selected_idx] = 0.0
+            
         return mask
     
 

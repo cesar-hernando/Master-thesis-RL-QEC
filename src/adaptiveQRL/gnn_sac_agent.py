@@ -145,7 +145,7 @@ class GNNCritic(nn.Module):
 ####################################
 
 class SACAgent:
-    def __init__(self, node_dim, hidden_dim, lr=3e-4, gamma=0.0, tau=0.005, alpha=0.2):
+    def __init__(self, node_dim, hidden_dim, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.tau = tau
@@ -271,8 +271,8 @@ class SACAgent:
         self.alpha_optimizer.step()
 
         with torch.no_grad():
-            # np.log(0.05) ≈ -3.0, np.log(0.2) ≈ -1.6
-            self.log_alpha.clamp_(np.log(0.05), np.log(0.2))
+            # np.log(0.005) ≈ -5.29, np.log(0.2) ≈ -1.61
+            self.log_alpha.clamp_(np.log(0.005), np.log(0.2))
 
         # TARGET SOFT UPDATE
         if self.gamma > 0.0:
