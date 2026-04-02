@@ -193,7 +193,7 @@ def _render_shot_gallery(env, saved_shots):
     print(f"\n[*] Render complete! Found {len(saved_shots)} diverging shots. Open '{filename}'.")
 
 
-def evaluate_ler_and_extract_gallery(env, agent, config, target_flashes=4, max_shots=10):
+def evaluate_ler_and_extract_gallery(env, agent, config, max_shots=10):
     """
     Evaluates the Logical Error Rate (LER) over all test episodes (excluding burn-in),
     and simultaneously harvests complex, diverging shots for the Plotly gallery.
@@ -286,7 +286,7 @@ def evaluate_ler_and_extract_gallery(env, agent, config, target_flashes=4, max_s
                 pass_2_obs = info['pred_obs']
                 
                 # Filter: Did the GNN change the LOGICAL PREDICTION? Is it complex enough? Do we have space?
-                if (pass_1_obs != pass_2_obs) and (n_flashes >= target_flashes) and (len(saved_shots) < max_shots):
+                if (pass_1_obs != pass_2_obs) and (len(saved_shots) < max_shots):
                     saved_shots.append({
                         'step': env.step_count,
                         'syndrome': syndrome,
@@ -344,7 +344,7 @@ if __name__ == "__main__":
     # 1. HYPERPARAMETERS & CONFIGURATION #
     ######################################
     CONFIG = {
-        'model_path': 'models/sac_gnn_17.pth',
+        'model_path': 'models/sac_gnn_19.pth',
         'distance': 5,
         'n_rounds': 5,
         'p': 0.004,
@@ -361,9 +361,9 @@ if __name__ == "__main__":
         'local_action_hops': 1,
         'hidden_dim': 128,
         'lr': 1e-4,
-        'gamma': 0.99,
+        'gamma': 0.0,
         'tau': 0.005,
-        'alpha': 0.2,
+        'alpha': 0.01,
         'batch_size': 64,
         'buffer_capacity': 100_000,
         'update_frequency': 100,
@@ -417,13 +417,11 @@ if __name__ == "__main__":
     ############################
     # 3. UNIFIED EXECUTION     #
     ############################
-    target_flashes = CONFIG['bypass_threshold'] + 2 
     
     # Run evaluation and build gallery simultaneously
     evaluate_ler_and_extract_gallery(
         env, 
         agent, 
-        CONFIG, 
-        target_flashes=target_flashes, 
+        CONFIG,  
         max_shots=10
     )
