@@ -182,7 +182,6 @@ def plot_weight_correlations(wm):
     # Plot 1: MSE vs Oracle
     plot_evolution_with_std(axs[0, 0], wm['mse_gnn_oracle'], 'GNN', c_gnn)
     plot_evolution_with_std(axs[0, 0], wm['mse_zero_oracle'], 'Zero (CMA)', c_zero)
-    plot_evolution_with_std(axs[0, 0], wm['mse_random_oracle'], 'Random', c_rand, ':')
     axs[0, 0].set_title('Weight Difference (vs Oracle Weights)')
     axs[0, 0].set_ylabel('Mean Squared Error')
     axs[0, 0].set_xlabel('Step (Shot) within Episode')
@@ -192,7 +191,6 @@ def plot_weight_correlations(wm):
     # Plot 2: MSE vs Static
     plot_evolution_with_std(axs[0, 1], wm['mse_gnn_static'], 'GNN', c_gnn)
     plot_evolution_with_std(axs[0, 1], wm['mse_zero_static'], 'Zero (CMA)', c_zero)
-    plot_evolution_with_std(axs[0, 1], wm['mse_random_static'], 'Random', c_rand, ':')
     axs[0, 1].set_title('Weight Difference (vs Static Undrifted Graph)')
     axs[0, 1].set_xlabel('Step (Shot) within Episode')
     axs[0, 1].legend()
@@ -202,7 +200,6 @@ def plot_weight_correlations(wm):
     # Plot 3: Correlation vs Oracle
     plot_evolution_with_std(axs[1, 0], wm['p_gnn_oracle'], 'GNN', c_gnn)
     plot_evolution_with_std(axs[1, 0], wm['p_zero_oracle'], 'Zero (CMA)', c_zero)
-    plot_evolution_with_std(axs[1, 0], wm['p_random_oracle'], 'Random', c_rand, ':')
     axs[1, 0].set_title('Correlation (vs Oracle)')
     axs[1, 0].set_ylabel('Correlation Coefficient / Error')
     axs[1, 0].set_xlabel('Step (Shot) within Episode')
@@ -212,7 +209,6 @@ def plot_weight_correlations(wm):
     # Plot 4: Correlation vs Static
     plot_evolution_with_std(axs[1, 1], wm['p_gnn_static'], 'GNN', c_gnn)
     plot_evolution_with_std(axs[1, 1], wm['p_zero_static'], 'Zero (CMA)', c_zero)
-    plot_evolution_with_std(axs[1, 1], wm['p_random_static'], 'Random', c_rand, ':')
     axs[1, 1].set_title('Correlation (vs Static Undrifted Graph)')
     axs[1, 1].set_xlabel('Step (Shot) within Episode')
     axs[1, 1].legend()
@@ -289,8 +285,8 @@ def plot_testing_metrics(test_results):
     fig.suptitle("Comprehensive Decoder Evaluation (Ablation Study)", fontsize=16)
     
     # Define the 5 categories
-    labels = ['GNN (Ours)', 'Oracle', 'Zero (CMA Only)', 'Static', 'Random']
-    keys = ['gnn', 'oracle', 'zero', 'static', 'random']
+    labels = ['GNN (Ours)', 'Zero (CMA Only)', 'Static', 'Oracle']
+    keys = ['gnn', 'zero', 'static', 'oracle']
     
     # Colors: Green (Win), Blue (Target), Purple (Ablation), Red (Baseline), Orange (Worst)
     colors = ['#2ca02c', '#1f77b4', '#9467bd', '#d62728', '#ff7f0e']
@@ -313,7 +309,7 @@ def plot_testing_metrics(test_results):
     
     for label, key, color in zip(labels, keys, colors):
         # Use dashed/dotted lines for the static baselines to make the GNN stand out
-        linestyle = '-' if key in ['gnn', 'zero', 'random'] else '--'
+        linestyle = '-' if key in ['gnn', 'zero', 'oracle'] else '--'
         axs[1].plot(shots, test_results[f'cum_{key}'], label=label, color=color, linewidth=2, linestyle=linestyle)
     
     axs[1].set_title('Cumulative Logical Errors')

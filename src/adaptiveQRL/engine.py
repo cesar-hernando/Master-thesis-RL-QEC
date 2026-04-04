@@ -108,7 +108,7 @@ def test(env, agent, config):
     total_shots = config['test_episodes'] * n_shots
     total_eval_shots = config['test_episodes'] * eval_shots_per_ep 
     
-    policies = ['GNN', 'Zero', 'Random']
+    policies = ['GNN', 'Zero']
     
     raw_results = {
         p: {'errors': 0, 'eval_errors': 0, 'fixed_count': 0, 'broken_count': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} 
@@ -116,10 +116,10 @@ def test(env, agent, config):
     }
     
     weight_metrics = {
-        'mse_gnn_oracle': [], 'mse_zero_oracle': [], 'mse_random_oracle': [],
-        'mse_gnn_static': [], 'mse_zero_static': [], 'mse_random_static': [],
-        'p_gnn_oracle': [], 'p_zero_oracle': [], 'p_random_oracle': [],
-        'p_gnn_static': [], 'p_zero_static': [], 'p_random_static': []
+        'mse_gnn_oracle': [], 'mse_zero_oracle': [],
+        'mse_gnn_static': [], 'mse_zero_static': [],
+        'p_gnn_oracle': [], 'p_zero_oracle': [], 
+        'p_gnn_static': [], 'p_zero_static': [],
     }
 
     for policy in policies:
@@ -155,7 +155,6 @@ def test(env, agent, config):
                         else:
                             action = agent.select_action(obs, evaluate=True)
                     elif policy == 'Zero': action = np.zeros(env.n_dec_edges, dtype=np.float32)
-                    elif policy == 'Random': action = np.random.uniform(low=-1.0, high=1.0, size=env.n_dec_edges).astype(np.float32)
                     
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
@@ -234,7 +233,7 @@ def test(env, agent, config):
             raw_results['Static']['eval_errors'] = static_eval_errs
 
     final_metrics = {}
-    for k in ['GNN', 'Zero', 'Random', 'Oracle', 'Static']:
+    for k in ['GNN', 'Zero', 'Static', 'Oracle']:
         final_metrics[f'ler_{k.lower()}'] = raw_results[k]['eval_errors'] / total_eval_shots
         final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
 

@@ -1,0 +1,466 @@
+Job started at: Fri Apr  3 19:32:41 CEST 2026
+----------------------------------------
+Starting Run 1: Update Period 1000
+----------------------------------------
+SLURM Mode Received: 0
+Execution Pipeline: ['train']
+Loaded Configuration: {'mode': 0, 'model_path': 'models/sac_gnn_20.pth', 'distance': 5, 'n_rounds': 5, 'p': 0.004, 'p_gate_zz': 0.0, 'mismatch': 1.0, 'n_shots': 20000, 'burn_in_steps': 0, 'bypass_threshold': 2, 'action_scale': 3.0, 'update_period': 1000, 'prior_shots': 1000, 'oracle_reward_coef': 0.0, 'local_action_only': True, 'local_action_hops': 1, 'hidden_dim': 128, 'lr': 0.0001, 'gamma': 0.99, 'tau': 0.005, 'alpha': 0.01, 'batch_size': 64, 'buffer_capacity': 100000, 'update_frequency': 100, 'train_episodes': 150, 'test_episodes': 20}
+
+Initializing environment...
+
+############################################################
+### RUNNING MODE: TRAIN
+############################################################
+
+========================================
+STARTING TRAINING (Episodes: 150)
+========================================
+Train Ep: 001/150 | Reward:  -76.0 | MSE: 0.0463 | C_Loss: 0.019 | A_Loss: -0.028 | Alpha: 0.0098
+Train Ep: 002/150 | Reward:  -82.0 | MSE: 0.0463 | C_Loss: 0.016 | A_Loss: -0.033 | Alpha: 0.0096
+Train Ep: 003/150 | Reward:  -78.0 | MSE: 0.0497 | C_Loss: 0.014 | A_Loss: -0.037 | Alpha: 0.0094
+Train Ep: 004/150 | Reward: -109.0 | MSE: 0.0448 | C_Loss: 0.020 | A_Loss: -0.036 | Alpha: 0.0092
+Train Ep: 005/150 | Reward:  -73.0 | MSE: 0.0431 | C_Loss: 0.017 | A_Loss: -0.037 | Alpha: 0.0090
+  -> Checkpointing model at Episode 5...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 006/150 | Reward:  -83.0 | MSE: 0.0435 | C_Loss: 0.017 | A_Loss: -0.037 | Alpha: 0.0089
+Train Ep: 007/150 | Reward:  -68.0 | MSE: 0.0410 | C_Loss: 0.019 | A_Loss: -0.034 | Alpha: 0.0087
+Train Ep: 008/150 | Reward:  -84.0 | MSE: 0.0420 | C_Loss: 0.017 | A_Loss: -0.037 | Alpha: 0.0085
+Train Ep: 009/150 | Reward:  -92.0 | MSE: 0.0421 | C_Loss: 0.019 | A_Loss: -0.037 | Alpha: 0.0084
+Train Ep: 010/150 | Reward:  -73.0 | MSE: 0.0503 | C_Loss: 0.018 | A_Loss: -0.037 | Alpha: 0.0082
+  -> Checkpointing model at Episode 10...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 011/150 | Reward:  -82.0 | MSE: 0.0473 | C_Loss: 0.018 | A_Loss: -0.039 | Alpha: 0.0080
+Train Ep: 012/150 | Reward:  -73.0 | MSE: 0.0465 | C_Loss: 0.019 | A_Loss: -0.038 | Alpha: 0.0079
+Train Ep: 013/150 | Reward:  -66.0 | MSE: 0.0443 | C_Loss: 0.015 | A_Loss: -0.040 | Alpha: 0.0077
+Train Ep: 014/150 | Reward:  -88.0 | MSE: 0.0404 | C_Loss: 0.019 | A_Loss: -0.039 | Alpha: 0.0076
+Train Ep: 015/150 | Reward:  -68.0 | MSE: 0.0503 | C_Loss: 0.018 | A_Loss: -0.039 | Alpha: 0.0074
+  -> Checkpointing model at Episode 15...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 016/150 | Reward:  -51.0 | MSE: 0.0453 | C_Loss: 0.015 | A_Loss: -0.041 | Alpha: 0.0073
+Train Ep: 017/150 | Reward:  -76.0 | MSE: 0.0471 | C_Loss: 0.016 | A_Loss: -0.039 | Alpha: 0.0071
+Train Ep: 018/150 | Reward:  -76.0 | MSE: 0.0488 | C_Loss: 0.015 | A_Loss: -0.040 | Alpha: 0.0070
+Train Ep: 019/150 | Reward:  -54.0 | MSE: 0.0528 | C_Loss: 0.017 | A_Loss: -0.039 | Alpha: 0.0068
+Train Ep: 020/150 | Reward:  -77.0 | MSE: 0.0427 | C_Loss: 0.015 | A_Loss: -0.041 | Alpha: 0.0067
+  -> Checkpointing model at Episode 20...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 021/150 | Reward:  -59.0 | MSE: 0.0606 | C_Loss: 0.016 | A_Loss: -0.041 | Alpha: 0.0066
+Train Ep: 022/150 | Reward:  -83.0 | MSE: 0.0435 | C_Loss: 0.015 | A_Loss: -0.043 | Alpha: 0.0064
+Train Ep: 023/150 | Reward:  -94.0 | MSE: 0.0416 | C_Loss: 0.015 | A_Loss: -0.043 | Alpha: 0.0063
+Train Ep: 024/150 | Reward:  -65.0 | MSE: 0.0520 | C_Loss: 0.018 | A_Loss: -0.040 | Alpha: 0.0062
+Train Ep: 025/150 | Reward:  -75.0 | MSE: 0.0476 | C_Loss: 0.017 | A_Loss: -0.041 | Alpha: 0.0061
+  -> Checkpointing model at Episode 25...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 026/150 | Reward:  -79.0 | MSE: 0.0463 | C_Loss: 0.020 | A_Loss: -0.040 | Alpha: 0.0059
+Train Ep: 027/150 | Reward:  -73.0 | MSE: 0.0443 | C_Loss: 0.018 | A_Loss: -0.038 | Alpha: 0.0058
+Train Ep: 028/150 | Reward:  -75.0 | MSE: 0.0519 | C_Loss: 0.019 | A_Loss: -0.036 | Alpha: 0.0057
+Train Ep: 029/150 | Reward:  -87.0 | MSE: 0.0447 | C_Loss: 0.019 | A_Loss: -0.033 | Alpha: 0.0056
+Train Ep: 030/150 | Reward:  -67.0 | MSE: 0.0448 | C_Loss: 0.014 | A_Loss: -0.033 | Alpha: 0.0055
+  -> Checkpointing model at Episode 30...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 031/150 | Reward:  -65.0 | MSE: 0.0511 | C_Loss: 0.018 | A_Loss: -0.029 | Alpha: 0.0054
+Train Ep: 032/150 | Reward:  -59.0 | MSE: 0.0499 | C_Loss: 0.015 | A_Loss: -0.029 | Alpha: 0.0053
+Train Ep: 033/150 | Reward:  -60.0 | MSE: 0.0505 | C_Loss: 0.015 | A_Loss: -0.028 | Alpha: 0.0052
+Train Ep: 034/150 | Reward:  -95.0 | MSE: 0.0469 | C_Loss: 0.016 | A_Loss: -0.026 | Alpha: 0.0051
+Train Ep: 035/150 | Reward:  -91.0 | MSE: 0.0444 | C_Loss: 0.013 | A_Loss: -0.027 | Alpha: 0.0050
+  -> Checkpointing model at Episode 35...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 036/150 | Reward:  -70.0 | MSE: 0.0494 | C_Loss: 0.015 | A_Loss: -0.024 | Alpha: 0.0049
+Train Ep: 037/150 | Reward:  -86.0 | MSE: 0.0447 | C_Loss: 0.014 | A_Loss: -0.023 | Alpha: 0.0048
+Train Ep: 038/150 | Reward:  -80.0 | MSE: 0.0524 | C_Loss: 0.018 | A_Loss: -0.022 | Alpha: 0.0047
+Train Ep: 039/150 | Reward:  -79.0 | MSE: 0.0433 | C_Loss: 0.020 | A_Loss: -0.017 | Alpha: 0.0046
+Train Ep: 040/150 | Reward:  -81.0 | MSE: 0.0454 | C_Loss: 0.014 | A_Loss: -0.016 | Alpha: 0.0045
+  -> Checkpointing model at Episode 40...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 041/150 | Reward:  -55.0 | MSE: 0.0427 | C_Loss: 0.015 | A_Loss: -0.014 | Alpha: 0.0044
+Train Ep: 042/150 | Reward:  -53.0 | MSE: 0.0467 | C_Loss: 0.016 | A_Loss: -0.014 | Alpha: 0.0043
+Train Ep: 043/150 | Reward:  -68.0 | MSE: 0.0410 | C_Loss: 0.016 | A_Loss: -0.012 | Alpha: 0.0042
+Train Ep: 044/150 | Reward:  -47.0 | MSE: 0.0432 | C_Loss: 0.015 | A_Loss: -0.011 | Alpha: 0.0041
+Train Ep: 045/150 | Reward:  -69.0 | MSE: 0.0432 | C_Loss: 0.015 | A_Loss: -0.010 | Alpha: 0.0041
+  -> Checkpointing model at Episode 45...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 046/150 | Reward:  -77.0 | MSE: 0.0463 | C_Loss: 0.014 | A_Loss: -0.007 | Alpha: 0.0040
+Train Ep: 047/150 | Reward:  -71.0 | MSE: 0.0414 | C_Loss: 0.015 | A_Loss: -0.006 | Alpha: 0.0039
+Train Ep: 048/150 | Reward:  -79.0 | MSE: 0.0478 | C_Loss: 0.019 | A_Loss: -0.005 | Alpha: 0.0038
+Train Ep: 049/150 | Reward:  -60.0 | MSE: 0.0453 | C_Loss: 0.015 | A_Loss: -0.002 | Alpha: 0.0038
+Train Ep: 050/150 | Reward:  -85.0 | MSE: 0.0424 | C_Loss: 0.015 | A_Loss: -0.001 | Alpha: 0.0037
+  -> Checkpointing model at Episode 50...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 051/150 | Reward:  -58.0 | MSE: 0.0393 | C_Loss: 0.017 | A_Loss: 0.001 | Alpha: 0.0036
+Train Ep: 052/150 | Reward:  -54.0 | MSE: 0.0472 | C_Loss: 0.017 | A_Loss: 0.003 | Alpha: 0.0035
+Train Ep: 053/150 | Reward:  -92.0 | MSE: 0.0432 | C_Loss: 0.017 | A_Loss: 0.007 | Alpha: 0.0035
+Train Ep: 054/150 | Reward:  -70.0 | MSE: 0.0423 | C_Loss: 0.015 | A_Loss: 0.010 | Alpha: 0.0034
+Train Ep: 055/150 | Reward:  -41.0 | MSE: 0.0507 | C_Loss: 0.016 | A_Loss: 0.012 | Alpha: 0.0033
+  -> Checkpointing model at Episode 55...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 056/150 | Reward:  -73.0 | MSE: 0.0451 | C_Loss: 0.017 | A_Loss: 0.015 | Alpha: 0.0033
+Train Ep: 057/150 | Reward:  -45.0 | MSE: 0.0575 | C_Loss: 0.015 | A_Loss: 0.017 | Alpha: 0.0032
+Train Ep: 058/150 | Reward:  -60.0 | MSE: 0.0511 | C_Loss: 0.016 | A_Loss: 0.020 | Alpha: 0.0031
+Train Ep: 059/150 | Reward:  -71.0 | MSE: 0.0490 | C_Loss: 0.016 | A_Loss: 0.022 | Alpha: 0.0031
+Train Ep: 060/150 | Reward:  -78.0 | MSE: 0.0471 | C_Loss: 0.017 | A_Loss: 0.024 | Alpha: 0.0030
+  -> Checkpointing model at Episode 60...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 061/150 | Reward:  -73.0 | MSE: 0.0477 | C_Loss: 0.015 | A_Loss: 0.028 | Alpha: 0.0030
+Train Ep: 062/150 | Reward:  -49.0 | MSE: 0.0408 | C_Loss: 0.019 | A_Loss: 0.031 | Alpha: 0.0029
+Train Ep: 063/150 | Reward:  -44.0 | MSE: 0.0448 | C_Loss: 0.019 | A_Loss: 0.031 | Alpha: 0.0028
+Train Ep: 064/150 | Reward:  -50.0 | MSE: 0.0460 | C_Loss: 0.015 | A_Loss: 0.034 | Alpha: 0.0028
+Train Ep: 065/150 | Reward:  -62.0 | MSE: 0.0450 | C_Loss: 0.015 | A_Loss: 0.034 | Alpha: 0.0027
+  -> Checkpointing model at Episode 65...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 066/150 | Reward:  -41.0 | MSE: 0.0473 | C_Loss: 0.016 | A_Loss: 0.036 | Alpha: 0.0027
+Train Ep: 067/150 | Reward:  -48.0 | MSE: 0.0473 | C_Loss: 0.014 | A_Loss: 0.036 | Alpha: 0.0026
+Train Ep: 068/150 | Reward:  -50.0 | MSE: 0.0440 | C_Loss: 0.013 | A_Loss: 0.037 | Alpha: 0.0026
+Train Ep: 069/150 | Reward:  -51.0 | MSE: 0.0406 | C_Loss: 0.016 | A_Loss: 0.038 | Alpha: 0.0025
+Train Ep: 070/150 | Reward:  -48.0 | MSE: 0.0462 | C_Loss: 0.014 | A_Loss: 0.040 | Alpha: 0.0025
+  -> Checkpointing model at Episode 70...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 071/150 | Reward:  -45.0 | MSE: 0.0457 | C_Loss: 0.011 | A_Loss: 0.041 | Alpha: 0.0024
+Train Ep: 072/150 | Reward:  -61.0 | MSE: 0.0470 | C_Loss: 0.013 | A_Loss: 0.042 | Alpha: 0.0024
+Train Ep: 073/150 | Reward:  -42.0 | MSE: 0.0414 | C_Loss: 0.012 | A_Loss: 0.042 | Alpha: 0.0023
+Train Ep: 074/150 | Reward:  -47.0 | MSE: 0.0439 | C_Loss: 0.014 | A_Loss: 0.044 | Alpha: 0.0023
+Train Ep: 075/150 | Reward:  -17.0 | MSE: 0.0415 | C_Loss: 0.013 | A_Loss: 0.046 | Alpha: 0.0022
+  -> Checkpointing model at Episode 75...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 076/150 | Reward:  -55.0 | MSE: 0.0579 | C_Loss: 0.014 | A_Loss: 0.049 | Alpha: 0.0022
+Train Ep: 077/150 | Reward:  -52.0 | MSE: 0.0456 | C_Loss: 0.012 | A_Loss: 0.049 | Alpha: 0.0021
+Train Ep: 078/150 | Reward:  -33.0 | MSE: 0.0476 | C_Loss: 0.013 | A_Loss: 0.051 | Alpha: 0.0021
+Train Ep: 079/150 | Reward:  -28.0 | MSE: 0.0424 | C_Loss: 0.010 | A_Loss: 0.049 | Alpha: 0.0021
+Train Ep: 080/150 | Reward:  -40.0 | MSE: 0.0400 | C_Loss: 0.012 | A_Loss: 0.052 | Alpha: 0.0020
+  -> Checkpointing model at Episode 80...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 081/150 | Reward:  -26.0 | MSE: 0.0469 | C_Loss: 0.013 | A_Loss: 0.053 | Alpha: 0.0020
+Train Ep: 082/150 | Reward:  -30.0 | MSE: 0.0521 | C_Loss: 0.012 | A_Loss: 0.055 | Alpha: 0.0019
+Train Ep: 083/150 | Reward:  -21.0 | MSE: 0.0434 | C_Loss: 0.010 | A_Loss: 0.054 | Alpha: 0.0019
+Train Ep: 084/150 | Reward:  -28.0 | MSE: 0.0437 | C_Loss: 0.012 | A_Loss: 0.055 | Alpha: 0.0019
+Train Ep: 085/150 | Reward:  -34.0 | MSE: 0.0478 | C_Loss: 0.010 | A_Loss: 0.055 | Alpha: 0.0018
+  -> Checkpointing model at Episode 85...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 086/150 | Reward:  -34.0 | MSE: 0.0481 | C_Loss: 0.011 | A_Loss: 0.056 | Alpha: 0.0018
+Train Ep: 087/150 | Reward:  -31.0 | MSE: 0.0468 | C_Loss: 0.010 | A_Loss: 0.057 | Alpha: 0.0018
+Train Ep: 088/150 | Reward:  -49.0 | MSE: 0.0410 | C_Loss: 0.008 | A_Loss: 0.057 | Alpha: 0.0017
+Train Ep: 089/150 | Reward:  -27.0 | MSE: 0.0541 | C_Loss: 0.009 | A_Loss: 0.058 | Alpha: 0.0017
+Train Ep: 090/150 | Reward:  -36.0 | MSE: 0.0423 | C_Loss: 0.010 | A_Loss: 0.058 | Alpha: 0.0017
+  -> Checkpointing model at Episode 90...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 091/150 | Reward:  -29.0 | MSE: 0.0452 | C_Loss: 0.010 | A_Loss: 0.058 | Alpha: 0.0016
+Train Ep: 092/150 | Reward:  -36.0 | MSE: 0.0459 | C_Loss: 0.010 | A_Loss: 0.059 | Alpha: 0.0016
+Train Ep: 093/150 | Reward:  -41.0 | MSE: 0.0546 | C_Loss: 0.009 | A_Loss: 0.060 | Alpha: 0.0016
+Train Ep: 094/150 | Reward:  -26.0 | MSE: 0.0526 | C_Loss: 0.009 | A_Loss: 0.058 | Alpha: 0.0015
+Train Ep: 095/150 | Reward:  -44.0 | MSE: 0.0559 | C_Loss: 0.010 | A_Loss: 0.060 | Alpha: 0.0015
+  -> Checkpointing model at Episode 95...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 096/150 | Reward:  -33.0 | MSE: 0.0507 | C_Loss: 0.011 | A_Loss: 0.059 | Alpha: 0.0015
+Train Ep: 097/150 | Reward:  -26.0 | MSE: 0.0406 | C_Loss: 0.010 | A_Loss: 0.060 | Alpha: 0.0014
+Train Ep: 098/150 | Reward:  -32.0 | MSE: 0.0453 | C_Loss: 0.010 | A_Loss: 0.060 | Alpha: 0.0014
+Train Ep: 099/150 | Reward:  -26.0 | MSE: 0.0591 | C_Loss: 0.010 | A_Loss: 0.062 | Alpha: 0.0014
+Train Ep: 100/150 | Reward:  -33.0 | MSE: 0.0494 | C_Loss: 0.008 | A_Loss: 0.062 | Alpha: 0.0014
+  -> Checkpointing model at Episode 100...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 101/150 | Reward:  -11.0 | MSE: 0.0480 | C_Loss: 0.008 | A_Loss: 0.062 | Alpha: 0.0013
+Train Ep: 102/150 | Reward:  -32.0 | MSE: 0.0415 | C_Loss: 0.007 | A_Loss: 0.062 | Alpha: 0.0013
+Train Ep: 103/150 | Reward:  -18.0 | MSE: 0.0539 | C_Loss: 0.008 | A_Loss: 0.063 | Alpha: 0.0013
+Train Ep: 104/150 | Reward:  -12.0 | MSE: 0.0442 | C_Loss: 0.007 | A_Loss: 0.063 | Alpha: 0.0013
+Train Ep: 105/150 | Reward:  -10.0 | MSE: 0.0416 | C_Loss: 0.009 | A_Loss: 0.063 | Alpha: 0.0012
+  -> Checkpointing model at Episode 105...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 106/150 | Reward:  -27.0 | MSE: 0.0682 | C_Loss: 0.008 | A_Loss: 0.064 | Alpha: 0.0012
+Train Ep: 107/150 | Reward:  -11.0 | MSE: 0.0446 | C_Loss: 0.007 | A_Loss: 0.065 | Alpha: 0.0012
+Train Ep: 108/150 | Reward:  -17.0 | MSE: 0.0454 | C_Loss: 0.008 | A_Loss: 0.064 | Alpha: 0.0012
+Train Ep: 109/150 | Reward:   -5.0 | MSE: 0.0838 | C_Loss: 0.008 | A_Loss: 0.065 | Alpha: 0.0011
+Train Ep: 110/150 | Reward:    0.0 | MSE: 0.0544 | C_Loss: 0.008 | A_Loss: 0.065 | Alpha: 0.0011
+  -> Checkpointing model at Episode 110...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 111/150 | Reward:   -8.0 | MSE: 0.0475 | C_Loss: 0.009 | A_Loss: 0.064 | Alpha: 0.0011
+Train Ep: 112/150 | Reward:  -18.0 | MSE: 0.0598 | C_Loss: 0.007 | A_Loss: 0.064 | Alpha: 0.0011
+Train Ep: 113/150 | Reward:  -21.0 | MSE: 0.0551 | C_Loss: 0.006 | A_Loss: 0.063 | Alpha: 0.0011
+Train Ep: 114/150 | Reward:  -18.0 | MSE: 0.0461 | C_Loss: 0.007 | A_Loss: 0.062 | Alpha: 0.0010
+Train Ep: 115/150 | Reward:  -15.0 | MSE: 0.0709 | C_Loss: 0.007 | A_Loss: 0.062 | Alpha: 0.0010
+  -> Checkpointing model at Episode 115...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 116/150 | Reward:  -26.0 | MSE: 0.0423 | C_Loss: 0.006 | A_Loss: 0.062 | Alpha: 0.0010
+Train Ep: 117/150 | Reward:   -8.0 | MSE: 0.0470 | C_Loss: 0.007 | A_Loss: 0.063 | Alpha: 0.0010
+Train Ep: 118/150 | Reward:  -23.0 | MSE: 0.0603 | C_Loss: 0.005 | A_Loss: 0.062 | Alpha: 0.0010
+Train Ep: 119/150 | Reward:    3.0 | MSE: 0.0624 | C_Loss: 0.009 | A_Loss: 0.061 | Alpha: 0.0009
+Train Ep: 120/150 | Reward:  -21.0 | MSE: 0.0512 | C_Loss: 0.007 | A_Loss: 0.061 | Alpha: 0.0009
+  -> Checkpointing model at Episode 120...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 121/150 | Reward:  -12.0 | MSE: 0.0565 | C_Loss: 0.007 | A_Loss: 0.060 | Alpha: 0.0009
+Train Ep: 122/150 | Reward:   -9.0 | MSE: 0.0486 | C_Loss: 0.006 | A_Loss: 0.060 | Alpha: 0.0009
+Train Ep: 123/150 | Reward:  -21.0 | MSE: 0.0465 | C_Loss: 0.008 | A_Loss: 0.059 | Alpha: 0.0009
+Train Ep: 124/150 | Reward:   -8.0 | MSE: 0.0708 | C_Loss: 0.008 | A_Loss: 0.059 | Alpha: 0.0008
+Train Ep: 125/150 | Reward:  -24.0 | MSE: 0.0684 | C_Loss: 0.008 | A_Loss: 0.059 | Alpha: 0.0008
+  -> Checkpointing model at Episode 125...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 126/150 | Reward:   -7.0 | MSE: 0.0471 | C_Loss: 0.010 | A_Loss: 0.059 | Alpha: 0.0008
+Train Ep: 127/150 | Reward:  -23.0 | MSE: 0.0629 | C_Loss: 0.007 | A_Loss: 0.059 | Alpha: 0.0008
+Train Ep: 128/150 | Reward:  -26.0 | MSE: 0.0548 | C_Loss: 0.005 | A_Loss: 0.058 | Alpha: 0.0008
+Train Ep: 129/150 | Reward:  -14.0 | MSE: 0.0501 | C_Loss: 0.008 | A_Loss: 0.058 | Alpha: 0.0008
+Train Ep: 130/150 | Reward:  -14.0 | MSE: 0.0579 | C_Loss: 0.008 | A_Loss: 0.059 | Alpha: 0.0008
+  -> Checkpointing model at Episode 130...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 131/150 | Reward:  -11.0 | MSE: 0.0475 | C_Loss: 0.005 | A_Loss: 0.058 | Alpha: 0.0007
+Train Ep: 132/150 | Reward:  -24.0 | MSE: 0.0562 | C_Loss: 0.007 | A_Loss: 0.059 | Alpha: 0.0007
+Train Ep: 133/150 | Reward:  -12.0 | MSE: 0.0425 | C_Loss: 0.006 | A_Loss: 0.058 | Alpha: 0.0007
+Train Ep: 134/150 | Reward:  -17.0 | MSE: 0.0834 | C_Loss: 0.006 | A_Loss: 0.058 | Alpha: 0.0007
+Train Ep: 135/150 | Reward:  -15.0 | MSE: 0.0553 | C_Loss: 0.007 | A_Loss: 0.058 | Alpha: 0.0007
+  -> Checkpointing model at Episode 135...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 136/150 | Reward:  -13.0 | MSE: 0.0787 | C_Loss: 0.004 | A_Loss: 0.057 | Alpha: 0.0007
+Train Ep: 137/150 | Reward:  -21.0 | MSE: 0.0697 | C_Loss: 0.006 | A_Loss: 0.058 | Alpha: 0.0007
+Train Ep: 138/150 | Reward:    3.0 | MSE: 0.0435 | C_Loss: 0.005 | A_Loss: 0.058 | Alpha: 0.0006
+Train Ep: 139/150 | Reward:   -6.0 | MSE: 0.0469 | C_Loss: 0.005 | A_Loss: 0.058 | Alpha: 0.0006
+Train Ep: 140/150 | Reward:  -11.0 | MSE: 0.0608 | C_Loss: 0.007 | A_Loss: 0.058 | Alpha: 0.0006
+  -> Checkpointing model at Episode 140...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 141/150 | Reward:  -14.0 | MSE: 0.0794 | C_Loss: 0.005 | A_Loss: 0.057 | Alpha: 0.0006
+Train Ep: 142/150 | Reward:    4.0 | MSE: 0.0759 | C_Loss: 0.006 | A_Loss: 0.056 | Alpha: 0.0006
+Train Ep: 143/150 | Reward:  -20.0 | MSE: 0.0522 | C_Loss: 0.006 | A_Loss: 0.055 | Alpha: 0.0006
+Train Ep: 144/150 | Reward:   -7.0 | MSE: 0.0634 | C_Loss: 0.005 | A_Loss: 0.056 | Alpha: 0.0006
+Train Ep: 145/150 | Reward:   -4.0 | MSE: 0.0781 | C_Loss: 0.007 | A_Loss: 0.055 | Alpha: 0.0006
+  -> Checkpointing model at Episode 145...
+[*] Models successfully saved to models/sac_gnn_20.pth
+Train Ep: 146/150 | Reward:   -2.0 | MSE: 0.0605 | C_Loss: 0.005 | A_Loss: 0.055 | Alpha: 0.0006
+Train Ep: 147/150 | Reward:    2.0 | MSE: 0.0491 | C_Loss: 0.006 | A_Loss: 0.054 | Alpha: 0.0005
+Train Ep: 148/150 | Reward:    6.0 | MSE: 0.0689 | C_Loss: 0.005 | A_Loss: 0.054 | Alpha: 0.0005
+Train Ep: 149/150 | Reward:  -16.0 | MSE: 0.0703 | C_Loss: 0.006 | A_Loss: 0.054 | Alpha: 0.0005
+Train Ep: 150/150 | Reward:  -13.0 | MSE: 0.0642 | C_Loss: 0.004 | A_Loss: 0.052 | Alpha: 0.0005
+  -> Checkpointing model at Episode 150...
+[*] Models successfully saved to models/sac_gnn_20.pth
+
+Training complete in 20632.21 seconds.
+[*] Models successfully saved to models/sac_gnn_20.pth
+Training plots saved to 'plots/training_metrics.png'
+Training run time = 20637.99 s
+----------------------------------------
+Starting Run 2: Update Period 100
+----------------------------------------
+SLURM Mode Received: 0
+Execution Pipeline: ['train']
+Loaded Configuration: {'mode': 0, 'model_path': 'models/sac_gnn_21.pth', 'distance': 5, 'n_rounds': 5, 'p': 0.004, 'p_gate_zz': 0.0, 'mismatch': 1.0, 'n_shots': 20000, 'burn_in_steps': 0, 'bypass_threshold': 2, 'action_scale': 3.0, 'update_period': 100, 'prior_shots': 1000, 'oracle_reward_coef': 0.0, 'local_action_only': True, 'local_action_hops': 1, 'hidden_dim': 128, 'lr': 0.0001, 'gamma': 0.99, 'tau': 0.005, 'alpha': 0.01, 'batch_size': 64, 'buffer_capacity': 100000, 'update_frequency': 100, 'train_episodes': 150, 'test_episodes': 20}
+
+Initializing environment...
+
+############################################################
+### RUNNING MODE: TRAIN
+############################################################
+
+========================================
+STARTING TRAINING (Episodes: 150)
+========================================
+Train Ep: 001/150 | Reward:  -72.0 | MSE: 0.0438 | C_Loss: 0.018 | A_Loss: 0.029 | Alpha: 0.0098
+Train Ep: 002/150 | Reward:  -79.0 | MSE: 0.0486 | C_Loss: 0.015 | A_Loss: 0.025 | Alpha: 0.0096
+Train Ep: 003/150 | Reward:  -85.0 | MSE: 0.0453 | C_Loss: 0.016 | A_Loss: 0.024 | Alpha: 0.0094
+Train Ep: 004/150 | Reward: -103.0 | MSE: 0.0484 | C_Loss: 0.016 | A_Loss: 0.023 | Alpha: 0.0092
+Train Ep: 005/150 | Reward:  -62.0 | MSE: 0.0421 | C_Loss: 0.018 | A_Loss: 0.025 | Alpha: 0.0090
+  -> Checkpointing model at Episode 5...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 006/150 | Reward:  -72.0 | MSE: 0.0446 | C_Loss: 0.015 | A_Loss: 0.022 | Alpha: 0.0089
+Train Ep: 007/150 | Reward:  -79.0 | MSE: 0.0449 | C_Loss: 0.016 | A_Loss: 0.021 | Alpha: 0.0087
+Train Ep: 008/150 | Reward:  -87.0 | MSE: 0.0465 | C_Loss: 0.017 | A_Loss: 0.019 | Alpha: 0.0085
+Train Ep: 009/150 | Reward: -109.0 | MSE: 0.0484 | C_Loss: 0.019 | A_Loss: 0.020 | Alpha: 0.0084
+Train Ep: 010/150 | Reward:  -71.0 | MSE: 0.0446 | C_Loss: 0.018 | A_Loss: 0.019 | Alpha: 0.0082
+  -> Checkpointing model at Episode 10...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 011/150 | Reward:  -55.0 | MSE: 0.0468 | C_Loss: 0.017 | A_Loss: 0.018 | Alpha: 0.0080
+Train Ep: 012/150 | Reward:  -71.0 | MSE: 0.0456 | C_Loss: 0.020 | A_Loss: 0.020 | Alpha: 0.0079
+Train Ep: 013/150 | Reward:  -81.0 | MSE: 0.0495 | C_Loss: 0.017 | A_Loss: 0.018 | Alpha: 0.0077
+Train Ep: 014/150 | Reward:  -81.0 | MSE: 0.0444 | C_Loss: 0.017 | A_Loss: 0.018 | Alpha: 0.0076
+Train Ep: 015/150 | Reward:  -58.0 | MSE: 0.0473 | C_Loss: 0.016 | A_Loss: 0.018 | Alpha: 0.0074
+  -> Checkpointing model at Episode 15...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 016/150 | Reward:  -55.0 | MSE: 0.0502 | C_Loss: 0.017 | A_Loss: 0.016 | Alpha: 0.0073
+Train Ep: 017/150 | Reward:  -49.0 | MSE: 0.0457 | C_Loss: 0.016 | A_Loss: 0.015 | Alpha: 0.0071
+Train Ep: 018/150 | Reward:  -96.0 | MSE: 0.0440 | C_Loss: 0.017 | A_Loss: 0.015 | Alpha: 0.0070
+Train Ep: 019/150 | Reward:  -62.0 | MSE: 0.0426 | C_Loss: 0.017 | A_Loss: 0.013 | Alpha: 0.0068
+Train Ep: 020/150 | Reward: -108.0 | MSE: 0.0407 | C_Loss: 0.015 | A_Loss: 0.014 | Alpha: 0.0067
+  -> Checkpointing model at Episode 20...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 021/150 | Reward:  -56.0 | MSE: 0.0453 | C_Loss: 0.015 | A_Loss: 0.013 | Alpha: 0.0066
+Train Ep: 022/150 | Reward:  -85.0 | MSE: 0.0410 | C_Loss: 0.019 | A_Loss: 0.014 | Alpha: 0.0064
+Train Ep: 023/150 | Reward:  -75.0 | MSE: 0.0463 | C_Loss: 0.017 | A_Loss: 0.015 | Alpha: 0.0063
+Train Ep: 024/150 | Reward:  -69.0 | MSE: 0.0507 | C_Loss: 0.016 | A_Loss: 0.016 | Alpha: 0.0062
+Train Ep: 025/150 | Reward:  -72.0 | MSE: 0.0472 | C_Loss: 0.017 | A_Loss: 0.016 | Alpha: 0.0061
+  -> Checkpointing model at Episode 25...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 026/150 | Reward:  -68.0 | MSE: 0.0474 | C_Loss: 0.015 | A_Loss: 0.016 | Alpha: 0.0059
+Train Ep: 027/150 | Reward:  -65.0 | MSE: 0.0456 | C_Loss: 0.014 | A_Loss: 0.016 | Alpha: 0.0058
+Train Ep: 028/150 | Reward:  -54.0 | MSE: 0.0437 | C_Loss: 0.017 | A_Loss: 0.016 | Alpha: 0.0057
+Train Ep: 029/150 | Reward:  -54.0 | MSE: 0.0492 | C_Loss: 0.015 | A_Loss: 0.018 | Alpha: 0.0056
+Train Ep: 030/150 | Reward:  -49.0 | MSE: 0.0447 | C_Loss: 0.015 | A_Loss: 0.017 | Alpha: 0.0055
+  -> Checkpointing model at Episode 30...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 031/150 | Reward:  -68.0 | MSE: 0.0494 | C_Loss: 0.015 | A_Loss: 0.017 | Alpha: 0.0054
+Train Ep: 032/150 | Reward:  -42.0 | MSE: 0.0410 | C_Loss: 0.014 | A_Loss: 0.017 | Alpha: 0.0053
+Train Ep: 033/150 | Reward:  -66.0 | MSE: 0.0430 | C_Loss: 0.014 | A_Loss: 0.016 | Alpha: 0.0052
+Train Ep: 034/150 | Reward:  -74.0 | MSE: 0.0454 | C_Loss: 0.013 | A_Loss: 0.017 | Alpha: 0.0051
+Train Ep: 035/150 | Reward:  -68.0 | MSE: 0.0580 | C_Loss: 0.016 | A_Loss: 0.019 | Alpha: 0.0050
+  -> Checkpointing model at Episode 35...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 036/150 | Reward:  -62.0 | MSE: 0.0465 | C_Loss: 0.016 | A_Loss: 0.021 | Alpha: 0.0049
+Train Ep: 037/150 | Reward:  -46.0 | MSE: 0.0493 | C_Loss: 0.020 | A_Loss: 0.023 | Alpha: 0.0048
+Train Ep: 038/150 | Reward:  -64.0 | MSE: 0.0466 | C_Loss: 0.014 | A_Loss: 0.021 | Alpha: 0.0047
+Train Ep: 039/150 | Reward:  -49.0 | MSE: 0.0435 | C_Loss: 0.021 | A_Loss: 0.023 | Alpha: 0.0046
+Train Ep: 040/150 | Reward:  -54.0 | MSE: 0.0571 | C_Loss: 0.017 | A_Loss: 0.026 | Alpha: 0.0045
+  -> Checkpointing model at Episode 40...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 041/150 | Reward:  -67.0 | MSE: 0.0435 | C_Loss: 0.015 | A_Loss: 0.024 | Alpha: 0.0044
+Train Ep: 042/150 | Reward:  -66.0 | MSE: 0.0446 | C_Loss: 0.017 | A_Loss: 0.024 | Alpha: 0.0043
+Train Ep: 043/150 | Reward:  -38.0 | MSE: 0.0579 | C_Loss: 0.015 | A_Loss: 0.022 | Alpha: 0.0042
+Train Ep: 044/150 | Reward:  -71.0 | MSE: 0.0461 | C_Loss: 0.015 | A_Loss: 0.023 | Alpha: 0.0041
+Train Ep: 045/150 | Reward:  -67.0 | MSE: 0.0440 | C_Loss: 0.014 | A_Loss: 0.022 | Alpha: 0.0041
+  -> Checkpointing model at Episode 45...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 046/150 | Reward:  -59.0 | MSE: 0.0433 | C_Loss: 0.017 | A_Loss: 0.024 | Alpha: 0.0040
+Train Ep: 047/150 | Reward:  -54.0 | MSE: 0.0479 | C_Loss: 0.014 | A_Loss: 0.022 | Alpha: 0.0039
+Train Ep: 048/150 | Reward: -101.0 | MSE: 0.0442 | C_Loss: 0.015 | A_Loss: 0.022 | Alpha: 0.0038
+Train Ep: 049/150 | Reward:  -61.0 | MSE: 0.0474 | C_Loss: 0.014 | A_Loss: 0.023 | Alpha: 0.0038
+Train Ep: 050/150 | Reward:  -62.0 | MSE: 0.0470 | C_Loss: 0.015 | A_Loss: 0.026 | Alpha: 0.0037
+  -> Checkpointing model at Episode 50...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 051/150 | Reward:  -65.0 | MSE: 0.0589 | C_Loss: 0.014 | A_Loss: 0.026 | Alpha: 0.0036
+Train Ep: 052/150 | Reward:  -59.0 | MSE: 0.0471 | C_Loss: 0.016 | A_Loss: 0.030 | Alpha: 0.0035
+Train Ep: 053/150 | Reward:  -47.0 | MSE: 0.0472 | C_Loss: 0.013 | A_Loss: 0.029 | Alpha: 0.0035
+Train Ep: 054/150 | Reward:  -56.0 | MSE: 0.0448 | C_Loss: 0.015 | A_Loss: 0.030 | Alpha: 0.0034
+Train Ep: 055/150 | Reward:  -55.0 | MSE: 0.0456 | C_Loss: 0.014 | A_Loss: 0.030 | Alpha: 0.0033
+  -> Checkpointing model at Episode 55...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 056/150 | Reward:  -43.0 | MSE: 0.0448 | C_Loss: 0.018 | A_Loss: 0.033 | Alpha: 0.0033
+Train Ep: 057/150 | Reward:  -51.0 | MSE: 0.0510 | C_Loss: 0.015 | A_Loss: 0.034 | Alpha: 0.0032
+Train Ep: 058/150 | Reward:  -54.0 | MSE: 0.0490 | C_Loss: 0.015 | A_Loss: 0.034 | Alpha: 0.0031
+Train Ep: 059/150 | Reward:  -45.0 | MSE: 0.0452 | C_Loss: 0.012 | A_Loss: 0.034 | Alpha: 0.0031
+Train Ep: 060/150 | Reward:  -48.0 | MSE: 0.0470 | C_Loss: 0.013 | A_Loss: 0.037 | Alpha: 0.0030
+  -> Checkpointing model at Episode 60...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 061/150 | Reward:  -37.0 | MSE: 0.0459 | C_Loss: 0.016 | A_Loss: 0.039 | Alpha: 0.0030
+Train Ep: 062/150 | Reward:  -42.0 | MSE: 0.0483 | C_Loss: 0.014 | A_Loss: 0.040 | Alpha: 0.0029
+Train Ep: 063/150 | Reward:  -44.0 | MSE: 0.0412 | C_Loss: 0.015 | A_Loss: 0.038 | Alpha: 0.0028
+Train Ep: 064/150 | Reward:  -31.0 | MSE: 0.0544 | C_Loss: 0.013 | A_Loss: 0.040 | Alpha: 0.0028
+Train Ep: 065/150 | Reward:  -33.0 | MSE: 0.0596 | C_Loss: 0.013 | A_Loss: 0.038 | Alpha: 0.0027
+  -> Checkpointing model at Episode 65...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 066/150 | Reward:  -60.0 | MSE: 0.0647 | C_Loss: 0.013 | A_Loss: 0.039 | Alpha: 0.0027
+Train Ep: 067/150 | Reward:  -28.0 | MSE: 0.0555 | C_Loss: 0.012 | A_Loss: 0.038 | Alpha: 0.0026
+Train Ep: 068/150 | Reward:  -38.0 | MSE: 0.0495 | C_Loss: 0.011 | A_Loss: 0.039 | Alpha: 0.0026
+Train Ep: 069/150 | Reward:  -36.0 | MSE: 0.0440 | C_Loss: 0.013 | A_Loss: 0.040 | Alpha: 0.0025
+Train Ep: 070/150 | Reward:  -31.0 | MSE: 0.0417 | C_Loss: 0.015 | A_Loss: 0.041 | Alpha: 0.0025
+  -> Checkpointing model at Episode 70...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 071/150 | Reward:  -26.0 | MSE: 0.0553 | C_Loss: 0.012 | A_Loss: 0.040 | Alpha: 0.0024
+Train Ep: 072/150 | Reward:  -33.0 | MSE: 0.0597 | C_Loss: 0.012 | A_Loss: 0.039 | Alpha: 0.0024
+Train Ep: 073/150 | Reward:  -47.0 | MSE: 0.0677 | C_Loss: 0.011 | A_Loss: 0.040 | Alpha: 0.0023
+Train Ep: 074/150 | Reward:  -28.0 | MSE: 0.0502 | C_Loss: 0.011 | A_Loss: 0.039 | Alpha: 0.0023
+Train Ep: 075/150 | Reward:  -24.0 | MSE: 0.0613 | C_Loss: 0.011 | A_Loss: 0.039 | Alpha: 0.0022
+  -> Checkpointing model at Episode 75...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 076/150 | Reward:  -40.0 | MSE: 0.0460 | C_Loss: 0.013 | A_Loss: 0.039 | Alpha: 0.0022
+Train Ep: 077/150 | Reward:  -37.0 | MSE: 0.0488 | C_Loss: 0.011 | A_Loss: 0.039 | Alpha: 0.0022
+Train Ep: 078/150 | Reward:  -27.0 | MSE: 0.0809 | C_Loss: 0.015 | A_Loss: 0.041 | Alpha: 0.0021
+Train Ep: 079/150 | Reward:  -22.0 | MSE: 0.0411 | C_Loss: 0.012 | A_Loss: 0.040 | Alpha: 0.0021
+Train Ep: 080/150 | Reward:  -28.0 | MSE: 0.0657 | C_Loss: 0.014 | A_Loss: 0.039 | Alpha: 0.0020
+  -> Checkpointing model at Episode 80...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 081/150 | Reward:  -38.0 | MSE: 0.0696 | C_Loss: 0.010 | A_Loss: 0.040 | Alpha: 0.0020
+Train Ep: 082/150 | Reward:  -36.0 | MSE: 0.0500 | C_Loss: 0.012 | A_Loss: 0.040 | Alpha: 0.0019
+Train Ep: 083/150 | Reward:  -17.0 | MSE: 0.0544 | C_Loss: 0.015 | A_Loss: 0.042 | Alpha: 0.0019
+Train Ep: 084/150 | Reward:  -36.0 | MSE: 0.0525 | C_Loss: 0.010 | A_Loss: 0.042 | Alpha: 0.0019
+Train Ep: 085/150 | Reward:  -37.0 | MSE: 0.0496 | C_Loss: 0.012 | A_Loss: 0.042 | Alpha: 0.0018
+  -> Checkpointing model at Episode 85...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 086/150 | Reward:  -50.0 | MSE: 0.0547 | C_Loss: 0.011 | A_Loss: 0.042 | Alpha: 0.0018
+Train Ep: 087/150 | Reward:  -25.0 | MSE: 0.0637 | C_Loss: 0.011 | A_Loss: 0.044 | Alpha: 0.0018
+Train Ep: 088/150 | Reward:  -34.0 | MSE: 0.0475 | C_Loss: 0.010 | A_Loss: 0.042 | Alpha: 0.0017
+Train Ep: 089/150 | Reward:  -26.0 | MSE: 0.0761 | C_Loss: 0.013 | A_Loss: 0.043 | Alpha: 0.0017
+Train Ep: 090/150 | Reward:  -27.0 | MSE: 0.0593 | C_Loss: 0.013 | A_Loss: 0.043 | Alpha: 0.0017
+  -> Checkpointing model at Episode 90...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 091/150 | Reward:  -32.0 | MSE: 0.0674 | C_Loss: 0.011 | A_Loss: 0.045 | Alpha: 0.0016
+Train Ep: 092/150 | Reward:  -30.0 | MSE: 0.0530 | C_Loss: 0.012 | A_Loss: 0.045 | Alpha: 0.0016
+Train Ep: 093/150 | Reward:  -30.0 | MSE: 0.0474 | C_Loss: 0.009 | A_Loss: 0.044 | Alpha: 0.0016
+Train Ep: 094/150 | Reward:  -24.0 | MSE: 0.0647 | C_Loss: 0.013 | A_Loss: 0.046 | Alpha: 0.0015
+Train Ep: 095/150 | Reward:  -14.0 | MSE: 0.0815 | C_Loss: 0.011 | A_Loss: 0.047 | Alpha: 0.0015
+  -> Checkpointing model at Episode 95...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 096/150 | Reward:  -18.0 | MSE: 0.0694 | C_Loss: 0.009 | A_Loss: 0.046 | Alpha: 0.0015
+Train Ep: 097/150 | Reward:    3.0 | MSE: 0.0748 | C_Loss: 0.009 | A_Loss: 0.046 | Alpha: 0.0014
+Train Ep: 098/150 | Reward:   -8.0 | MSE: 0.0583 | C_Loss: 0.010 | A_Loss: 0.045 | Alpha: 0.0014
+Train Ep: 099/150 | Reward:  -28.0 | MSE: 0.0735 | C_Loss: 0.009 | A_Loss: 0.046 | Alpha: 0.0014
+Train Ep: 100/150 | Reward:  -10.0 | MSE: 0.0782 | C_Loss: 0.007 | A_Loss: 0.044 | Alpha: 0.0014
+  -> Checkpointing model at Episode 100...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 101/150 | Reward:  -20.0 | MSE: 0.0671 | C_Loss: 0.008 | A_Loss: 0.044 | Alpha: 0.0013
+Train Ep: 102/150 | Reward:  -20.0 | MSE: 0.0716 | C_Loss: 0.009 | A_Loss: 0.044 | Alpha: 0.0013
+Train Ep: 103/150 | Reward:  -17.0 | MSE: 0.0588 | C_Loss: 0.009 | A_Loss: 0.044 | Alpha: 0.0013
+Train Ep: 104/150 | Reward:  -22.0 | MSE: 0.0664 | C_Loss: 0.010 | A_Loss: 0.045 | Alpha: 0.0013
+Train Ep: 105/150 | Reward:  -33.0 | MSE: 0.0474 | C_Loss: 0.008 | A_Loss: 0.043 | Alpha: 0.0012
+  -> Checkpointing model at Episode 105...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 106/150 | Reward:  -20.0 | MSE: 0.0615 | C_Loss: 0.010 | A_Loss: 0.045 | Alpha: 0.0012
+Train Ep: 107/150 | Reward:  -19.0 | MSE: 0.0638 | C_Loss: 0.008 | A_Loss: 0.045 | Alpha: 0.0012
+Train Ep: 108/150 | Reward:    3.0 | MSE: 0.0656 | C_Loss: 0.011 | A_Loss: 0.045 | Alpha: 0.0012
+Train Ep: 109/150 | Reward:  -13.0 | MSE: 0.0664 | C_Loss: 0.011 | A_Loss: 0.044 | Alpha: 0.0011
+Train Ep: 110/150 | Reward:  -19.0 | MSE: 0.0831 | C_Loss: 0.010 | A_Loss: 0.041 | Alpha: 0.0011
+  -> Checkpointing model at Episode 110...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 111/150 | Reward:  -25.0 | MSE: 0.0730 | C_Loss: 0.008 | A_Loss: 0.042 | Alpha: 0.0011
+Train Ep: 112/150 | Reward:  -21.0 | MSE: 0.0557 | C_Loss: 0.008 | A_Loss: 0.042 | Alpha: 0.0011
+Train Ep: 113/150 | Reward:  -16.0 | MSE: 0.0677 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0011
+Train Ep: 114/150 | Reward:  -26.0 | MSE: 0.0471 | C_Loss: 0.008 | A_Loss: 0.042 | Alpha: 0.0010
+Train Ep: 115/150 | Reward:  -28.0 | MSE: 0.0612 | C_Loss: 0.010 | A_Loss: 0.043 | Alpha: 0.0010
+  -> Checkpointing model at Episode 115...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 116/150 | Reward:    4.0 | MSE: 0.0585 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0010
+Train Ep: 117/150 | Reward:  -14.0 | MSE: 0.0526 | C_Loss: 0.008 | A_Loss: 0.042 | Alpha: 0.0010
+Train Ep: 118/150 | Reward:  -10.0 | MSE: 0.0660 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0010
+Train Ep: 119/150 | Reward:   -4.0 | MSE: 0.0990 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0009
+Train Ep: 120/150 | Reward:  -12.0 | MSE: 0.0545 | C_Loss: 0.006 | A_Loss: 0.041 | Alpha: 0.0009
+  -> Checkpointing model at Episode 120...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 121/150 | Reward:  -10.0 | MSE: 0.0677 | C_Loss: 0.006 | A_Loss: 0.040 | Alpha: 0.0009
+Train Ep: 122/150 | Reward:  -24.0 | MSE: 0.0708 | C_Loss: 0.007 | A_Loss: 0.041 | Alpha: 0.0009
+Train Ep: 123/150 | Reward:  -20.0 | MSE: 0.0911 | C_Loss: 0.006 | A_Loss: 0.041 | Alpha: 0.0009
+Train Ep: 124/150 | Reward:    7.0 | MSE: 0.0637 | C_Loss: 0.011 | A_Loss: 0.038 | Alpha: 0.0008
+Train Ep: 125/150 | Reward:  -19.0 | MSE: 0.0590 | C_Loss: 0.010 | A_Loss: 0.037 | Alpha: 0.0008
+  -> Checkpointing model at Episode 125...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 126/150 | Reward:  -12.0 | MSE: 0.0578 | C_Loss: 0.009 | A_Loss: 0.038 | Alpha: 0.0008
+Train Ep: 127/150 | Reward:  -19.0 | MSE: 0.0698 | C_Loss: 0.007 | A_Loss: 0.038 | Alpha: 0.0008
+Train Ep: 128/150 | Reward:  -19.0 | MSE: 0.0812 | C_Loss: 0.010 | A_Loss: 0.037 | Alpha: 0.0008
+Train Ep: 129/150 | Reward:  -31.0 | MSE: 0.0636 | C_Loss: 0.010 | A_Loss: 0.037 | Alpha: 0.0008
+Train Ep: 130/150 | Reward:  -23.0 | MSE: 0.0502 | C_Loss: 0.010 | A_Loss: 0.037 | Alpha: 0.0007
+  -> Checkpointing model at Episode 130...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 131/150 | Reward:  -17.0 | MSE: 0.1004 | C_Loss: 0.009 | A_Loss: 0.038 | Alpha: 0.0007
+Train Ep: 132/150 | Reward:   -4.0 | MSE: 0.0586 | C_Loss: 0.009 | A_Loss: 0.038 | Alpha: 0.0007
+Train Ep: 133/150 | Reward:   -7.0 | MSE: 0.0759 | C_Loss: 0.009 | A_Loss: 0.038 | Alpha: 0.0007
+Train Ep: 134/150 | Reward:  -12.0 | MSE: 0.0723 | C_Loss: 0.009 | A_Loss: 0.039 | Alpha: 0.0007
+Train Ep: 135/150 | Reward:  -24.0 | MSE: 0.0897 | C_Loss: 0.009 | A_Loss: 0.040 | Alpha: 0.0007
+  -> Checkpointing model at Episode 135...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 136/150 | Reward:  -15.0 | MSE: 0.0763 | C_Loss: 0.008 | A_Loss: 0.040 | Alpha: 0.0007
+Train Ep: 137/150 | Reward:  -12.0 | MSE: 0.0470 | C_Loss: 0.009 | A_Loss: 0.039 | Alpha: 0.0007
+Train Ep: 138/150 | Reward:  -18.0 | MSE: 0.0721 | C_Loss: 0.007 | A_Loss: 0.038 | Alpha: 0.0006
+Train Ep: 139/150 | Reward:  -25.0 | MSE: 0.0851 | C_Loss: 0.010 | A_Loss: 0.040 | Alpha: 0.0006
+Train Ep: 140/150 | Reward:  -25.0 | MSE: 0.0502 | C_Loss: 0.010 | A_Loss: 0.040 | Alpha: 0.0006
+  -> Checkpointing model at Episode 140...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 141/150 | Reward:  -36.0 | MSE: 0.0722 | C_Loss: 0.010 | A_Loss: 0.042 | Alpha: 0.0006
+Train Ep: 142/150 | Reward:  -24.0 | MSE: 0.0661 | C_Loss: 0.010 | A_Loss: 0.042 | Alpha: 0.0006
+Train Ep: 143/150 | Reward:   -3.0 | MSE: 0.0815 | C_Loss: 0.010 | A_Loss: 0.043 | Alpha: 0.0006
+Train Ep: 144/150 | Reward:  -10.0 | MSE: 0.0982 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0006
+Train Ep: 145/150 | Reward:  -16.0 | MSE: 0.0482 | C_Loss: 0.008 | A_Loss: 0.043 | Alpha: 0.0006
+  -> Checkpointing model at Episode 145...
+[*] Models successfully saved to models/sac_gnn_21.pth
+Train Ep: 146/150 | Reward:   -4.0 | MSE: 0.0922 | C_Loss: 0.006 | A_Loss: 0.043 | Alpha: 0.0005
+Train Ep: 147/150 | Reward:   -7.0 | MSE: 0.0677 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0005
+Train Ep: 148/150 | Reward:  -14.0 | MSE: 0.0742 | C_Loss: 0.009 | A_Loss: 0.042 | Alpha: 0.0005
+Train Ep: 149/150 | Reward:  -17.0 | MSE: 0.0666 | C_Loss: 0.007 | A_Loss: 0.043 | Alpha: 0.0005
+Train Ep: 150/150 | Reward:  -30.0 | MSE: 0.0800 | C_Loss: 0.006 | A_Loss: 0.041 | Alpha: 0.0005
+  -> Checkpointing model at Episode 150...
+[*] Models successfully saved to models/sac_gnn_21.pth
+
+Training complete in 20469.03 seconds.
+[*] Models successfully saved to models/sac_gnn_21.pth
+Training plots saved to 'plots/training_metrics.png'
+Training run time = 20470.86 s
+----------------------------------------
+Starting Run 3: Update Period 10
+----------------------------------------

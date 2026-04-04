@@ -264,7 +264,7 @@ class SACAgent:
 
         # ALPHA AUTOTUNER UPDATE
         # Alpha tries to push log_prob_pooled to exactly match the target_entropy
-        alpha_loss = -(self.log_alpha * (log_prob_pooled.detach() + self.target_entropy)).mean()
+        alpha_loss = (-self.log_alpha.exp() * (log_prob_pooled.detach() + self.target_entropy)).mean()
         
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
