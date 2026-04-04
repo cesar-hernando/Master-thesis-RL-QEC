@@ -19,7 +19,7 @@ verbose = False
 generator = SyndromeDataGenerator(
     distance=5, 
     n_rounds=5, 
-    mismatch=30.0,  # Drift multiplier
+    mismatch=10.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
         "after_clifford_depolarization": 0.004,

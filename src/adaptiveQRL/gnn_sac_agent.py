@@ -272,7 +272,7 @@ class SACAgent:
 
         with torch.no_grad():
             # np.log(0.005) ≈ -5.29, np.log(0.2) ≈ -1.61
-            self.log_alpha.clamp_(np.log(0.0005), np.log(0.2))
+            self.log_alpha.clamp_(np.log(0.00005), np.log(0.2))
 
         # TARGET SOFT UPDATE
         if self.gamma > 0.0:

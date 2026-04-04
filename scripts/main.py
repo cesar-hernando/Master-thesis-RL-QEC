@@ -17,20 +17,20 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'test',  
-        'model_path': 'models/sac_gnn_26.pth',
+        'MODE': 'train',  
+        'model_path': 'models/sac_gnn_30.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
         'p': 0.004,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
-        'mismatch': 30.0,
-        'n_shots': 65_000,       # Shots per episode
-        'burn_in_steps': 15_000,
+        'mismatch': 1.0,
+        'n_shots': 20_000,       # Shots per episode
+        'burn_in_steps': 0,
         'bypass_threshold': 2,
         'action_scale': 3.0,
-        'update_period': 1_000,  # CMA update frequency
+        'update_period': 20_000,  # CMA update frequency
         'prior_shots': 1_000,
         'oracle_reward_coef': 0.0, # Phase 1: High imitation reward
         'local_action_only': True,
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 150,
+        'train_episodes': 250,
         'test_episodes': 20
     }
 
