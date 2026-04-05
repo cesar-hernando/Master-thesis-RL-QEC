@@ -344,14 +344,14 @@ if __name__ == "__main__":
     # 1. HYPERPARAMETERS & CONFIGURATION #
     ######################################
     CONFIG = {
-        'model_path': 'models/sac_gnn_19.pth',
+        'model_path': 'models/sac_gnn_30.pth',
         'distance': 5,
         'n_rounds': 5,
         'p': 0.004,
         'p_gate_zz': 0.0,
-        'mismatch': 1.0,
-        'n_shots': 20_000,
-        'burn_in_steps': 0,
+        'mismatch': 30.0,
+        'n_shots': 65_000,
+        'burn_in_steps': 15_000,
         'bypass_threshold': 2,
         'action_scale': 3.0,
         'update_period': 1000,
@@ -384,7 +384,7 @@ if __name__ == "__main__":
             "before_round_data_depolarization": CONFIG["p"],
             "p_gate_zz": CONFIG["p_gate_zz"]
         }, 
-        memory_type='x', 
+        memory_type='z', 
         n_shots=CONFIG['n_shots'], 
         qec_code='surface_code'
     )

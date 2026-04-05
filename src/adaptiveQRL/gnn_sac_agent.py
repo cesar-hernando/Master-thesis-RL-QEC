@@ -84,31 +84,44 @@ class GNNActor(nn.Module):
 
 
     def forward(self, x, edge_index, edge_attr, action_mask, evaluate=False):
+        # Use edge_attr as edge weights if they exist, otherwise treat as unweighted
         edge_weight = edge_attr.squeeze(-1) if edge_attr.dim() > 1 else edge_attr
         
         # Capture the neighbor context
         h = F.relu(self.conv1(x, edge_index, edge_weight=edge_weight))
-        
-        mu = self.mu_head(h)
+
+        # Mask out inactive edges (where action_mask == 0) 
+        active_mask = action_mask.squeeze(-1).bool()
+
+        # Compute action and the log probability for active edges only
+        h_active = h[active_mask]
+        mu = self.mu_head(h_active)
+        full_action = torch.zeros((x.size(0), 1), device=x.device)
+        full_log_prob = torch.zeros((x.size(0), 1), device=x.device)
         
         # If testing, act deterministically (no exploration noise)
         if evaluate:
-            action = torch.tanh(mu) * action_mask
-            return action, None
-            
-        log_std = torch.clamp(self.log_std_head(h), -20, 2)
+            full_action[active_mask] = torch.tanh(mu)
+            return full_action, None
+
+        # Add Gaussian noise for exploration during training    
+        log_std = torch.clamp(self.log_std_head(h_active), -20, 2)
         std = torch.exp(log_std)
-        
         normal = torch.distributions.Normal(mu, std)
         z = normal.rsample()
         
+        # Apply tanh squashing and re-scale to action bounds (if any)
         action = torch.tanh(z) * action_mask
         
+        # Compute log probability with correction for tanh squashing
         log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
         log_prob = log_prob.sum(dim=-1, keepdim=True)
-        log_prob = log_prob * action_mask
         
-        return action, log_prob
+        # Place the computed actions and log probabilities back into the full tensor
+        full_action[active_mask] = action
+        full_log_prob[active_mask] = log_prob
+        
+        return full_action, full_log_prob
 
 
 class GNNCritic(nn.Module):

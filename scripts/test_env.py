@@ -12,14 +12,14 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 50_000
+n_shots = 65_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
     distance=5, 
     n_rounds=5, 
-    mismatch=10.0,  # Drift multiplier
+    mismatch=30.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
         "after_clifford_depolarization": 0.004,

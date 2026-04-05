@@ -90,15 +90,9 @@ def generate_single_dashboard(log_file, target_run="Starting Run 3: Update Perio
 
 # Run the function
 if __name__ == "__main__":
-    # Make sure 'sweep_1362718' is in the same directory as this script
-    generate_single_dashboard(
-        log_file="./scripts/sweep_1368359.out", 
-        target_run="Starting Run 1: Update Period 1000", 
-        output_filename="training_metrics_23.png"
-    )
 
     generate_single_dashboard(
-        log_file="./scripts/sweep_1368359.out", 
-        target_run="Starting Run 2: Update Period 100", 
-        output_filename="training_metrics_24.png"
+        log_file="./scripts/training_metrics_28_prob.out", 
+        target_run="Starting Run 1: Update Period 1000", 
+        output_filename="training_metrics_28.png"
     )
