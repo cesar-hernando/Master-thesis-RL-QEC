@@ -84,42 +84,44 @@ class GNNActor(nn.Module):
 
 
     def forward(self, x, edge_index, edge_attr, action_mask, evaluate=False):
-        # Use edge_attr as edge weights if they exist, otherwise treat as unweighted
         edge_weight = edge_attr.squeeze(-1) if edge_attr.dim() > 1 else edge_attr
         
-        # Capture the neighbor context
+        # 1. Full Graph Convolution
         h = F.relu(self.conv1(x, edge_index, edge_weight=edge_weight))
-
-        # Mask out inactive edges (where action_mask == 0) 
+        
+        # 2. Create Boolean Mask
         active_mask = action_mask.squeeze(-1).bool()
-
-        # Compute action and the log probability for active edges only
+        
+        # 3. GATHER: Extract only active nodes
         h_active = h[active_mask]
-        mu = self.mu_head(h_active)
+        
+        # 4. Process ONLY active nodes through dense MLPs
+        mu_active = self.mu_head(h_active)
+        
+        # 5. Initialize full-size return tensors with exactly zeros
         full_action = torch.zeros((x.size(0), 1), device=x.device)
         full_log_prob = torch.zeros((x.size(0), 1), device=x.device)
-        
-        # If testing, act deterministically (no exploration noise)
-        if evaluate:
-            full_action[active_mask] = torch.tanh(mu)
-            return full_action, None
 
-        # Add Gaussian noise for exploration during training    
-        log_std = torch.clamp(self.log_std_head(h_active), -20, 2)
-        std = torch.exp(log_std)
-        normal = torch.distributions.Normal(mu, std)
-        z = normal.rsample()
+        if evaluate:
+            # Scatter evaluate action back into the full array
+            full_action[active_mask] = torch.tanh(mu_active)
+            return full_action, full_log_prob 
+            
+        log_std_active = torch.clamp(self.log_std_head(h_active), -20, 2)
+        std_active = torch.exp(log_std_active)
         
-        # Apply tanh squashing and re-scale to action bounds (if any)
-        action = torch.tanh(z) * action_mask
+        normal = torch.distributions.Normal(mu_active, std_active)
+        z_active = normal.rsample()
         
-        # Compute log probability with correction for tanh squashing
-        log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
-        log_prob = log_prob.sum(dim=-1, keepdim=True)
+        # Calculate tanh and log_prob strictly on the active nodes
+        action_active = torch.tanh(z_active)
         
-        # Place the computed actions and log probabilities back into the full tensor
-        full_action[active_mask] = action
-        full_log_prob[active_mask] = log_prob
+        log_prob_active = normal.log_prob(z_active) - torch.log(1 - action_active.pow(2) + 1e-6)
+        log_prob_active = log_prob_active.sum(dim=-1, keepdim=True)
+        
+        # 6. SCATTER: Put the active calculations back into the full tensor
+        full_action[active_mask] = action_active
+        full_log_prob[active_mask] = log_prob_active
         
         return full_action, full_log_prob
 
