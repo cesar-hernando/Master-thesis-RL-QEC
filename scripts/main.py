@@ -17,8 +17,8 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'test',  
-        'model_path': 'models/sac_gnn_29.pth',
+        'MODE': 'analyze_policy',  
+        'model_path': 'models/sac_gnn_30_new.pth',
         
         # Environment Settings
         'distance': 5,
@@ -37,7 +37,7 @@ if __name__ == "__main__":
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
-        'hidden_dim': 128,
+        'hidden_dim': 32,
         'lr': 1e-4,
         'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         
         # Episode Settings
         'train_episodes': 250,
-        'test_episodes': 2
+        'test_episodes': 20
     }
 
     #######################################
