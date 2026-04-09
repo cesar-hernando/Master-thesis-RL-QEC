@@ -17,8 +17,8 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'analyze_policy',  
-        'model_path': 'models/sac_gnn_30_new.pth',
+        'MODE': 'test',  
+        'model_path': 'models/sac_gnn_29.pth',
         
         # Environment Settings
         'distance': 5,
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         
         # Episode Settings
         'train_episodes': 250,
-        'test_episodes': 20
+        'test_episodes': 2
     }
 
     #######################################
