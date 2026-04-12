@@ -9,7 +9,7 @@ import numpy as np
 from adaptiveQRL.plot_utils import *
 
 
-def train(env, agent, buffer, config, training_metrics_filename=None):
+def train(env, agent, buffer, config):
     print(f"\n{'='*40}")
     print(f"STARTING TRAINING (Episodes: {config['train_episodes']})")
     print(f"{'='*40}")
@@ -88,7 +88,7 @@ def train(env, agent, buffer, config, training_metrics_filename=None):
     
     # Save the final trained model and plot metrics
     agent.save_models(config['model_path'])
-    plot_training_metrics(metrics, config, training_metrics_filename)
+    plot_training_metrics(metrics, config)
 
 
 def test(env, agent, config):
