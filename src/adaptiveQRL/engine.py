@@ -9,7 +9,7 @@ import numpy as np
 from adaptiveQRL.plot_utils import *
 
 
-def train(env, agent, buffer, config):
+def train(env, agent, buffer, config, training_metrics_filename=None):
     print(f"\n{'='*40}")
     print(f"STARTING TRAINING (Episodes: {config['train_episodes']})")
     print(f"{'='*40}")
@@ -88,7 +88,7 @@ def train(env, agent, buffer, config):
     
     # Save the final trained model and plot metrics
     agent.save_models(config['model_path'])
-    plot_training_metrics(metrics, config)
+    plot_training_metrics(metrics, config, training_metrics_filename)
 
 
 def test(env, agent, config):
@@ -316,6 +316,39 @@ def analyze_policy(env, agent, config):
             obs = next_obs
             step_count += 1
             
+    # --- NEW LOGIC: Near-Zero Action Analysis ---
+    print(f"\n{'='*50}")
+    print(f"NEAR-ZERO ACTION ANALYSIS (Active Edges Only)")
+    print(f"{'='*50}")
+    
+    active_arr = np.array(all_active_actions)
+    total_active = len(active_arr)
+    
+    if total_active > 0:
+        # Calculate thresholds (using absolute values to catch both positive and negative noise)
+        abs_actions = np.abs(active_arr)
+        
+        exactly_zero = np.sum(abs_actions == 0.0)
+        less_than_1e6 = np.sum(abs_actions < 1e-6)
+        less_than_1e3 = np.sum(abs_actions < 1e-3)
+        less_than_1e2 = np.sum(abs_actions < 1e-2)
+        
+        print(f"Total Active Actions Evaluated: {total_active:,}")
+        print(f" - Exactly 0.0:     {exactly_zero:,} ({exactly_zero/total_active*100:.2f}%)")
+        print(f" - < 1e-6:          {less_than_1e6:,} ({less_than_1e6/total_active*100:.2f}%)")
+        print(f" - < 1e-3:          {less_than_1e3:,} ({less_than_1e3/total_active*100:.2f}%)")
+        print(f" - < 1e-2:          {less_than_1e2:,} ({less_than_1e2/total_active*100:.2f}%)")
+        
+        print("\nInsight:")
+        if exactly_zero / total_active > 0.5:
+            print("The agent is actively predicting exactly zero for the majority of active edges.")
+        elif less_than_1e3 / total_active > 0.5:
+            print("The agent outputs a lot of numerical noise (< 1e-3). You may want to implement an action masking threshold in env.step() to snap these to exactly 0.0 and skip the second pass.")
+        else:
+            print("The agent is actively reweighting most edges with significant values (> 1e-3). Skipping the second pass frequently is unlikely.")
+    else:
+        print("No active actions were recorded during these episodes.")
+
     # Standard Plots
     plot_action_histogram(all_raw_actions, all_active_actions)
     plot_syndrome_count_histogram(all_syndrome_counts, bypass_threshold=bypass_threshold)

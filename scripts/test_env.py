@@ -12,7 +12,7 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 65_000
+n_shots = 100_000
 verbose = False
 
 # Setup the physical simulation
@@ -131,6 +131,7 @@ print("LER (Static) = ", n_logical_errors_static/n_shots)
 print("Relative LER (Our) = ", n_logical_errors/n_logical_errors_oracle)
 print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_oracle)
 
+'''
 # Generate the correct x-axis steps for the detached plot
 start_plot_idx = 1000
 x_steps = steps_array[start_plot_idx:]
@@ -207,3 +208,4 @@ initial_pearson = env.initial_pearson_corr
 final_pearson = env.pearson_correlations
 
 plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson)
+'''

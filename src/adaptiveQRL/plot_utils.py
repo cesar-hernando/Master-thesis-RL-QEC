@@ -223,7 +223,7 @@ def plot_weight_correlations(wm):
 import os
 import matplotlib.pyplot as plt
 
-def plot_training_metrics(metrics, config):
+def plot_training_metrics(metrics, config, training_metrics_filename='training_metrics.png'):
     """Generates a 4-panel plot showing training health over episodes."""
     os.makedirs('plots', exist_ok=True)
     
@@ -272,8 +272,8 @@ def plot_training_metrics(metrics, config):
     plt.tight_layout()
     plt.subplots_adjust(top=0.92) # Give the suptitle a bit of breathing room
     
-    plt.savefig('plots/training_metrics.png', dpi=300)
-    print("Training plots saved to 'plots/training_metrics.png'")
+    plt.savefig(f'plots/{training_metrics_filename}', dpi=300)
+    print(f"Training plots saved to 'plots/{training_metrics_filename}'")
     plt.close()
 
 
