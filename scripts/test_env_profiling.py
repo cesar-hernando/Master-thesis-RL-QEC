@@ -71,14 +71,14 @@ def build_argparser() -> argparse.Namespace:
     parser.add_argument("--n-rounds", type=int, default=5)
     parser.add_argument("--p", type=float, default=0.004)
     parser.add_argument("--mismatch", type=float, default=30.0)
-    parser.add_argument("--n-shots", type=int, default=8000)
+    parser.add_argument("--n-shots", type=int, default=50_000)
+    parser.add_argument("--burn-in-steps", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--update-period", type=int, default=1000)
     parser.add_argument("--prior-shots", type=int, default=1000)
-    parser.add_argument("--local-action-only", action="store_true", default=False)
+    parser.add_argument("--local-action-only", action="store_true", default=True)
     parser.add_argument("--local-action-hops", type=int, default=1)
     parser.add_argument("--action-scale", type=float, default=3.0)
-    parser.add_argument("--oracle-reward-coef", type=float, default=1.0)
     parser.add_argument("--profile-cpu", action="store_true", help="Enable cProfile around reset+loop.")
     parser.add_argument(
         "--deep-profile-prepare",
@@ -115,7 +115,6 @@ def build_env(args: argparse.Namespace) -> DriftedMatchingEnv:
         action_scale=args.action_scale,
         update_period=args.update_period,
         prior_shots=args.prior_shots,
-        oracle_reward_coef=args.oracle_reward_coef,
         use_pearson_correlation=True,
         use_syndrome_features=False,
         update_with="DGR",
@@ -180,11 +179,6 @@ def install_detailed_prepare_profiler(env: DriftedMatchingEnv, profiler: MethodP
 
         t = time.perf_counter()
         action_mask = env._compute_action_mask(selected_idx_1)
-        action_mask = (
-            action_mask.astype(np.float32)
-            if action_mask is not None
-            else np.ones(env.n_dec_edges, dtype=np.float32)
-        )
         _record("env._prepare.phase.action_mask", t)
 
         t = time.perf_counter()
@@ -198,20 +192,7 @@ def install_detailed_prepare_profiler(env: DriftedMatchingEnv, profiler: MethodP
         t = time.perf_counter()
         if env.use_pearson_correlation:
             if env.n_line_edges > 0:
-                src = env.line_edge_index[0]
-                dst = env.line_edge_index[1]
-
-                p_src = env.occ_tracer[src]
-                p_dst = env.occ_tracer[dst]
-                covariance = env.corr_tracer - (p_src * p_dst)
-
-                std_src = np.sqrt(p_src * (1.0 - p_src))
-                std_dst = np.sqrt(p_dst * (1.0 - p_dst))
-                denom = std_src * std_dst
-
-                safe_denom = np.where(denom > 1e-9, denom, 1.0)
-                correlation = covariance / safe_denom
-                dgr_edge_feat = np.clip(correlation, 0.0, 1.0)
+                dgr_edge_feat = env.pearson_correlations
             else:
                 dgr_edge_feat = np.zeros(0, dtype=np.float32)
         else:
@@ -226,15 +207,19 @@ def install_detailed_prepare_profiler(env: DriftedMatchingEnv, profiler: MethodP
             else:
                 edge_feats = np.zeros((0, 2), dtype=np.float32)
         else:
-            node_feats = np.stack([env.current_weights, selected_flag], axis=1)
-            edge_feats = dgr_edge_feat.reshape(-1, 1)
+            # Fallback to the original DGR-only sizes
+            env.node_feats[:, 0] = env.current_weights
+            env.node_feats[:, 1] = selected_flag
+            if env.n_line_edges > 0:
+                env.edge_feats[:, 0] = dgr_edge_feat
+
         _record("env._prepare.phase.feature_assembly", t)
 
         t = time.perf_counter()
         obs = {
-            "node_features": node_feats.astype(np.float32),
-            "edge_index": env.line_edge_index.astype(np.int64),
-            "edge_attr": edge_feats.astype(np.float32),
+            "node_features": env.node_feats,
+            "edge_index": env.line_edge_index,
+            "edge_attr": env.edge_feats,
             "action_mask": action_mask,
         }
         _record("env._prepare.phase.obs_pack", t)

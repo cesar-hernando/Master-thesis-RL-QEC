@@ -17,7 +17,7 @@ def train(env, agent, buffer, config):
     # Tracking dictionaries for plotting
     metrics = {'rewards': [], 'c_losses': [], 'a_losses': [], 'mses': [], 'alphas': []}
     start_time = time.time()
-    bypass_threshold = config.get('bypass_threshold', 4)
+    bypass_threshold = config.get('bypass_threshold', 2)
     
     for episode in range(config['train_episodes']):
         obs, info = env.reset()
@@ -120,8 +120,9 @@ def test(env, agent, config):
         'mse_gnn_static': [], 'mse_zero_static': [],
         'p_gnn_oracle': [], 'p_zero_oracle': [], 
         'p_gnn_static': [], 'p_zero_static': [],
+    
     }
-
+    
     for policy in policies:
         print(f"\n[*] Evaluating Policy: {policy}")
         global_shot_idx = 0

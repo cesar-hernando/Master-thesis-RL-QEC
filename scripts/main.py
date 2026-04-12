@@ -17,8 +17,8 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'analyze_policy',  
-        'model_path': 'models/sac_gnn_30_new.pth',
+        'MODE': 'train',  
+        'model_path': 'models/sac_gnn_29.pth',
         
         # Environment Settings
         'distance': 5,
@@ -32,12 +32,11 @@ if __name__ == "__main__":
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
-        'oracle_reward_coef': 0.0, # Phase 1: High imitation reward
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         
         # Agent / NN Settings
-        'hidden_dim': 32,
+        'hidden_dim': 128,
         'lr': 1e-4,
         'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
@@ -48,7 +47,7 @@ if __name__ == "__main__":
         
         # Episode Settings
         'train_episodes': 250,
-        'test_episodes': 20
+        'test_episodes': 3
     }
 
     #######################################
@@ -78,11 +77,11 @@ if __name__ == "__main__":
         local_action_hops=CONFIG['local_action_hops'],
         action_scale=CONFIG['action_scale'],
         update_period=CONFIG['update_period'],
-        prior_shots=CONFIG['prior_shots'],            
-        oracle_reward_coef=CONFIG['oracle_reward_coef'], 
+        prior_shots=CONFIG['prior_shots'],             
         use_pearson_correlation=True,
         use_syndrome_features=False, 
         update_with='DGR',
+        train_mode=(CONFIG['MODE'] == 'train')
     )
 
     # Determine dynamic dimensions from environment
@@ -93,6 +92,7 @@ if __name__ == "__main__":
     agent = SACAgent(
         node_dim=NODE_DIM, 
         hidden_dim=CONFIG['hidden_dim'],
+        static_edge_index=env.line_edge_index,  # Pass the static edge index to the agent
         lr=CONFIG['lr'],
         gamma=CONFIG['gamma'],
         tau=CONFIG['tau'],

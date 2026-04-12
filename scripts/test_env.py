@@ -32,20 +32,22 @@ generator = SyndromeDataGenerator(
     n_shots=n_shots, 
     qec_code='surface_code'
 )
-
+start_env_time = time.time()
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
-    local_action_only=False,
+    local_action_only=True,
     local_action_hops=1,
     action_scale = 3.0,
-    update_period=1000,
-    prior_shots=1000,
-    oracle_reward_coef=1.0,
+    update_period=1_000,
+    prior_shots=1_000,
     use_pearson_correlation=True,
     use_syndrome_features=False,
     update_with='DGR',
-    render_mode="human"
+    train_mode=False
 )
+end_env_time = time.time()
+print(f"Environment initialization time = {end_env_time - start_env_time:.2f} s")
+
 
 print(f"\nGraph Topology Built Successfully:")
 print(f" - Total Decoding Edges (GNN Nodes): {env.n_dec_edges}")
@@ -61,14 +63,14 @@ corr_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
 
 n_logical_flips = 0
 
-start_time = time.time()
+start_time_reset = time.time()
 obs, info = env.reset(seed=42)
 end_time_reset = time.time()
-print(f"Reset time = {end_time_reset - start_time} s")
+print(f"Reset time = {end_time_reset - start_time_reset} s")
 
 # Record the starting weight error and correlation error
-weights_mse_error[0] = info["weights_mse_error"]
-corr_mse_error[0] = info["corr_mse_error"]
+#weights_mse_error[0] = info["weights_mse_error"]
+#corr_mse_error[0] = info["corr_mse_error"]
 
 terminated = False
 truncated = False
@@ -77,6 +79,7 @@ step_idx = 0
 #print("\nOracle Pearson correlations:\n", env.oracle_correlations)
 #print("\nInitial Pearson correlations:\n", env.pearson_correlations)
 
+start_step_time = time.time()
 print("\n--- Starting Episode Loop ---")
 while not (terminated or truncated):
     #if (step_idx + 1) % (n_shots // 10) == 0:
@@ -86,7 +89,7 @@ while not (terminated or truncated):
     #action = env.action_space.sample() 
     action = np.zeros(env.n_dec_edges, dtype=np.float32)
     next_obs, reward, terminated, truncated, step_info = env.step(action)
-
+    
     # Store step information
     rewards[step_idx] = reward
     weights_mse_error[step_idx + 1] = step_info["weights_mse_error"]
@@ -97,12 +100,15 @@ while not (terminated or truncated):
     
     if step_info["true_obs"]:
         n_logical_flips += 1
-
+    
     step_idx += 1
+    
 
 #print("Final Pearson Correlations:\n", env.pearson_correlations)
-end_time = time.time()
-print(f"\nEpisode finished! Time taken: {end_time - start_time:.2f} seconds")
+end_step_time = time.time()
+print(f"\nEpisode finished! Time taken: {end_step_time - start_step_time:.2f} seconds")
+print(f"\nAverage time per step: {((end_step_time - start_step_time) / (step_idx + 1)):.6f} seconds")
+
 
 # Calculate running averages instantly using np.cumsum
 steps_array = np.arange(1, n_shots + 1)

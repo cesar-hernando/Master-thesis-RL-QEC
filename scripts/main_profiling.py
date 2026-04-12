@@ -5,9 +5,9 @@ This keeps the same general profiling style as scripts/test_env_profiling.py
 (no deep phase profiling) but runs the engine test pipeline.
 
 Usage examples:
-    python scripts/main_prolifing.py --model-path models/sac_gnn_30.pth
-    python scripts/main_prolifing.py --n-shots 5000 --test-episodes 3 --top 25
-    python scripts/main_prolifing.py --profile-cpu --top 30
+    python scripts/main_profiling.py --model-path models/sac_gnn_30.pth
+    python scripts/main_profiling.py --n-shots 5000 --test-episodes 3 --top 25
+    python scripts/main_profiling.py --profile-cpu --top 30
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class MethodProfiler:
 
 def build_argparser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Profile scripts/main.py behavior in test mode.")
-    parser.add_argument("--model-path", type=str, default="models/sac_gnn_30.pth")
+    parser.add_argument("--model-path", type=str, default="models/sac_gnn_29.pth")
 
     # Environment settings (same semantics as scripts/main.py)
     parser.add_argument("--distance", type=int, default=5)
@@ -81,26 +81,25 @@ def build_argparser() -> argparse.Namespace:
     parser.add_argument("--p", type=float, default=0.004)
     parser.add_argument("--p-gate-zz", type=float, default=0.0)
     parser.add_argument("--mismatch", type=float, default=30.0)
-    parser.add_argument("--n-shots", type=int, default=65000)
-    parser.add_argument("--burn-in-steps", type=int, default=15000)
+    parser.add_argument("--n-shots", type=int, default=6500)
+    parser.add_argument("--burn-in-steps", type=int, default=1500)
     parser.add_argument("--bypass-threshold", type=int, default=2)
     parser.add_argument("--action-scale", type=float, default=3.0)
-    parser.add_argument("--update-period", type=int, default=1000)
+    parser.add_argument("--update-period", type=int, default=100)
     parser.add_argument("--prior-shots", type=int, default=1000)
-    parser.add_argument("--oracle-reward-coef", type=float, default=0.0)
     parser.add_argument("--local-action-only", action="store_true", default=True)
     parser.add_argument("--global-action", action="store_true", help="Disable local action mask.")
     parser.add_argument("--local-action-hops", type=int, default=1)
 
     # Agent settings
-    parser.add_argument("--hidden-dim", type=int, default=32)
+    parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--gamma", type=float, default=0.0)
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--alpha", type=float, default=0.01)
 
     # Test settings
-    parser.add_argument("--test-episodes", type=int, default=20)
+    parser.add_argument("--test-episodes", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
 
     # Profiling output
@@ -176,7 +175,6 @@ def build_config(args: argparse.Namespace) -> dict:
         "action_scale": args.action_scale,
         "update_period": args.update_period,
         "prior_shots": args.prior_shots,
-        "oracle_reward_coef": args.oracle_reward_coef,
         "local_action_only": local_action_only,
         "local_action_hops": args.local_action_hops,
         "hidden_dim": args.hidden_dim,
@@ -207,32 +205,32 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
 
         t = time.perf_counter()
         if env.local_action_only:
-            mask = env.current_action_mask.astype(np.float32)
-            applied_delta = action * mask * env.action_scale
+            applied_delta = action * env.current_action_mask * env.action_scale
         else:
             applied_delta = action * env.action_scale
 
         if not np.any(applied_delta):
-            second_pass_matching = env.current_matching
+            selected_idx_2 = env.current_first_pass_selected_idx
+            pred_obs = env.current_first_pass_pred_obs
         else:
             second_pass_weights = np.clip(env.current_weights + applied_delta, env.min_weight, env.max_weight)
             second_pass_matching = pymatching.Matching.from_check_matrix(env.H, weights=second_pass_weights)
-        _record("env.step.phase.apply_action", t)
+            _record("env.step.phase.apply_action", t)
 
-        t = time.perf_counter()
-        selected_edges_2, pred_obs = env.syndrome_data_generator.get_solution_edges(
-            matching=second_pass_matching,
-            syndrome_volume=env.current_syndrome,
-            enable_correlations=True,
-            return_predicted_obs=True,
-            pair_to_idx_matrix=env.pair_to_idx_matrix,
-            fault_array=env.fault_array,
-        )
-        _record("env.step.phase.second_pass_decode", t)
+            t = time.perf_counter()
+            selected_edges_2, pred_obs = env.syndrome_data_generator.get_solution_edges(
+                matching=second_pass_matching,
+                syndrome_volume=env.current_syndrome,
+                enable_correlations=False,
+                return_predicted_obs=True,
+                pair_to_idx_matrix=env.pair_to_idx_matrix,
+                fault_array=env.fault_array,
+            )
+            _record("env.step.phase.second_pass_decode", t)
 
-        t = time.perf_counter()
-        selected_idx_2 = env._selected_edge_indices_from_pairs(selected_edges_2)
-        _record("env.step.phase.selected_idx_lookup", t)
+            t = time.perf_counter()
+            selected_idx_2 = env._selected_edge_indices_from_pairs(selected_edges_2)
+            _record("env.step.phase.selected_idx_lookup", t)
 
         t = time.perf_counter()
         env._accumulate_occurrence(selected_idx_2)
@@ -244,52 +242,42 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
         if env.shots_since_update >= env.update_period:
             env._apply_cma_and_update_graph()
             env.shots_since_update = 0
-            env.corr_mse_error = np.mean((env.pearson_correlations - env.oracle_correlations) ** 2)
-            env.corr_mse_error_static = np.mean((env.pearson_correlations - env.initial_pearson_corr) ** 2)
-            env.weights_mse_error = np.mean((env.current_weights - env.oracle_weights) ** 2)
-            env.weights_mse_error_static = np.mean((env.current_weights - env.initial_base_weights) ** 2)
+            if not env.train_mode:
+                env.corr_mse_error = np.mean((env.pearson_correlations - env.oracle_correlations)**2)
+                env.corr_mse_error_static = np.mean((env.pearson_correlations - env.initial_pearson_corr)**2)
+                env.weights_mse_error = np.mean((env.current_weights - env.oracle_weights)**2)
+                env.weights_mse_error_static = np.mean((env.current_weights - env.initial_base_weights)**2)
+            else:
+                env.corr_mse_error_static = None
+                env.weights_mse_error_static = None
+                env.corr_mse_error = None
+                env.weights_mse_error = None
         _record("env.step.phase.periodic_cma_update", t)
 
         t = time.perf_counter()
-        agent_correct = pred_obs == env.current_true_obs
-        first_pass_correct = env.current_first_pass_pred_obs == env.current_true_obs
+        agent_correct = (pred_obs == env.current_true_obs)
+        first_pass_correct = (env.current_first_pass_pred_obs == env.current_true_obs)
 
         if agent_correct and not first_pass_correct:
-            logical_reward = +1.0
+            reward = +1.0 
         elif not agent_correct and first_pass_correct:
-            logical_reward = -1.0
+            reward = -1.0
         else:
-            logical_reward = 0.0
+            reward = 0.0
 
-        reward = logical_reward
-        oracle_similarity = None
-
-        if env.oracle_reward_coef > 0.0:
-            oracle_edges = env.oracle_solution_edges_batch[env.step_count]
-            oracle_idx = env._selected_edge_indices_from_pairs(oracle_edges)
-            oracle_similarity = env._edge_set_jaccard(selected_idx_2, oracle_idx)
-            oracle_reward = (2.0 * oracle_similarity) - 1.0
-            reward += env.oracle_reward_coef * oracle_reward
-        _record("env.step.phase.reward", t)
-
-        t = time.perf_counter()
         env.step_count += 1
         terminated = False
         truncated = env.step_count >= env.max_steps
 
         info = {
-            "logical_error": not (agent_correct),
+            "logical_error": not(agent_correct),
             "true_obs": env.current_true_obs,
             "pred_obs": pred_obs,
-            "first_pass_obs": env.current_first_pass_pred_obs,
-            "oracle_pred_obs": env.oracle_predicted_obs_batch[env.step_count - 1],
-            "static_pred_obs": env.static_predicted_obs_batch[env.step_count - 1],
-            "reward_logical": logical_reward,
-            "reward_total": float(reward),
-            "oracle_similarity_jaccard": float(oracle_similarity) if oracle_similarity is not None else None,
-            "selected_edges_first_pass_idx": env.current_first_pass_selected_idx.copy()
-            if env.current_first_pass_selected_idx is not None
-            else None,
+            "first_pass_obs":env.current_first_pass_pred_obs,
+            "oracle_pred_obs": env.oracle_predicted_obs_batch[env.step_count - 1] if not env.train_mode else None,
+            "static_pred_obs":env.static_predicted_obs_batch[env.step_count - 1] if not env.train_mode else None,
+            "reward": reward,
+            "selected_edges_first_pass_idx": env.current_first_pass_selected_idx.copy() if env.current_first_pass_selected_idx is not None else None,
             "selected_edges_second_pass_idx": selected_idx_2.copy(),
             "action_mask": env.current_action_mask.copy() if env.current_action_mask is not None else None,
             "weights_mse_error": env.weights_mse_error,
@@ -352,10 +340,10 @@ def run_profiled_test(args: argparse.Namespace) -> None:
         action_scale=config["action_scale"],
         update_period=config["update_period"],
         prior_shots=config["prior_shots"],
-        oracle_reward_coef=config["oracle_reward_coef"],
         use_pearson_correlation=True,
         use_syndrome_features=False,
         update_with="DGR",
+        train_mode=(config["MODE"] == "train"),
     )
 
     # General method profiling; optionally replace env.step with deep phase profiling.
@@ -367,7 +355,7 @@ def run_profiled_test(args: argparse.Namespace) -> None:
         "_accumulate_occurrence",
         "_accumulate_correlation",
         "_apply_cma_and_update_graph",
-        "compute_pearson_correlations",
+        "_compute_pearson_correlations", # Updated to match your new underscore naming convention
     ]
 
     if not args.deep_profile_step:
@@ -396,6 +384,7 @@ def run_profiled_test(args: argparse.Namespace) -> None:
     agent = SACAgent(
         node_dim=node_dim,
         hidden_dim=config["hidden_dim"],
+        static_edge_index=env.line_edge_index,
         lr=config["lr"],
         gamma=config["gamma"],
         tau=config["tau"],

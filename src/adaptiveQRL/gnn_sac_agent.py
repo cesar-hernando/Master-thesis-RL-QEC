@@ -8,6 +8,7 @@ import os
 import random
 from collections import deque
 import numpy as np
+import copy
 
 import torch
 import torch.nn as nn
@@ -27,7 +28,6 @@ class GraphReplayBuffer:
     def push(self, obs, action, reward, next_obs, done):
         data = Data(
             x=torch.tensor(obs["node_features"], dtype=torch.float32),
-            edge_index=torch.tensor(obs["edge_index"], dtype=torch.long),
             edge_attr=torch.tensor(obs["edge_attr"], dtype=torch.float32),
             action_mask=torch.tensor(obs["action_mask"], dtype=torch.float32).unsqueeze(-1),
             action=torch.tensor(action, dtype=torch.float32).unsqueeze(-1),
@@ -37,20 +37,17 @@ class GraphReplayBuffer:
         
         if next_obs is not None:
             data.next_x = torch.tensor(next_obs["node_features"], dtype=torch.float32)
-            data.next_edge_index = torch.tensor(next_obs["edge_index"], dtype=torch.long)
             data.next_edge_attr = torch.tensor(next_obs["edge_attr"], dtype=torch.float32)
             data.next_action_mask = torch.tensor(next_obs["action_mask"], dtype=torch.float32).unsqueeze(-1)
         else:
             data.next_x = torch.zeros_like(data.x)
-            data.next_edge_index = torch.zeros_like(data.edge_index)
             data.next_edge_attr = torch.zeros_like(data.edge_attr)
             data.next_action_mask = torch.zeros_like(data.action_mask)
         
         self.buffer.append(data)
 
     def sample(self, batch_size):
-        samples = random.sample(self.buffer, batch_size)
-        return Batch.from_data_list(samples)
+        return random.sample(self.buffer, batch_size)
 
     def __len__(self):
         return len(self.buffer)
@@ -160,11 +157,14 @@ class GNNCritic(nn.Module):
 ####################################
 
 class SACAgent:
-    def __init__(self, node_dim, hidden_dim, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2):
+    def __init__(self, node_dim, hidden_dim, static_edge_index, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.tau = tau
         self.alpha = alpha 
+
+        # Cache the static edge index as a tensor once
+        self.static_edge_index_tensor = torch.tensor(static_edge_index, dtype=torch.long).to(self.device)
         
         self.actor = GNNActor(node_dim, hidden_dim).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=lr)
@@ -194,19 +194,32 @@ class SACAgent:
         """Used during environment interaction. evaluate=True disables Gaussian noise."""
         with torch.no_grad():
             x = torch.tensor(obs["node_features"], dtype=torch.float32).to(self.device)
-            edge_index = torch.tensor(obs["edge_index"], dtype=torch.long).to(self.device)
             edge_attr = torch.tensor(obs["edge_attr"], dtype=torch.float32).to(self.device)
             mask = torch.tensor(obs["action_mask"], dtype=torch.float32).unsqueeze(-1).to(self.device)
             
-            action, _ = self.actor(x, edge_index, edge_attr, mask, evaluate=evaluate)
+            action, _ = self.actor(x, self.static_edge_index_tensor, edge_attr, mask, evaluate=evaluate)
             
             return action.cpu().numpy().flatten()
 
     def update(self, replay_buffer, batch_size):
         if len(replay_buffer) < batch_size:
             return 0.0, 0.0 
+        
+        # INJECT THE STATIC EDGE INDEX ONCE
+        edge_idx_tensor = self.static_edge_index_tensor
+
+        raw_samples = replay_buffer.sample(batch_size)
+        
+        # SHALLOW COPY
+        samples = [copy.copy(data) for data in raw_samples]
+        
+        # Inject into the disposable copies
+        for data in samples:
+            data.edge_index = edge_idx_tensor
+            data.next_edge_index = edge_idx_tensor
             
-        batch = replay_buffer.sample(batch_size).to(self.device)
+        # Compile the batch and send to GPU
+        batch = Batch.from_data_list(samples).to(self.device, non_blocking=True)
         
         x, edge_index, edge_attr, action_mask = batch.x, batch.edge_index, batch.edge_attr, batch.action_mask
         action = batch.action
