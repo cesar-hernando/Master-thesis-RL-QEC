@@ -194,24 +194,6 @@ CONFIG['model_path'] = 'models/sac_gnn_29.pth'
 
 ---
 
-## Important Notes
-
-### Performance Optimization
-- By default, the environment computes reference MWPM metrics (`compute_reference_decoders=False`). This adds overhead.
-- For training, keep this disabled to avoid 2× decoding cost per shot.
-- For testing/analysis, enable it to compare against MWPM baseline.
-
-### Key Hyperparameter: Contextual Bandit Mode
-- The agent is trained with `gamma=0.0`, treating the problem as a **contextual bandit**.
-- This means the agent maximizes immediate reward (logical error rate) without discounting future rewards.
-- **Critical for QEC**: Surface code decoding has no "future value"; corrections must happen per shot.
-
-### Local Action Masking
-- `local_action_only=True` + `local_action_hops=1` restricts reweighting to edges close to detected errors.
-- This improves generalization and reduces action space from O(d²) to O(d) locally selected edges.
-
----
-
 ## Analysis & Visualization
 
 ### Jupyter Notebook
@@ -246,25 +228,6 @@ If you use this code in your research, please cite:
   year = {2026}
 }
 ```
-
-Related work: [DGR: Tackling Drifted and Correlated Noise in Quantum Error Correction via Decoding Graph Re-weighting](https://arxiv.org/abs/2411.04585)
-
----
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Import errors for `stim` or `pymatching` | Run `pip install -e .` again to ensure all dependencies are installed |
-| Out of memory during training | Reduce `n_shots`, `buffer_capacity`, or `batch_size` in `CONFIG` |
-| Model not found | Ensure the `model_path` in `CONFIG` exists in the `models/` directory |
-| Slow environment reset | Check `compute_reference_decoders` setting; disable for training |
-
----
-
-## License
-
-Apache 2.0
 
 ## Contact
 
