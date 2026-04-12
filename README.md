@@ -4,24 +4,19 @@ This repository contains the codebase for my master's thesis project in the Appl
 
 ## Overview
 
-This project develops an adaptive quantum error correction decoder that combines Graph Neural Networks (GNN) with Soft Actor-Critic (SAC) reinforcement learning to reweight Minimum-Weight Perfect Matching (MWPM) decoders. The approach handles time-drifting error rates and short-range correlations in surface codes, inspired by the [DGR paper](https://arxiv.org/abs/2411.04585).
+This project develops an adaptive and correlation-aware quantum error correction decoder that combines Graph Neural Networks (GNN) with Soft Actor-Critic (SAC) reinforcement learning to reweight Minimum-Weight Perfect Matching (MWPM) decoders. 
 
 ### Problem Statement
 
-Standard MWPM decoders assume static, independent error models with fixed global edge weights. Real quantum devices experience:
-- Slowly drifting error rates over time
-- Local correlations between errors
-- Spatially/temporally varying error behavior
-
-Fixed global weights cannot capture these dynamics, degrading decoder performance.
+Standard MWPM decoders assume static, independent error models with fixed global edge weights. Real quantum devices experience slowly drifting error rates and correlations between errors.
 
 ### Solution
 
 We use a **GNN-SAC hybrid decoder** that:
-1. **Preserves efficiency**: Builds on proven MWPM matching algorithm
-2. **Adapts locally**: Uses GNN to predict edge reweightings only for edges correlated with errors
-3. **Learns online**: SAC agent adapts to drift and correlations during deployment
-4. **Maintains interpretability**: Outputs continuous reweightings (vs. black-box neural decoders)
+1. **Preserves efficiency**: Builds on proven MWPM matching algorithm.
+2. **Adapts locally**: Uses GNN to predict edge reweightings only for edges correlated with error edges predicted in the 1st MWPM pass.
+3. **Learns online**: SAC agent adapts to drift and correlations during deployment.
+4. **Maintains interpretability**: Outputs continuous reweightings.)
 
 ---
 
