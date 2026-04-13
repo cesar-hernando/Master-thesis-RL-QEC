@@ -17,7 +17,7 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'analyze_policy',  
+        'MODE': 'test',  
         'model_path': 'models/sac_gnn_29.pth',
         
         # Environment Settings
@@ -30,7 +30,7 @@ if __name__ == "__main__":
         'burn_in_steps': 15_000,
         'bypass_threshold': 2,
         'action_scale': 3.0,
-        'update_period': 100,  # CMA update frequency
+        'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
@@ -38,7 +38,7 @@ if __name__ == "__main__":
         # Agent / NN Settings
         'hidden_dim': 128,
         'lr': 1e-4,
-        'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
+        'gamma': 0.99,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
         'alpha': 0.01,          # Entropy tuning
         'batch_size': 64,
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         
         # Episode Settings
         'train_episodes': 250,
-        'test_episodes': 3
+        'test_episodes': 5
     }
 
     #######################################

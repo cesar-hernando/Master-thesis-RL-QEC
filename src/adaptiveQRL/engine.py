@@ -9,18 +9,104 @@ import numpy as np
 from adaptiveQRL.plot_utils import *
 
 
+def validate(env, agent, config):
+    """Rigorous isolated validation loop (Pure CMA vs. GNN) with fixed seeds."""
+    print(f"  [!] Running Isolated Validation (Pure CMA vs GNN)...")
+    
+    val_episodes = 3
+    # Use a fixed set of seeds so both policies face the exact same circuits
+    val_seeds = [10001, 10002, 10003] 
+    
+    val_burn_in = config.get('burn_in_steps', 15000)
+    val_eval_shots = config.get('n_shots', 65000) - val_burn_in 
+    bypass_threshold = config.get('bypass_threshold', 2)
+    
+    # Temporarily override the env's max steps
+    original_max_steps = env.max_steps
+    env.max_steps = val_burn_in + val_eval_shots
+    
+    total_zero_errors = 0
+    total_gnn_errors = 0
+    
+    # ========================================================
+    # PHASE 1: Pure Baseline (Zero Action) Evaluation
+    # ========================================================
+    for ep_idx in range(val_episodes):
+        obs, _ = env.reset(seed=val_seeds[ep_idx]) 
+        done = False
+        step_count = 0
+        
+        while not done:
+            # Force the Zero Action for the entire episode to build healthy CMA trackers
+            action = np.zeros(env.n_dec_edges, dtype=np.float32)
+            next_obs, _, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            
+            if step_count >= val_burn_in:
+                # If action is zero, pred_obs is effectively the baseline
+                if info["pred_obs"] != info["true_obs"]:
+                    total_zero_errors += 1
+                    
+            obs = next_obs
+            step_count += 1
+
+    # ========================================================
+    # PHASE 2: GNN Evaluation
+    # ========================================================
+    for ep_idx in range(val_episodes):
+        obs, _ = env.reset(seed=val_seeds[ep_idx]) 
+        done = False
+        step_count = 0
+        
+        while not done:
+            n_flashes = np.sum(env.current_syndrome != 0)
+            
+            if step_count < val_burn_in or n_flashes <= bypass_threshold:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+            else:
+                action = agent.select_action(obs, evaluate=True) 
+                
+            next_obs, _, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            
+            if step_count >= val_burn_in:
+                if info["pred_obs"] != info["true_obs"]:
+                    total_gnn_errors += 1
+                    
+            obs = next_obs
+            step_count += 1
+            
+    # Restore original environment settings
+    env.max_steps = original_max_steps
+    
+    # Calculate True Relative Improvement
+    net_errors_saved = total_zero_errors - total_gnn_errors
+    relative_improvement = (net_errors_saved / total_zero_errors) if total_zero_errors > 0 else 0.0
+    
+    print(f"  -> Val Results: Pure Baseline Errors: {total_zero_errors} | GNN Errors: {total_gnn_errors}")
+    print(f"  -> Relative Improvement: {relative_improvement * 100:.3f}%")
+    
+    return relative_improvement
+
+
 def train(env, agent, buffer, config):
     print(f"\n{'='*40}")
     print(f"STARTING TRAINING (Episodes: {config['train_episodes']})")
     print(f"{'='*40}")
     
-    # Tracking dictionaries for plotting
     metrics = {'rewards': [], 'c_losses': [], 'a_losses': [], 'mses': [], 'alphas': []}
     start_time = time.time()
     bypass_threshold = config.get('bypass_threshold', 2)
     
+    best_val_score = -float('inf')
+    best_model_path = config['model_path'].replace('.pth', '_best.pth')
+    
+    # The Validation Latch
+    validation_triggered = False
+    
     for episode in range(config['train_episodes']):
-        obs, info = env.reset()
+        # Reset without a seed so training data stays random and diverse!
+        obs, info = env.reset(seed=None) 
         done = False
         step_count = 0
         episode_reward = 0
@@ -78,17 +164,31 @@ def train(env, agent, buffer, config):
               f"A_Loss: {avg_a_loss:.3f} | "
               f"Alpha: {agent.log_alpha.exp().item():.4f}")
 
-        # Save model every 5 episodes ---
-        if (episode + 1) % 5 == 0:
-            print(f"  -> Checkpointing model at Episode {episode+1}...")
-            agent.save_models(config['model_path'])
+        # --- SMART VALIDATION LOGIC ---
+        
+        # 1. Check if we should unlock validation
+        if not validation_triggered and episode_reward > 0:
+            print(f"  [!] Reward crossed 0! Unlocking Validation phase for the rest of training.")
+            validation_triggered = True
+
+        # 2. Run validation only if unlocked AND it is the 5th episode
+        if validation_triggered and (episode + 1) % 5 == 0:
+            val_score = validate(env, agent, config)
+            
+            # Save the best model
+            if val_score > best_val_score:
+                print(f"  *** New Best Model! Net Score improved from {best_val_score} to {val_score} ***")
+                best_val_score = val_score
+                agent.save_models(best_model_path)
 
     run_time = time.time() - start_time
     print(f"\nTraining complete in {run_time:.2f} seconds.")
     
-    # Save the final trained model and plot metrics
+    # Save the final trained model (just as a backup) and plot metrics
     agent.save_models(config['model_path'])
     plot_training_metrics(metrics, config)
+    
+    print(f"[*] The best performing model during validation was saved to: {best_model_path}")
 
 
 def test(env, agent, config):

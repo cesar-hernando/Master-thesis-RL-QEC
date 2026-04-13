@@ -12,20 +12,20 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 100_000
+n_shots = 200_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
     distance=5, 
     n_rounds=5, 
-    mismatch=30.0,  # Drift multiplier
+    mismatch=10.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.004,
-        "before_measure_flip_probability": 0.004,
-        "after_reset_flip_probability": 0.004,
-        "before_round_data_depolarization": 0.004,
+        "after_clifford_depolarization": 0.001,
+        "before_measure_flip_probability": 0.001,
+        "after_reset_flip_probability": 0.001,
+        "before_round_data_depolarization": 0.001,
         "p_gate_zz": 0.0,  # Crosstalk ZZ error probability
     }, 
     memory_type='z', 
@@ -131,7 +131,7 @@ print("LER (Static) = ", n_logical_errors_static/n_shots)
 print("Relative LER (Our) = ", n_logical_errors/n_logical_errors_oracle)
 print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_oracle)
 
-'''
+
 # Generate the correct x-axis steps for the detached plot
 start_plot_idx = 1000
 x_steps = steps_array[start_plot_idx:]
@@ -140,8 +140,8 @@ x_steps = steps_array[start_plot_idx:]
 # PLOTTING #
 ############
 
-env.render()
-
+#env.render()
+'''
 # 1. Reward evolution
 plt.figure()
 plt.plot(x_steps, rewards[start_plot_idx:])
@@ -157,7 +157,7 @@ plt.xlabel("Step")
 plt.ylabel("Average reward")
 plt.grid()
 plt.show()
-
+'''
 # 3. Weights error
 plt.figure()
 plt.plot(x_steps, weights_mse_error[start_plot_idx+1:])
@@ -208,4 +208,3 @@ initial_pearson = env.initial_pearson_corr
 final_pearson = env.pearson_correlations
 
 plot_tracer_evolution_histograms(initial_joint, final_joint, initial_pearson, final_pearson)
-'''
