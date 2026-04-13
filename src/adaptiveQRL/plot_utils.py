@@ -273,7 +273,7 @@ def plot_training_metrics(metrics, config):
     plt.subplots_adjust(top=0.92) # Give the suptitle a bit of breathing room
     
     plt.savefig(f'plots/{config["training_metrics_filename"]}', dpi=300)
-    print(f"Training plots saved to 'plots/{config["training_metrics_filename"]}'")
+    print(f"Training plots saved to 'plots/{config['training_metrics_filename']}'")
     plt.close()
 
 
