@@ -246,6 +246,7 @@ class SyndromeDataGenerator:
             matching: pymatching.Matching, 
             syndrome_volume: np.ndarray, 
             enable_correlations: bool=False,
+            edge_reweights: np.ndarray | None = None,
             return_predicted_obs: bool=False,
             pair_to_idx_matrix=None,
             fault_array=None
@@ -270,9 +271,16 @@ class SyndromeDataGenerator:
                 decoder as the solution.
             predicted_obs (optional): A boolean value indicating the predicted observable outcome based on the selected edges
         """
+    
+        if edge_reweights is None:
+            solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+        else:
+            solution_edges = matching.decode_to_edges_array(
+                syndrome_volume,
+                enable_correlations=enable_correlations,
+                edge_reweights=edge_reweights,
+            )
 
-        solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
-        
         if return_predicted_obs:
             if pair_to_idx_matrix is None or fault_array is None:
                 raise ValueError("pair_to_idx_matrix and fault_array must be provided if return_predicted_obs = True")

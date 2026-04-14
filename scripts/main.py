@@ -47,7 +47,7 @@ if __name__ == "__main__":
         
         # Episode Settings
         'train_episodes': 250,
-        'test_episodes': 5
+        'test_episodes': 3
     }
 
     #######################################
