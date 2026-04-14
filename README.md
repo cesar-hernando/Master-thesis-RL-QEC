@@ -29,7 +29,7 @@ We use a **GNN-SAC hybrid decoder** that:
 ### 1. Clone this repository
 ```bash
 # Replace <project-dir> with your preferred folder name (e.g., qec-thesis)
-git clone [https://github.com/cesar-hernando/Master-thesis-RL-QEC.git](https://github.com/cesar-hernando/Master-thesis-RL-QEC.git) <project-dir>
+git clone https://github.com/cesar-hernando/Master-thesis-RL-QEC.git <project-dir>
 cd <project-dir>
 ```
 
