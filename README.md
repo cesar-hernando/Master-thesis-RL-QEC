@@ -20,17 +20,59 @@ We use a **GNN-SAC hybrid decoder** that:
 
 ---
 
-### Installation
+## Installation
 
-1. Clone this repository:
-   `git clone https://github.com/cesar-hernando/Master-thesis-RL-QEC.git`
-   `cd Master-thesis-RL-QEC`
+**Prerequisites:**
+* **Windows Users:** Python 3.11 is explicitly required to use the pre-compiled backend.
+* **Mac/Linux Users:** Python 3.8+ and a C++ compiler (GCC or Clang) are required to build the backend from source.
 
-2. Install the custom, pre-compiled PyMatching backend (Required for fast edge reweighting):
-   `pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl`
+### 1. Clone this repository
+```bash
+git clone [https://github.com/cesar-hernando/Master-thesis-RL-QEC.git](https://github.com/cesar-hernando/Master-thesis-RL-QEC.git)
+cd Master-thesis-RL-QEC
+```
 
-3. Install the RL environment and remaining dependencies:
-   `pip install -e .`
+### 2. Create and activate a virtual environment (Highly Recommended)
+```bash
+# Create the environment
+python -m venv .venv
+
+# Activate it (Mac/Linux)
+source .venv/bin/activate
+
+# Activate it (Windows PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Activate it (Windows Command Prompt)
+.venv\Scripts\activate.bat
+```
+
+### 3. Install dependencies based on your Operating System
+
+**For Mac and Linux Users**
+Mac and Linux natively support the file paths required to compile the custom PyMatching backend. Ensure you have C++ build tools installed (see Troubleshooting if the install fails).
+```bash
+pip install -e .
+```
+
+**For Windows Users**
+Due to a legacy 260-character path limit in the Windows C++ compiler, building from source will fail. You must install the bundled, pre-compiled wheel first, followed by the rest of the environment.
+```bash
+# First, install the custom pre-compiled PyMatching backend
+pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl
+
+# Then, install the RL environment and remaining dependencies
+pip install -e .
+```
+
+---
+
+### Troubleshooting: Missing C++ Compiler
+If the installation fails on Mac or Linux with errors mentioning `gcc`, `clang`, or `Python.h`, you need to install C++ development tools:
+
+* **macOS:** Run `xcode-select --install` in your terminal.
+* **Ubuntu/Debian:** Run `sudo apt update && sudo apt install build-essential`
+* **Fedora/CentOS:** Run `sudo dnf groupinstall "Development Tools"`
 
 ### Verify Installation
 To verify everything is installed correctly:
