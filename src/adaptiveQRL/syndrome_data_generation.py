@@ -8,6 +8,7 @@ import numpy as np
 import stim
 import pymatching
 import plotly.graph_objects as go
+from typing import Optional
 
 from adaptiveQRL.surface_code_stim import SurfaceCode
 
@@ -246,7 +247,7 @@ class SyndromeDataGenerator:
             matching: pymatching.Matching, 
             syndrome_volume: np.ndarray, 
             enable_correlations: bool=False,
-            edge_reweights: np.ndarray | None = None,
+            edge_reweights: Optional[np.ndarray] = None,
             return_predicted_obs: bool=False,
             pair_to_idx_matrix=None,
             fault_array=None
