@@ -68,7 +68,6 @@ pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl
 ```bash
 pip install -e .
 ```
----
 
 ### 5. Verify installation
 To verify that the custom reweighting logic compiled and linked correctly, run the following command:
