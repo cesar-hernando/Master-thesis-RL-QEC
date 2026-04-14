@@ -23,6 +23,7 @@ We use a **GNN-SAC hybrid decoder** that:
 ## Installation
 
 **Prerequisites:**
+This project relies on a custom C++ backend for the PyMatching library to support dynamic edge reweighting. The installation process differs slightly depending on your operating system.
 * **Windows Users:** Python 3.11 is explicitly required to use the pre-compiled backend.
 * **Mac/Linux Users:** Python 3.8+ and a C++ compiler (GCC or Clang) are required to build the backend from source.
 
@@ -48,40 +49,31 @@ source .venv/bin/activate
 .venv\Scripts\activate.bat
 ```
 
-### 3. Install dependencies based on your Operating System
+### 3. Install Custom PyMatching Backend
 
 **For Mac and Linux Users**
-Mac and Linux natively support the file paths required to compile the custom PyMatching backend. Ensure you have C++ build tools installed (see Troubleshooting if the install fails).
 ```bash
-pip install -e .
+pip install --upgrade pip setuptools wheel
+pip install git+https://github.com/cesar-hernando/PyMatching.git@feature/decode-to-edges-edge-reweights
 ```
 
 **For Windows Users**
-Due to a legacy 260-character path limit in the Windows C++ compiler, building from source will fail. You must install the bundled, pre-compiled wheel first, followed by the rest of the environment.
+Due to compiler path-length limitations on Windows, a pre-compiled wheel is provided.
 ```bash
-# First, install the custom pre-compiled PyMatching backend
 pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl
+```
 
-# Then, install the RL environment and remaining dependencies
+### 4. Install adaptiveQRL
+```bash
 pip install -e .
 ```
-
 ---
 
-### Troubleshooting: Missing C++ Compiler
-If the installation fails on Mac or Linux with errors mentioning `gcc`, `clang`, or `Python.h`, you need to install C++ development tools:
-
-* **macOS:** Run `xcode-select --install` in your terminal.
-* **Ubuntu/Debian:** Run `sudo apt update && sudo apt install build-essential`
-* **Fedora/CentOS:** Run `sudo dnf groupinstall "Development Tools"`
-
-### Verify Installation
-To verify everything is installed correctly:
+### 5. Verify installation
+To verify that the custom reweighting logic compiled and linked correctly, run the following command:
 ```bash
-python -c "import adaptiveQRL; print('Installation successful!')"
-python scripts/test_env.py    # Run environment tests
+python -c "import pymatching; import numpy as np; m = pymatching.Matching(); m.add_edge(0, 1); m.decode_to_edges_array(np.array([1, 1]), edge_reweights=np.array([[0, 1, 0.5]])); print('SUCCESS: Backend is working!')"
 ```
-
 ---
 
 ## Usage
