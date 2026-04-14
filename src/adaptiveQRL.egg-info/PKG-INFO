@@ -39,38 +39,58 @@ We use a **GNN-SAC hybrid decoder** that:
 
 ## Installation
 
-### Prerequisites
-- **Python 3.9+**
-- **pip** or **conda**
+**Prerequisites:**
+* **Windows Users:** Python 3.11 is explicitly required to use the pre-compiled backend.
+* **Mac/Linux Users:** Python 3.8+ and a C++ compiler (GCC or Clang) are required to build the backend from source.
 
-### Quick Start
+### 1. Clone this repository
+```bash
+# Replace <project-dir> with your preferred folder name (e.g., qec-thesis)
+git clone https://github.com/cesar-hernando/Master-thesis-RL-QEC.git <project-dir>
+cd <project-dir>
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/cesar-hernando/Master-thesis-RL-QEC.git
-   cd Master-thesis-RL-QEC
-   ```
+### 2. Create and activate a virtual environment (Highly Recommended)
+```bash
+# Create the environment
+python -m venv .venv
 
-2. **Create a virtual environment** (optional but recommended)
-   ```bash
-   # Using venv
-   python -m venv .venv
-   source .venv/Scripts/activate  # Windows: .venv\Scripts\activate
+# Activate it (Mac/Linux)
+source .venv/bin/activate
 
-   # OR using conda
-   conda create -n qec-rl python=3.10
-   conda activate qec-rl
-   ```
+# Activate it (Windows PowerShell)
+.venv\Scripts\Activate.ps1
 
-3. **Install the package**
-   ```bash
-   pip install -e .
-   ```
+# Activate it (Windows Command Prompt)
+.venv\Scripts\activate.bat
+```
 
-   This installs the `adaptiveQRL` package and all dependencies:
-   - **Quantum**: `stim`, `pymatching`
-   - **ML/RL**: `torch`, `torch_geometric`, `gymnasium`
-   - **Utilities**: `numpy`, `scipy`, `matplotlib`, `plotly`
+### 3. Install dependencies based on your Operating System
+
+**For Mac and Linux Users**
+Mac and Linux natively support the file paths required to compile the custom PyMatching backend. Ensure you have C++ build tools installed (see Troubleshooting if the install fails).
+```bash
+pip install -e .
+```
+
+**For Windows Users**
+Due to a legacy 260-character path limit in the Windows C++ compiler, building from source will fail. You must install the bundled, pre-compiled wheel first, followed by the rest of the environment.
+```bash
+# First, install the custom pre-compiled PyMatching backend
+pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl
+
+# Then, install the RL environment and remaining dependencies
+pip install -e .
+```
+
+---
+
+### Troubleshooting: Missing C++ Compiler
+If the installation fails on Mac or Linux with errors mentioning `gcc`, `clang`, or `Python.h`, you need to install C++ development tools:
+
+* **macOS:** Run `xcode-select --install` in your terminal.
+* **Ubuntu/Debian:** Run `sudo apt update && sudo apt install build-essential`
+* **Fedora/CentOS:** Run `sudo dnf groupinstall "Development Tools"`
 
 ### Verify Installation
 To verify everything is installed correctly:
