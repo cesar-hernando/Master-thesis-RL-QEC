@@ -5,12 +5,14 @@ presence of drifted noise.
 '''
 
 from typing import Dict, Any
+import inspect
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 import plotly.graph_objects as go
 import pymatching
 import scipy.sparse as sp
+import torch
 
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 
@@ -120,12 +122,14 @@ class DriftedMatchingEnv(gym.Env):
             self.H
         ) = self._index_decoding_graph_edges(self.base_matching)
         self.n_dec_edges = len(self.dec_edge_list)
+        self.dec_edge_arr = np.array(self.dec_edge_list, dtype=np.float64)
 
         # Store the original weights obtained from the DEM
         self.initial_base_weights = self.current_weights.copy()
 
         # Make a copy of the base matching that will be updated every step
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
+        self.supports_edge_reweights = self._matching_supports_edge_reweights(self.current_matching)
 
         # Build the line graph adding edges based on the DEM
         self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges(self.base_dem)
@@ -619,7 +623,7 @@ class DriftedMatchingEnv(gym.Env):
         obs = {
             "node_features": self.node_feats.copy(),
             "edge_attr": self.edge_feats.copy(),
-            "action_mask": action_mask
+            "action_mask": action_mask,
         }
 
         return obs
@@ -649,6 +653,35 @@ class DriftedMatchingEnv(gym.Env):
 
         return idxs
     
+
+    @staticmethod
+    def _matching_supports_edge_reweights(matching: pymatching.Matching) -> bool:
+        try:
+            params = inspect.signature(matching.decode_to_edges_array).parameters
+            return "edge_reweights" in params
+        except (TypeError, ValueError):
+            return False
+
+
+    def _build_edge_reweights(self, second_pass_weights: np.ndarray) -> np.ndarray:
+        changed = np.flatnonzero(np.abs(second_pass_weights - self.current_weights) > 0.0)
+        if changed.size == 0:
+            return np.empty((0, 3), dtype=np.float64)
+
+        # Pull all changed edges at once
+        edges = self.dec_edge_arr[changed]
+        u = edges[:, 0]
+        v = edges[:, 1]
+
+        # Fast boolean masking for the boundary edge rule
+        boundary_mask = (u == -1) & (v != -1)
+        u_temp = u.copy()
+        u[boundary_mask] = v[boundary_mask]
+        v[boundary_mask] = -1
+
+        # Stack them together instantly
+        return np.column_stack((u, v, second_pass_weights[changed]))
+
 
     def _compute_action_mask(self, selected_idx: np.ndarray):
         """
@@ -737,14 +770,17 @@ class DriftedMatchingEnv(gym.Env):
         else:
             applied_delta = action * self.action_scale
 
+        second_pass_edge_reweights = None
+        
         if not np.any(applied_delta):
             selected_idx_2 = self.current_first_pass_selected_idx
             pred_obs = self.current_first_pass_pred_obs
-
         else:
             second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-            second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
+            second_pass_matching = self.current_matching
+            second_pass_edge_reweights = self._build_edge_reweights(second_pass_weights)
             
+
             ##############################################
             # 2) Run 2nd pass MWPM with reweighted edges #
             ##############################################
@@ -753,9 +789,10 @@ class DriftedMatchingEnv(gym.Env):
                 matching=second_pass_matching,
                 syndrome_volume=self.current_syndrome,
                 enable_correlations=False,
+                edge_reweights=second_pass_edge_reweights,
                 return_predicted_obs=True,
                 pair_to_idx_matrix=self.pair_to_idx_matrix,
-                fault_array=self.fault_array
+                fault_array=self.fault_array,
             )
             
             selected_idx_2 = self._selected_edge_indices_from_pairs(selected_edges_2)

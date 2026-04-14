@@ -19,9 +19,7 @@ import pstats
 import time
 from dataclasses import dataclass
 from functools import wraps
-
 import numpy as np
-import pymatching
 
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.engine import test
@@ -73,7 +71,7 @@ class MethodProfiler:
 
 def build_argparser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Profile scripts/main.py behavior in test mode.")
-    parser.add_argument("--model-path", type=str, default="models/sac_gnn_29.pth")
+    parser.add_argument("--model-path", type=str, default="models/sac_gnn_30.pth")
 
     # Environment settings (same semantics as scripts/main.py)
     parser.add_argument("--distance", type=int, default=5)
@@ -209,12 +207,17 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
         else:
             applied_delta = action * env.action_scale
 
+        second_pass_edge_reweights = None
+
         if not np.any(applied_delta):
+            # Your custom optimization preserved!
             selected_idx_2 = env.current_first_pass_selected_idx
             pred_obs = env.current_first_pass_pred_obs
         else:
             second_pass_weights = np.clip(env.current_weights + applied_delta, env.min_weight, env.max_weight)
-            second_pass_matching = pymatching.Matching.from_check_matrix(env.H, weights=second_pass_weights)
+            second_pass_matching = env.current_matching
+            second_pass_edge_reweights = env._build_edge_reweights(second_pass_weights)
+            
             _record("env.step.phase.apply_action", t)
 
             t = time.perf_counter()
@@ -222,6 +225,7 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
                 matching=second_pass_matching,
                 syndrome_volume=env.current_syndrome,
                 enable_correlations=False,
+                edge_reweights=second_pass_edge_reweights,
                 return_predicted_obs=True,
                 pair_to_idx_matrix=env.pair_to_idx_matrix,
                 fault_array=env.fault_array,
@@ -355,7 +359,7 @@ def run_profiled_test(args: argparse.Namespace) -> None:
         "_accumulate_occurrence",
         "_accumulate_correlation",
         "_apply_cma_and_update_graph",
-        "_compute_pearson_correlations", # Updated to match your new underscore naming convention
+        "_compute_pearson_correlations",
     ]
 
     if not args.deep_profile_step:

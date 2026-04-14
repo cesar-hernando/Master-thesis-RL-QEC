@@ -193,13 +193,13 @@ class SACAgent:
     def select_action(self, obs, evaluate=False):
         """Used during environment interaction. evaluate=True disables Gaussian noise."""
         with torch.no_grad():
-            x = torch.tensor(obs["node_features"], dtype=torch.float32).to(self.device)
-            edge_attr = torch.tensor(obs["edge_attr"], dtype=torch.float32).to(self.device)
-            mask = torch.tensor(obs["action_mask"], dtype=torch.float32).unsqueeze(-1).to(self.device)
+            x = torch.from_numpy(obs["node_features"]).to(self.device)
+            edge_attr = torch.from_numpy(obs["edge_attr"]).to(self.device)
+            mask = torch.from_numpy(obs["action_mask"]).unsqueeze(-1).to(self.device)
             
             action, _ = self.actor(x, self.static_edge_index_tensor, edge_attr, mask, evaluate=evaluate)
             
-            return action.cpu().numpy().flatten()
+            return action.cpu().numpy().ravel()
 
     def update(self, replay_buffer, batch_size):
         if len(replay_buffer) < batch_size:
