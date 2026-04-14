@@ -198,6 +198,7 @@ class SyndromeDataGenerator:
             matching: pymatching.Matching, 
             syndrome_volume: np.ndarray, 
             enable_correlations: bool=False,
+            edge_reweights: np.ndarray | None = None,
             return_predicted_obs: bool=False,
             pair_to_idx_matrix=None,
             fault_array=None
@@ -206,7 +207,17 @@ class SyndromeDataGenerator:
         Get the oracle solution edges for a given syndrome volume/shot by decoding with the provided matching.
         """
 
-        solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+        if edge_reweights is None:
+            solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+        else:
+            try:
+                solution_edges = matching.decode_to_edges_array(
+                    syndrome_volume,
+                    enable_correlations=enable_correlations,
+                    edge_reweights=edge_reweights,
+                )
+            except TypeError:
+                solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
         
         if return_predicted_obs:
             if pair_to_idx_matrix is None or fault_array is None:

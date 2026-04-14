@@ -4,6 +4,7 @@ statistics and the first MWPM pass selected edges.
 '''
 
 from typing import Dict, Any
+import inspect
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -125,6 +126,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # Make a copy of the base matching that will be updated every step
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
+        self.supports_edge_reweights = self._matching_supports_edge_reweights(self.current_matching)
 
         # Build the line graph adding edges based on the DEM
         self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges(self.base_dem)
@@ -615,6 +617,29 @@ class DriftedMatchingEnv(gym.Env):
         # Filter out invalid edges (-1) and return sorted unique indices
         valid_idxs = idxs[idxs != -1]
         return np.unique(valid_idxs).astype(np.int64)
+
+
+    @staticmethod
+    def _matching_supports_edge_reweights(matching: pymatching.Matching) -> bool:
+        try:
+            params = inspect.signature(matching.decode_to_edges_array).parameters
+            return "edge_reweights" in params
+        except (TypeError, ValueError):
+            return False
+
+
+    def _build_edge_reweights(self, second_pass_weights: np.ndarray) -> np.ndarray:
+        changed = np.flatnonzero(np.abs(second_pass_weights - self.current_weights) > 0.0)
+        edge_reweights = np.zeros((changed.size, 3), dtype=np.float64)
+        for row_idx, edge_idx in enumerate(changed):
+            u, v = self.dec_edge_list[edge_idx]
+            # PyMatching expects boundary edges as (detector, -1)
+            if u == -1 and v != -1:
+                u, v = v, -1
+            edge_reweights[row_idx, 0] = float(u)
+            edge_reweights[row_idx, 1] = float(v)
+            edge_reweights[row_idx, 2] = float(second_pass_weights[edge_idx])
+        return edge_reweights
     
 
     def _compute_action_mask(self, selected_idx: np.ndarray) -> np.ndarray:
@@ -664,12 +689,18 @@ class DriftedMatchingEnv(gym.Env):
             applied_delta = action * mask * self.action_scale
         else:
             applied_delta = action * self.action_scale
+
+        second_pass_edge_reweights = None
         
         if not np.any(applied_delta):
             second_pass_matching = self.current_matching
         else:
             second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-            second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
+            if self.supports_edge_reweights:
+                second_pass_matching = self.current_matching
+                second_pass_edge_reweights = self._build_edge_reweights(second_pass_weights)
+            else:
+                second_pass_matching = pymatching.Matching.from_check_matrix(self.H, weights=second_pass_weights)
 
         ##############################################
         # 2) Run 2nd pass MWPM with reweighted edges #
@@ -679,6 +710,7 @@ class DriftedMatchingEnv(gym.Env):
             matching=second_pass_matching,
             syndrome_volume=self.current_syndrome,
             enable_correlations=True,
+            edge_reweights=second_pass_edge_reweights,
             return_predicted_obs=True,
             pair_to_idx_matrix=self.pair_to_idx_matrix,
             fault_array=self.fault_array

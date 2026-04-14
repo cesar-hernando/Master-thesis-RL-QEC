@@ -4,3 +4,4 @@
 #models/
 .github
 __pycache__
+*.png

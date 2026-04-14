@@ -81,11 +81,11 @@ def build_argparser() -> argparse.Namespace:
     parser.add_argument("--p", type=float, default=0.004)
     parser.add_argument("--p-gate-zz", type=float, default=0.0)
     parser.add_argument("--mismatch", type=float, default=30.0)
-    parser.add_argument("--n-shots", type=int, default=65000)
-    parser.add_argument("--burn-in-steps", type=int, default=15000)
+    parser.add_argument("--n-shots", type=int, default=6500)
+    parser.add_argument("--burn-in-steps", type=int, default=1500)
     parser.add_argument("--bypass-threshold", type=int, default=2)
     parser.add_argument("--action-scale", type=float, default=3.0)
-    parser.add_argument("--update-period", type=int, default=1000)
+    parser.add_argument("--update-period", type=int, default=100)
     parser.add_argument("--prior-shots", type=int, default=1000)
     parser.add_argument("--oracle-reward-coef", type=float, default=0.0)
     parser.add_argument("--local-action-only", action="store_true", default=True)
@@ -93,23 +93,22 @@ def build_argparser() -> argparse.Namespace:
     parser.add_argument("--local-action-hops", type=int, default=1)
 
     # Agent settings
-    parser.add_argument("--hidden-dim", type=int, default=32)
+    parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--gamma", type=float, default=0.0)
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--alpha", type=float, default=0.01)
 
     # Test settings
-    parser.add_argument("--test-episodes", type=int, default=20)
+    parser.add_argument("--test-episodes", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
 
     # Profiling output
     parser.add_argument("--profile-cpu", action="store_true", help="Enable cProfile around full run.")
     parser.add_argument(
-        "--deep-profile-step",
-        action="store_true",
-        help="Enable phase-by-phase profiling inside env.step.",
-    )
+    "--deep-profile-step",
+    action="store_true",
+    help="Enable phase-by-phase profiling inside env.step.",)
     parser.add_argument("--top", type=int, default=25, help="Top entries to print for profiles.")
     return parser.parse_args()
 
@@ -212,11 +211,17 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
         else:
             applied_delta = action * env.action_scale
 
+        second_pass_edge_reweights = None
+
         if not np.any(applied_delta):
             second_pass_matching = env.current_matching
         else:
             second_pass_weights = np.clip(env.current_weights + applied_delta, env.min_weight, env.max_weight)
-            second_pass_matching = pymatching.Matching.from_check_matrix(env.H, weights=second_pass_weights)
+            if env.supports_edge_reweights:
+                second_pass_matching = env.current_matching
+                second_pass_edge_reweights = env._build_edge_reweights(second_pass_weights)
+            else:
+                second_pass_matching = pymatching.Matching.from_check_matrix(env.H, weights=second_pass_weights)
         _record("env.step.phase.apply_action", t)
 
         t = time.perf_counter()
@@ -224,6 +229,7 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
             matching=second_pass_matching,
             syndrome_volume=env.current_syndrome,
             enable_correlations=True,
+            edge_reweights=second_pass_edge_reweights,
             return_predicted_obs=True,
             pair_to_idx_matrix=env.pair_to_idx_matrix,
             fault_array=env.fault_array,
