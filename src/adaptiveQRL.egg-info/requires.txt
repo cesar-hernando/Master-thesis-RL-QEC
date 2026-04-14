@@ -1,0 +1,13 @@
+numpy
+matplotlib
+stim
+pymatching
+gymnasium
+plotly
+scipy
+torch
+torch_geometric
+
+[torch]
+torch>=2.9
+torchvision>=0.24

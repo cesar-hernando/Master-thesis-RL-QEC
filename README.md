@@ -20,40 +20,17 @@ We use a **GNN-SAC hybrid decoder** that:
 
 ---
 
-## Installation
+### Installation
 
-### Prerequisites
-- **Python 3.9+**
-- **pip** or **conda**
+1. Clone this repository:
+   `git clone https://github.com/cesar-hernando/Master-thesis-RL-QEC.git`
+   `cd Master-thesis-RL-QEC`
 
-### Quick Start
+2. Install the custom, pre-compiled PyMatching backend (Required for fast edge reweighting):
+   `pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl`
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/cesar-hernando/Master-thesis-RL-QEC.git
-   cd Master-thesis-RL-QEC
-   ```
-
-2. **Create a virtual environment** (optional but recommended)
-   ```bash
-   # Using venv
-   python -m venv .venv
-   source .venv/Scripts/activate  # Windows: .venv\Scripts\activate
-
-   # OR using conda
-   conda create -n qec-rl python=3.10
-   conda activate qec-rl
-   ```
-
-3. **Install the package**
-   ```bash
-   pip install -e .
-   ```
-
-   This installs the `adaptiveQRL` package and all dependencies:
-   - **Quantum**: `stim`, `pymatching`
-   - **ML/RL**: `torch`, `torch_geometric`, `gymnasium`
-   - **Utilities**: `numpy`, `scipy`, `matplotlib`, `plotly`
+3. Install the RL environment and remaining dependencies:
+   `pip install -e .`
 
 ### Verify Installation
 To verify everything is installed correctly:
