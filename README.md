@@ -23,9 +23,10 @@ We use a **GNN-SAC hybrid decoder** that:
 ## Installation
 
 **Prerequisites:**
-This project relies on a custom C++ backend for the PyMatching library to support dynamic edge reweighting. The installation process differs slightly depending on your operating system.
-* **Windows Users:** Python 3.11 is explicitly required to use the pre-compiled backend.
-* **Mac/Linux Users:** Python 3.8+ and a C++ compiler (GCC or Clang) are required to build the backend from source.
+* **Python Version:**
+  * **Windows Users:** Python 3.11 is strictly required to install the pre-compiled backend wheel.
+  * **Linux / macOS Users:** Python 3.9 or newer is supported.
+* **C++ Compiler:** GCC 11+ or Clang is required for Linux and macOS users to build the custom backend from source.
 
 ### 1. Clone this repository
 ```bash
