@@ -12,7 +12,6 @@ from gymnasium import spaces
 import plotly.graph_objects as go
 import pymatching
 import scipy.sparse as sp
-import torch
 
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 
@@ -76,11 +75,13 @@ class DriftedMatchingEnv(gym.Env):
         action_scale: float = 1.0,
         update_period: int = 1000,
         prior_shots: int = 1000,
+        n_test_shots: int = 10_000,
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         use_pearson_correlation: bool = True,
         use_syndrome_features: bool = False,
         update_with: str = 'DGR',
+        dynamic_drift: bool = False,
         train_mode: bool = True,
         render_mode = None
     ):
@@ -100,11 +101,13 @@ class DriftedMatchingEnv(gym.Env):
         self.action_scale = action_scale
         self.update_period = update_period
         self.prior_shots = prior_shots
+        self.n_test_shots = n_test_shots
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.use_pearson_correlation = use_pearson_correlation
         self.use_syndrome_features = use_syndrome_features
         self.update_with = update_with
+        self.dynamic_drift = dynamic_drift
 
         # Build the base circuit and base matching graph, which are kept fixed through the episodes
         self.base_circuit, self.base_dem, self.base_matching = self.syndrome_data_generator.generate_base_circuit()
@@ -129,7 +132,6 @@ class DriftedMatchingEnv(gym.Env):
 
         # Make a copy of the base matching that will be updated every step
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
-        self.supports_edge_reweights = self._matching_supports_edge_reweights(self.current_matching)
 
         # Build the line graph adding edges based on the DEM
         self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges(self.base_dem)
@@ -476,6 +478,10 @@ class DriftedMatchingEnv(gym.Env):
         self.current_weights = self.initial_base_weights.copy()
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
+        # Initialize the dynamic LER trackers (calculated periodically every time the decoding graph is 
+        # updated with new drift knowledge)
+        self.ler = np.zeros(self.max_steps//self.update_period + 1, dtype=np.float32)
+
         # Initialize absolute counters for the actual observed MWPM shots
         self.shots_since_update = 0
         self.occ_batch_counts = np.zeros(self.n_dec_edges, dtype=np.float32)
@@ -492,7 +498,24 @@ class DriftedMatchingEnv(gym.Env):
         drifted_circuit, drifted_dem, drifted_matching = self.syndrome_data_generator.generate_drifted_circuit(
             base_circuit=self.base_circuit,
             seed=seed
+        )     
+
+        # Generate a several test shots with the drifted circuit to evaluate the LER
+        self.test_syndrome_batch, self.test_true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(
+            drifted_circuit, seed=2002, n_shots=self.n_test_shots)
+        
+        # Test the initial LER of our decoder
+        test_pred_edges_batch = self.current_matching.decode_batch(
+            self.test_syndrome_batch, enable_correlations=False
         )
+        test_pred_obs_batch = (test_pred_edges_batch @ self.fault_array) % 2
+        self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
+
+        # Test the oracle decoder LER
+        oracle_pred_obs_batch = drifted_matching.decode_batch(
+            self.test_syndrome_batch, enable_correlations=False).flatten()
+        self.oracle_ler = np.mean(oracle_pred_obs_batch != self.test_true_obs_batch)
+        
         
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit, seed)
@@ -508,9 +531,8 @@ class DriftedMatchingEnv(gym.Env):
             
             # Use your lookup matrix to find where this edge lives in OUR arrays
             idx = self.pair_to_idx_matrix[u, v]
-            if idx != -1:
-                self.oracle_weights[idx] = data["weight"]
-                oracle_probs[idx] = data["error_probability"]
+            self.oracle_weights[idx] = data["weight"]
+            oracle_probs[idx] = data["error_probability"]
 
         # Calculate the joint probabilities and Pearson correlations between the oracle edge weights
         _, oracle_joint_probs = self._build_line_graph_edges(drifted_dem, return_k_hop_adj_mat=False)
@@ -531,7 +553,7 @@ class DriftedMatchingEnv(gym.Env):
             # Pre-generate the oracle predicted observable for each shot in the episode using the drifted matching
             self.oracle_predicted_obs_batch = drifted_matching.decode_batch(
                 self.syndrome_batch, 
-                enable_correlations=True, 
+                enable_correlations=False, # remove, set as true
             ).flatten()
 
              # Pre-generate the static decoder solution edge predicted observable
@@ -553,7 +575,9 @@ class DriftedMatchingEnv(gym.Env):
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
             "weights_mse_error": self.weights_mse_error,
-            "corr_mse_error": self.corr_mse_error
+            "corr_mse_error": self.corr_mse_error,
+            "initial_test_ler": self.test_ler,
+            "oracle_ler": self.oracle_ler,
         }
         return obs, info
     
@@ -573,18 +597,14 @@ class DriftedMatchingEnv(gym.Env):
         true_obs = self.true_obs_batch[self.step_count]
 
         # First pass MWPM still uses the current matching (no drift knowledge)
-        selected_edges_1, first_pass_pred_obs = self.syndrome_data_generator.get_solution_edges(
+        selected_idx_1, first_pass_pred_obs = self.syndrome_data_generator.get_solution_edges(
             matching=self.current_matching, 
             syndrome_volume=syndrome, 
             enable_correlations=False,
             return_predicted_obs=True,
-            pair_to_idx_matrix=self.pair_to_idx_matrix,
             fault_array=self.fault_array
         )
         
-        # Determine the indices of the selected edges
-        selected_idx_1 = self._selected_edge_indices_from_pairs(selected_edges_1)
-
         selected_flag = np.zeros(self.n_dec_edges, dtype=np.float32)
         if selected_idx_1 is not None and len(selected_idx_1) > 0:
             selected_flag[selected_idx_1] = 1.0
@@ -627,40 +647,6 @@ class DriftedMatchingEnv(gym.Env):
         }
 
         return obs
-    
-
-    def _selected_edge_indices_from_pairs(self, edge_pairs: np.ndarray):
-        """
-        Vectorized O(1) array lookup taking advantage of NumPy's -1 indexing.
-        
-        Args:
-            edge_pairs: An array of shape [S, 2] containing the (u, v) detector pairs 
-                for the selected edges.
-
-        Returns:
-            idxs: An array of shape [S,] containing the corresponding edge indices in C-memory 
-                for the selected edges. If edge_pairs is empty, returns an empty array.
-        """
-        if edge_pairs.size == 0:
-            return np.zeros((0,), dtype=np.int64)
-
-        # Slice out the u and v columns
-        u = edge_pairs[:, 0]
-        v = edge_pairs[:, 1]
-
-        # Instant lookup of all edges in C-memory (NumPy handles the -1 boundary magically!)
-        idxs = self.pair_to_idx_matrix[u, v]
-
-        return idxs
-    
-
-    @staticmethod
-    def _matching_supports_edge_reweights(matching: pymatching.Matching) -> bool:
-        try:
-            params = inspect.signature(matching.decode_to_edges_array).parameters
-            return "edge_reweights" in params
-        except (TypeError, ValueError):
-            return False
 
 
     def _build_edge_reweights(self, second_pass_weights: np.ndarray) -> np.ndarray:
@@ -675,7 +661,6 @@ class DriftedMatchingEnv(gym.Env):
 
         # Fast boolean masking for the boundary edge rule
         boundary_mask = (u == -1) & (v != -1)
-        u_temp = u.copy()
         u[boundary_mask] = v[boundary_mask]
         v[boundary_mask] = -1
 
@@ -785,20 +770,18 @@ class DriftedMatchingEnv(gym.Env):
             # 2) Run 2nd pass MWPM with reweighted edges #
             ##############################################
             
-            selected_edges_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
+            selected_idx_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
                 matching=second_pass_matching,
                 syndrome_volume=self.current_syndrome,
                 enable_correlations=False,
                 edge_reweights=second_pass_edge_reweights,
                 return_predicted_obs=True,
-                pair_to_idx_matrix=self.pair_to_idx_matrix,
                 fault_array=self.fault_array,
             )
             
-            selected_idx_2 = self._selected_edge_indices_from_pairs(selected_edges_2)
         
         ######################################################
-        # 3) Update tracers using 2nd-pass selected edges #
+        # 3) Update tracers using 2nd-pass selected edges    #
         ######################################################
 
         self._accumulate_occurrence(selected_idx_2)
@@ -815,6 +798,19 @@ class DriftedMatchingEnv(gym.Env):
             self.corr_mse_error_static = np.mean((self.pearson_correlations - self.initial_pearson_corr)**2)
             self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
             self.weights_mse_error_static = np.mean((self.current_weights - self.initial_base_weights)**2)
+
+            # 1. Get the physical edges from PyMatching's batch decoder
+            # Guaranteed output shape: (10000, 502)
+            test_pred_edges_batch = self.current_matching.decode_batch(
+                self.test_syndrome_batch, enable_correlations=False
+            )
+            
+            # 2. Convert physical edges to logical observable via dot product parity
+            # Shape: (10000, 502) @ (502,) -> (10000,)
+            test_pred_obs_batch = (test_pred_edges_batch @ self.fault_array) % 2
+            
+            # 3. Calculate LER
+            self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
                                                  
         #########################
         # 4) Compute the reward #
@@ -856,6 +852,7 @@ class DriftedMatchingEnv(gym.Env):
             "corr_mse_error": self.corr_mse_error,
             "weights_mse_error_static": self.weights_mse_error_static,
             "corr_mse_error_static": self.corr_mse_error_static,
+            "test_ler": self.test_ler
         }
 
         ############################################################
@@ -1004,7 +1001,8 @@ class DriftedMatchingEnv(gym.Env):
             end_idx = min(start_idx + self.update_period, self.max_steps)
             
             # Slice the exact window of shots for this specific chunk
-            chunk = self.syndrome_batch[start_idx:end_idx]
+            #chunk = self.syndrome_batch[start_idx:end_idx]
+            chunk = self.syndrome_batch[start_idx:end_idx]  # Cumulative window from the start up to the end of this chunk
             
             # Calculate the physics statistics for this chunk
             spitz, remm = self._compute_raw_syndrome_statistics(chunk)
@@ -1053,6 +1051,11 @@ class DriftedMatchingEnv(gym.Env):
 
 
     def _apply_cma_and_update_graph(self):
+        """
+        Applies the CMA update rule to the occurrence and correlation tracers 
+        based on the accumulated batch counts, and then updates the MWPM graph 
+        weights accordingly.
+        """
         # 1. Calculate the decaying CMA learning rate (alpha)
         alpha = self.update_period / (self.prior_shots + self.step_count)
 
@@ -1085,7 +1088,11 @@ class DriftedMatchingEnv(gym.Env):
             p = np.clip(self.spitz_tracer, 1e-6, 0.499999)
 
         self.current_weights = np.clip(np.log((1.0 - p) / p), self.min_weight, self.max_weight)
-        self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
+        #self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
+        self.current_matching = pymatching.Matching.from_check_matrix(
+            self.H, 
+            weights=self.current_weights
+        )
         
         self.occ_batch_counts.fill(0.0)
         self.corr_batch_counts.fill(0.0)
@@ -1094,10 +1101,14 @@ class DriftedMatchingEnv(gym.Env):
         self.pearson_correlations = self._compute_pearson_correlations(self.occ_tracer, self.corr_tracer)
 
 
-    def get_base_graph_info(self) -> Dict[str, Any]:
+    def get_base_graph_info(self):
         """
-        Useful for notebook inspection / building GNN models.
+        Returns a dictionary containing the base graph information, 
+        including the number of decoding edges, number of line graph edges, 
+        the list of decoding edges, the current weights of the decoding 
+        edges, and the line graph edge indices.
         """
+
         return {
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
@@ -1113,6 +1124,7 @@ class DriftedMatchingEnv(gym.Env):
         Nodes represent the original decoding edges, and edges represent message-passing paths.
         Includes GNN node features and edge features (correlations) directly on the lines.
         """
+
         if self.render_mode != "human":
             return
 

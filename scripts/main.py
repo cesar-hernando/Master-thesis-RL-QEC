@@ -18,22 +18,24 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
         'MODE': 'test',  
-        'model_path': 'models/sac_gnn_29.pth',
+        'model_path': 'models/sac_gnn_37_best.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.004,
+        'p': 0.001,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
         'mismatch': 30.0,
-        'n_shots': 65_000,       # Shots per episode
-        'burn_in_steps': 15_000,
+        'n_shots': 150_000,       # Shots per episode
+        'n_test_shots': 10_000,   # Shots for LER evaluation
+        'burn_in_steps': 0,
         'bypass_threshold': 2,
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
+        'n_layers': 1, # Number of GNN layers (affects receptive field size)
         
         # Agent / NN Settings
         'hidden_dim': 128,
@@ -46,9 +48,10 @@ if __name__ == "__main__":
         'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 250,
-        'test_episodes': 3
+        'train_episodes': 270,
+        'test_episodes': 20
     }
+
 
     #######################################
     # 2. INITIALIZE ENVIRONMENT AND AGENT #
@@ -77,7 +80,8 @@ if __name__ == "__main__":
         local_action_hops=CONFIG['local_action_hops'],
         action_scale=CONFIG['action_scale'],
         update_period=CONFIG['update_period'],
-        prior_shots=CONFIG['prior_shots'],             
+        prior_shots=CONFIG['prior_shots'],
+        n_test_shots=CONFIG['n_test_shots'],             
         use_pearson_correlation=True,
         use_syndrome_features=False, 
         update_with='DGR',
@@ -96,7 +100,8 @@ if __name__ == "__main__":
         lr=CONFIG['lr'],
         gamma=CONFIG['gamma'],
         tau=CONFIG['tau'],
-        alpha=CONFIG['alpha']
+        alpha=CONFIG['alpha'],
+        n_layers=CONFIG['n_layers']
     )
 
     #total_params = sum(p.numel() for p in agent.actor.parameters())

@@ -168,7 +168,7 @@ class SyndromeDataGenerator:
         return drifted_circuit, drifted_dem, drifted_matching
     
 
-    def simulate_syndrome_data(self, drifted_circuit: stim.Circuit, seed=42):
+    def simulate_syndrome_data(self, drifted_circuit: stim.Circuit, seed=42, n_shots=None):
         """
         Simulate syndrome data by sampling from the drifted circuit and storing the true logical error labels.
 
@@ -183,18 +183,20 @@ class SyndromeDataGenerator:
 
         # Sample syndromes from the drifted circuit
         sampler = drifted_circuit.compile_detector_sampler(seed=seed)
-        syndrome_volume_batch, true_obs_batch = sampler.sample(shots=self.n_shots, separate_observables=True)
+        n_shots = n_shots if n_shots is not None else self.n_shots
+        syndrome_volume_batch, true_obs_batch = sampler.sample(shots=n_shots, separate_observables=True)
         true_obs_batch = true_obs_batch.flatten()
 
         return np.asarray(syndrome_volume_batch, dtype=np.uint8), true_obs_batch
-    
-    def simulate_syndrome_data_from_dem(self, drifted_dem: stim.Circuit, seed=42):
+
+    def simulate_syndrome_data_from_dem(self, drifted_dem: stim.Circuit, seed=42, n_shots=None):
         """
         Simulate syndrome data by sampling from the DEM and storing the true logical error labels.
 
         Args:
             drifted_dem: The detector error model derived from the drifted circuit
             seed: Random seed for reproducibility
+            n_shots: The number of shots to sample
 
         Returns:
             syndrome_volume_batch: A batch of syndrome volumes (shape: [n_shots, n_detectors, n_rounds])
@@ -203,43 +205,11 @@ class SyndromeDataGenerator:
 
         # Sample syndromes from the drifted circuit
         sampler_dem = drifted_dem.compile_sampler(seed=seed)
-        syndrome_volume_batch, true_obs_batch, true_errors = sampler_dem.sample(shots=self.n_shots)
+        n_shots = n_shots if n_shots is not None else self.n_shots
+        syndrome_volume_batch, true_obs_batch, true_errors = sampler_dem.sample(shots=n_shots)
         true_obs_batch = true_obs_batch.flatten()
 
         return np.asarray(syndrome_volume_batch, dtype=np.uint8), true_obs_batch
-
-    @staticmethod
-    def _predict_obs_from_selected_edges(
-        selected_edges: np.ndarray,
-        pair_to_idx_matrix: np.ndarray,
-        fault_array: np.ndarray
-    ):
-        """
-        Fully vectorized observable prediction using native -1 boundary indexing.
-
-        Args:
-            selected_edges: An array of shape (n_selected_edges, 2) containing the node indices of the 
-                selected edges.
-            pair_to_idx_matrix: A precomputed 2D matrix mapping node pairs to error indices, with -1 for invalid pairs.
-            fault_array: A boolean array where True indicates the presence of a fault for the corresponding error index.
-
-        Returns:
-            predicted_obs: A boolean value indicating the predicted observable outcome based on the selected edges.
-        """
-        if selected_edges.size == 0:
-            return False
-
-        u = selected_edges[:, 0]
-        v = selected_edges[:, 1]
-
-        # Fast matrix lookup (NumPy dynamically maps -1 to the boundary row/col)
-        edge_indices = pair_to_idx_matrix[u, v]
-
-        # Check parity (If the sum of crossed boundaries is odd, it flipped)
-        if edge_indices.size > 0:
-            return bool(np.sum(fault_array[edge_indices]) % 2)
-            
-        return False
 
 
     def get_solution_edges(
@@ -249,7 +219,6 @@ class SyndromeDataGenerator:
             enable_correlations: bool=False,
             edge_reweights: Optional[np.ndarray] = None,
             return_predicted_obs: bool=False,
-            pair_to_idx_matrix=None,
             fault_array=None
         ):
         """
@@ -262,99 +231,35 @@ class SyndromeDataGenerator:
             enable_correlations: Whether to use the correlated matching for decoding (should match how the matching was constructed).
             return_predicted_obs: Whether to also return the predicted observable outcome based on the selected edges. If True, 
                 pair_to_idx_matrix and fault_array must be provided.
-            pair_to_idx_matrix: A precomputed 2D matrix mapping node pairs to error indices, with -1 for invalid pairs. Required if 
-                return_predicted_obs is True.
             fault_array: A boolean array where True indicates the presence of a fault for the corresponding error index. Required if 
                 return_predicted_obs is True.
 
         Returns:
-            solution_edges: An array of shape (n_solution_edges, 2) containing the node indices of the edges selected by the MWPM 
-                decoder as the solution.
+            selected_idx: An array containing the indices of the edges selected by the MWPM decoder as the solution for the given 
+                syndrome volume.
             predicted_obs (optional): A boolean value indicating the predicted observable outcome based on the selected edges
         """
     
         if edge_reweights is None:
-            solution_edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
+            selected_edges_binary = matching.decode(syndrome_volume, enable_correlations=enable_correlations)
         else:
-            solution_edges = matching.decode_to_edges_array(
+            selected_edges_binary = matching.decode(
                 syndrome_volume,
                 enable_correlations=enable_correlations,
                 edge_reweights=edge_reweights,
             )
 
+        selected_idx = np.flatnonzero(selected_edges_binary)
+
         if return_predicted_obs:
-            if pair_to_idx_matrix is None or fault_array is None:
+            if fault_array is None:
                 raise ValueError("pair_to_idx_matrix and fault_array must be provided if return_predicted_obs = True")
             
-            predicted_obs = self._predict_obs_from_selected_edges( 
-                selected_edges=solution_edges, 
-                pair_to_idx_matrix=pair_to_idx_matrix, 
-                fault_array=fault_array
-            )
+            predicted_obs = bool((selected_edges_binary @ fault_array) % 2)
 
-            return solution_edges, predicted_obs
+            return selected_idx, predicted_obs
         
-        return solution_edges
-
-
-    def get_solution_edges_batch(
-            self, 
-            matching: pymatching.Matching, 
-            syndrome_volume_batch: np.ndarray,
-            enable_correlations: bool=True, 
-            return_predicted_obs: bool=False,
-            pair_to_idx_matrix=None,
-            fault_array=None
-        ):
-        """
-        Get the oracle solution edges for each syndrome volume/shot by decoding with the drifted matching.
-
-        Args:
-            matching: The PyMatching matching graph derived from the drifted DEM, used for decoding and 
-                oracle solutions.
-            syndrome_volume_batch: A batch of syndrome volumes (shape: [n_shots, n_detectors, n_rounds]) 
-                for which to compute the solution edges.
-            enable_correlations: Whether to use the correlated matching for decoding (should match how the 
-                matching was constructed).
-            return_predicted_obs: Whether to also return the predicted observable outcomes based on the 
-                selected edges. If True, pair_to_idx_matrix and fault_array must be provided.
-            pair_to_idx_matrix: A precomputed 2D matrix mapping node pairs to error indices, with -1 for 
-                invalid pairs. Required if return_predicted_obs is True.
-            fault_array: A boolean array where True indicates the presence of a fault for the corresponding 
-                error index. Required if return_predicted_obs is True.
-
-        Returns:
-            solution_edges_batch: A list of arrays, where each array has shape (n_solution_edges_i, 2) containing 
-                the node indices of the edges selected by the MWPM decoder as the solution for each shot.
-            predicted_obs_batch (optional): A boolean array where True indicates the predicted observable outcome 
-                for each shot. Returned only if return_predicted_obs = True.
-        """
-
-        n_shots = len(syndrome_volume_batch)
-        solution_edges_batch = []
-        
-        if return_predicted_obs:
-            if pair_to_idx_matrix is None or fault_array is None:
-                raise ValueError("pair_to_idx_matrix and fault_array must be provided if return_predicted_obs = True")
-            
-            predicted_obs_batch = np.zeros(n_shots, dtype=bool)
-            
-            # Decode AND Predict the Obs in one pass
-            for shot_idx, syndrome_volume in enumerate(syndrome_volume_batch):
-                edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
-                solution_edges_batch.append(edges)
-                predicted_obs_batch[shot_idx] = self._predict_obs_from_selected_edges( 
-                    selected_edges=edges,
-                    pair_to_idx_matrix=pair_to_idx_matrix, 
-                    fault_array=fault_array
-                )
-            return solution_edges_batch, predicted_obs_batch     
-        else:
-            # Just Decode
-            for shot_idx, syndrome_volume in enumerate(syndrome_volume_batch):
-                edges = matching.decode_to_edges_array(syndrome_volume, enable_correlations=enable_correlations)
-                solution_edges_batch.append(edges)
-            return solution_edges_batch
+        return selected_idx
         
 
     @staticmethod

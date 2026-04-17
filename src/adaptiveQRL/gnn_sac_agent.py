@@ -58,10 +58,13 @@ class GraphReplayBuffer:
 ##################################
 
 class GNNActor(nn.Module):
-    def __init__(self, node_dim, hidden_dim):
+    def __init__(self, node_dim, hidden_dim, n_layers=1):
         super().__init__()
+        self.n_layers = n_layers
+
         self.conv1 = GCNConv(node_dim, hidden_dim)
-        #self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        if n_layers > 1:
+            self.conv2 = GCNConv(hidden_dim, hidden_dim)
         
         self.mu_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim*2),
@@ -85,6 +88,9 @@ class GNNActor(nn.Module):
         
         # 1. Full Graph Convolution
         h = F.relu(self.conv1(x, edge_index, edge_weight=edge_weight))
+
+        if self.n_layers > 1:
+            h = F.relu(self.conv2(h, edge_index, edge_weight=edge_weight))
         
         # 2. Create Boolean Mask
         active_mask = action_mask.squeeze(-1).bool()
@@ -124,10 +130,12 @@ class GNNActor(nn.Module):
 
 
 class GNNCritic(nn.Module):
-    def __init__(self, node_dim, hidden_dim):
+    def __init__(self, node_dim, hidden_dim, n_layers=1):
         super().__init__()
+        self.n_layers = n_layers
         self.conv1 = GCNConv(node_dim + 1, hidden_dim)
-        #self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        if n_layers > 1:
+            self.conv2 = GCNConv(hidden_dim, hidden_dim)
         
         self.q_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim*2),
@@ -145,6 +153,8 @@ class GNNCritic(nn.Module):
         
         # Extract graph context
         h = F.relu(self.conv1(xu, edge_index, edge_weight=edge_weight))
+        if self.n_layers > 1:
+            h = F.relu(self.conv2(h, edge_index, edge_weight=edge_weight))
         
         # Global Pool and Predict Q
         pooled = global_mean_pool(h, batch_index)
@@ -157,7 +167,7 @@ class GNNCritic(nn.Module):
 ####################################
 
 class SACAgent:
-    def __init__(self, node_dim, hidden_dim, static_edge_index, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2):
+    def __init__(self, node_dim, hidden_dim, static_edge_index, n_layers=1, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.tau = tau
@@ -166,11 +176,11 @@ class SACAgent:
         # Cache the static edge index as a tensor once
         self.static_edge_index_tensor = torch.tensor(static_edge_index, dtype=torch.long).to(self.device)
         
-        self.actor = GNNActor(node_dim, hidden_dim).to(self.device)
+        self.actor = GNNActor(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=lr)
         
-        self.critic1 = GNNCritic(node_dim, hidden_dim).to(self.device)
-        self.critic2 = GNNCritic(node_dim, hidden_dim).to(self.device)
+        self.critic1 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
+        self.critic2 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
         self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=lr)
 
         # Target entropy is -1.0 because we use global_mean_pool (average over edges)
@@ -182,8 +192,8 @@ class SACAgent:
         
         # Conditionally initialize target networks ONLY if gamma > 0
         if self.gamma > 0.0:
-            self.target_critic1 = GNNCritic(node_dim, hidden_dim).to(self.device)
-            self.target_critic2 = GNNCritic(node_dim, hidden_dim).to(self.device)
+            self.target_critic1 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
+            self.target_critic2 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
             self.target_critic1.load_state_dict(self.critic1.state_dict())
             self.target_critic2.load_state_dict(self.critic2.state_dict())
         else:

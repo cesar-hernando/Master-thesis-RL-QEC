@@ -221,20 +221,15 @@ def install_detailed_step_profiler(env: DriftedMatchingEnv, profiler: MethodProf
             _record("env.step.phase.apply_action", t)
 
             t = time.perf_counter()
-            selected_edges_2, pred_obs = env.syndrome_data_generator.get_solution_edges(
+            selected_idx_2, pred_obs = env.syndrome_data_generator.get_solution_edges(
                 matching=second_pass_matching,
                 syndrome_volume=env.current_syndrome,
                 enable_correlations=False,
                 edge_reweights=second_pass_edge_reweights,
                 return_predicted_obs=True,
-                pair_to_idx_matrix=env.pair_to_idx_matrix,
                 fault_array=env.fault_array,
             )
             _record("env.step.phase.second_pass_decode", t)
-
-            t = time.perf_counter()
-            selected_idx_2 = env._selected_edge_indices_from_pairs(selected_edges_2)
-            _record("env.step.phase.selected_idx_lookup", t)
 
         t = time.perf_counter()
         env._accumulate_occurrence(selected_idx_2)

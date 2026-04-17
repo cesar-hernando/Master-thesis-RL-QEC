@@ -12,14 +12,14 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 200_000
+n_shots = 100_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
     distance=5, 
     n_rounds=5, 
-    mismatch=10.0,  # Drift multiplier
+    mismatch=30.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
         "after_clifford_depolarization": 0.001,
@@ -32,17 +32,21 @@ generator = SyndromeDataGenerator(
     n_shots=n_shots, 
     qec_code='surface_code'
 )
+
+update_period = 1000
+
 start_env_time = time.time()
 env = DriftedMatchingEnv(
     syndrome_data_generator=generator,
     local_action_only=True,
     local_action_hops=1,
     action_scale = 3.0,
-    update_period=1_000,
-    prior_shots=1_000,
+    update_period=update_period,
+    prior_shots=1,
+    n_test_shots=100_000,
     use_pearson_correlation=True,
-    use_syndrome_features=False,
-    update_with='DGR',
+    use_syndrome_features=True,
+    update_with='Spitz',
     train_mode=False
 )
 end_env_time = time.time()
@@ -60,6 +64,7 @@ oracle_errors = np.zeros(n_shots, dtype=np.float32)
 static_errors = np.zeros(n_shots, dtype=np.float32)
 weights_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
 corr_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
+test_ler = np.zeros((n_shots // env.update_period) + 1, dtype=np.float32)
 
 n_logical_flips = 0
 
@@ -71,6 +76,10 @@ print(f"Reset time = {end_time_reset - start_time_reset} s")
 # Record the starting weight error and correlation error
 #weights_mse_error[0] = info["weights_mse_error"]
 #corr_mse_error[0] = info["corr_mse_error"]
+
+# Retrieve the initial LER from the info dictionary
+test_ler[0] = info["initial_test_ler"]
+test_ler_oracle = info["oracle_ler"]
 
 terminated = False
 truncated = False
@@ -97,6 +106,8 @@ while not (terminated or truncated):
     logical_errors[step_idx] = float(step_info["logical_error"])
     oracle_errors[step_idx] = float(step_info["oracle_pred_obs"] != step_info["true_obs"])
     static_errors[step_idx] = float(step_info["static_pred_obs"] != step_info["true_obs"])
+    if (step_idx + 1) % env.update_period == 0:
+        test_ler[step_idx // env.update_period] = step_info["test_ler"]
     
     if step_info["true_obs"]:
         n_logical_flips += 1
@@ -133,12 +144,28 @@ print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_o
 
 
 # Generate the correct x-axis steps for the detached plot
-start_plot_idx = 1000
+start_plot_idx = 0
 x_steps = steps_array[start_plot_idx:]
 
 ############
 # PLOTTING #
 ############
+
+# Plot the evolution of the test LER over time, using the static decoder 
+# as a reference baseeline
+# Generate the correct x-axis steps for the test_ler
+test_ler_x_steps = np.arange(0, n_shots, update_period)
+
+plt.figure()
+plt.semilogy(test_ler_x_steps, test_ler[:len(test_ler_x_steps)], label="Our Decoder")
+plt.semilogy(test_ler_x_steps, test_ler[0]*np.ones_like(test_ler_x_steps), '--', label="Static Decoder")
+plt.semilogy(test_ler_x_steps, test_ler_oracle*np.ones_like(test_ler_x_steps), ':', label="Oracle Decoder")
+plt.xlabel("Step")
+plt.ylabel("Test LER")
+plt.title("Test LER Evolution (Adaptive vs Static)")
+plt.grid(True, which="both", ls="--") # Added dashed grid for semilogy readability
+plt.legend()
+plt.show()
 
 #env.render()
 '''
