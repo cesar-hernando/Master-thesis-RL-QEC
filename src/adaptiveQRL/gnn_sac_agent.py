@@ -17,6 +17,7 @@ from torch.optim import Adam
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import GCNConv, global_mean_pool, global_add_pool
 
+
 ##########################
 # 1. GRAPH REPLAY BUFFER #
 ##########################
@@ -63,7 +64,7 @@ class GNNActor(nn.Module):
         self.n_layers = n_layers
 
         self.conv1 = GCNConv(node_dim, hidden_dim)
-        if n_layers > 1:
+        if n_layers == 2:
             self.conv2 = GCNConv(hidden_dim, hidden_dim)
         
         self.mu_head = nn.Sequential(
@@ -134,7 +135,7 @@ class GNNCritic(nn.Module):
         super().__init__()
         self.n_layers = n_layers
         self.conv1 = GCNConv(node_dim + 1, hidden_dim)
-        if n_layers > 1:
+        if n_layers == 2:
             self.conv2 = GCNConv(hidden_dim, hidden_dim)
         
         self.q_head = nn.Sequential(
@@ -145,21 +146,37 @@ class GNNCritic(nn.Module):
             nn.Linear(hidden_dim, 1)
         )
 
-    def forward(self, x, edge_index, edge_attr, action, batch_index):
+    def forward(self, x, edge_index, edge_attr, action, action_mask, batch_index):
         edge_weight = edge_attr.squeeze(-1) if edge_attr.dim() > 1 else edge_attr
         
         # Combine state and action
         xu = torch.cat([x, action], dim=-1)
         
-        # Extract graph context
+        # Extract graph context (Message Passing)
         h = F.relu(self.conv1(xu, edge_index, edge_weight=edge_weight))
         if self.n_layers > 1:
             h = F.relu(self.conv2(h, edge_index, edge_weight=edge_weight))
         
-        # Global Pool and Predict Q
-        pooled = global_mean_pool(h, batch_index)
-        q = self.q_head(pooled)
-        return q
+        # 1. PER-NODE CRITIC: Apply MLP before pooling!
+        q_per_node = self.q_head(h) 
+        
+        # 2. MASKED MEAN POOLING
+        # Zero out the Q-values of edges that were ignored/bypassed
+        masked_q = q_per_node * action_mask
+        
+        # Sum the valid Q-values for each graph in the batch
+        q_sum = global_add_pool(masked_q, batch_index)
+        
+        # Count how many active nodes exist per graph in the batch
+        active_counts = global_add_pool(action_mask, batch_index)
+        
+        # Prevent division by zero if a graph has absolutely no active edges
+        safe_divisor = torch.clamp(active_counts, min=1.0)
+        
+        # Calculate the true average Q-value of only the active edges
+        q_global = q_sum / safe_divisor
+        
+        return q_global
 
 
 ####################################
@@ -307,11 +324,11 @@ class SACAgent:
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         self.alpha_optimizer.step()
-
+        '''
         with torch.no_grad():
             # np.log(0.005) ≈ -5.29, np.log(0.2) ≈ -1.61
             self.log_alpha.clamp_(np.log(0.00005), np.log(0.2))
-
+        '''
         # TARGET SOFT UPDATE
         if self.gamma > 0.0:
             for target_param, param in zip(self.target_critic1.parameters(), self.critic1.parameters()):

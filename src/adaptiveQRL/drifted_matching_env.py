@@ -553,7 +553,7 @@ class DriftedMatchingEnv(gym.Env):
             # Pre-generate the oracle predicted observable for each shot in the episode using the drifted matching
             self.oracle_predicted_obs_batch = drifted_matching.decode_batch(
                 self.syndrome_batch, 
-                enable_correlations=False, # remove, set as true
+                enable_correlations=True, # remove, set as true
             ).flatten()
 
              # Pre-generate the static decoder solution edge predicted observable

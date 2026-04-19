@@ -18,7 +18,7 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
         'MODE': 'test',  
-        'model_path': 'models/sac_gnn_37_best.pth',
+        'model_path': 'models/sac_gnn_35_best.pth',
         
         # Environment Settings
         'distance': 5,
