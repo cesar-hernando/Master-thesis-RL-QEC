@@ -513,7 +513,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # Test the oracle decoder LER
         oracle_pred_obs_batch = drifted_matching.decode_batch(
-            self.test_syndrome_batch, enable_correlations=False).flatten()
+        self.test_syndrome_batch, enable_correlations=True).flatten()
         self.oracle_ler = np.mean(oracle_pred_obs_batch != self.test_true_obs_batch)
         
         

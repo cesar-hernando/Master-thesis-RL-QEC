@@ -266,8 +266,8 @@ class SACAgent:
                 next_active_count = global_add_pool(next_mask, batch.batch)
                 next_log_prob_avg = next_log_prob_sum / torch.clamp(next_active_count, min=1.0)
                 
-                target_q1 = self.target_critic1(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
-                target_q2 = self.target_critic2(next_x, next_edge_index, next_edge_attr, next_action, batch.batch)
+                target_q1 = self.target_critic1(next_x, next_edge_index, next_edge_attr, next_action, next_mask, batch.batch)
+                target_q2 = self.target_critic2(next_x, next_edge_index, next_edge_attr, next_action, next_mask, batch.batch)
                 
                 # Use tuned alpha and the average entropy ---
                 current_alpha = self.log_alpha.exp().detach()
@@ -278,8 +278,8 @@ class SACAgent:
             # Contextual Bandit Mode: Fast path, target is just the immediate reward
             y = reward
             
-        current_q1 = self.critic1(x, edge_index, edge_attr, action, batch.batch)
-        current_q2 = self.critic2(x, edge_index, edge_attr, action, batch.batch)
+        current_q1 = self.critic1(x, edge_index, edge_attr, action, action_mask, batch.batch)
+        current_q2 = self.critic2(x, edge_index, edge_attr, action, action_mask, batch.batch)
         
         critic_loss = F.mse_loss(current_q1, y) + F.mse_loss(current_q2, y)
         
@@ -306,8 +306,8 @@ class SACAgent:
         # 4. Calculate the true average entropy of ONLY the active edges
         log_prob_pooled = log_prob_sum / safe_divisor
         
-        q1_new = self.critic1(x, edge_index, edge_attr, new_action, batch.batch)
-        q2_new = self.critic2(x, edge_index, edge_attr, new_action, batch.batch)
+        q1_new = self.critic1(x, edge_index, edge_attr, new_action, action_mask, batch.batch)
+        q2_new = self.critic2(x, edge_index, edge_attr, new_action, action_mask, batch.batch)
         q_new = torch.min(q1_new, q2_new)
         
         actor_loss = (alpha * log_prob_pooled - q_new).mean()
