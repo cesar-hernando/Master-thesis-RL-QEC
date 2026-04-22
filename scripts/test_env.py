@@ -43,7 +43,7 @@ env = DriftedMatchingEnv(
     action_scale = 3.0,
     update_period=update_period,
     prior_shots=1,
-    n_test_shots=100_000,
+    n_test_shots=1_000_000,
     use_pearson_correlation=True,
     use_syndrome_features=True,
     update_with='Spitz',
@@ -64,7 +64,7 @@ oracle_errors = np.zeros(n_shots, dtype=np.float32)
 static_errors = np.zeros(n_shots, dtype=np.float32)
 weights_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
 corr_mse_error = np.zeros(n_shots + 1, dtype=np.float32)
-test_ler = np.zeros((n_shots // env.update_period) + 1, dtype=np.float32)
+test_ler = []
 
 n_logical_flips = 0
 
@@ -78,7 +78,7 @@ print(f"Reset time = {end_time_reset - start_time_reset} s")
 #corr_mse_error[0] = info["corr_mse_error"]
 
 # Retrieve the initial LER from the info dictionary
-test_ler[0] = info["initial_test_ler"]
+test_ler.append(info["initial_test_ler"])
 test_ler_oracle = info["oracle_ler"]
 
 terminated = False
@@ -107,7 +107,7 @@ while not (terminated or truncated):
     oracle_errors[step_idx] = float(step_info["oracle_pred_obs"] != step_info["true_obs"])
     static_errors[step_idx] = float(step_info["static_pred_obs"] != step_info["true_obs"])
     if (step_idx + 1) % env.update_period == 0:
-        test_ler[step_idx // env.update_period] = step_info["test_ler"]
+        test_ler.append(step_info["test_ler"])
     
     if step_info["true_obs"]:
         n_logical_flips += 1
@@ -142,6 +142,10 @@ print("LER (Static) = ", n_logical_errors_static/n_shots)
 print("Relative LER (Our) = ", n_logical_errors/n_logical_errors_oracle)
 print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_oracle)
 
+print("\n TEST SUMMARY:")
+print(f"Static decoder LER = {test_ler[0]:.6f}")
+print(f"Oracle decoder LER = {test_ler_oracle:.6f}")
+print(f"Final test LER after {n_shots} steps = {test_ler[-1]:.6f}")
 
 # Generate the correct x-axis steps for the detached plot
 start_plot_idx = 0

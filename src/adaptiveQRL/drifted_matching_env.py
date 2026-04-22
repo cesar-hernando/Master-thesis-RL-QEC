@@ -513,7 +513,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # Test the oracle decoder LER
         oracle_pred_obs_batch = drifted_matching.decode_batch(
-        self.test_syndrome_batch, enable_correlations=True).flatten()
+        self.test_syndrome_batch, enable_correlations=False).flatten() # remove, set as true
         self.oracle_ler = np.mean(oracle_pred_obs_batch != self.test_true_obs_batch)
         
         
@@ -918,13 +918,17 @@ class DriftedMatchingEnv(gym.Env):
         v_mean = np.mean(recent_syndromes, axis=0) 
         
         E_matrix = np.zeros((self.n_dec_edges, n_shots), dtype=bool)
+        boundary_edges = []
+
+        #########################################################
+        # 1. Calculate probabilities for bulk edges #
+        #########################################################
 
         for idx, (u, v) in enumerate(self.dec_edge_list):
-            # Handle boundary edges
+            # Defer boundary edges to the second pass
             if u == -1 or v == -1:
+                boundary_edges.append((idx, u, v))
                 real_node = v if u == -1 else u
-                p = np.clip(v_mean[real_node] / 2.0, 1e-6, 0.499)
-                spitz_probs[idx] = p
                 E_matrix[idx] = recent_syndromes[:, real_node] == 1
                 continue
             
@@ -939,7 +943,7 @@ class DriftedMatchingEnv(gym.Env):
             mean_uv = np.mean(E_matrix[idx])
             mean_xor = np.mean(v_u ^ v_v)
             
-            # Calculate the Spitz probability
+            # Calculate the Spitz probability for bulk edges
             denom = 1.0 - 2.0 * mean_xor
             if abs(denom) < 1e-9:
                 p = 0.499 
@@ -950,6 +954,37 @@ class DriftedMatchingEnv(gym.Env):
                 
             spitz_probs[idx] = p
 
+        ##############################################################
+        # 2. Calculate probabilities for boundary edges #
+        ##############################################################
+
+        for idx, u, v in boundary_edges:
+            real_node = v if u == -1 else u
+            node_mean = v_mean[real_node]
+            
+            # Calculate the product of (1 - 2*p_ij) for all other edges connected to real_node
+            prod_term = 1.0
+            for j_idx, (j_u, j_v) in enumerate(self.dec_edge_list):
+                if j_idx == idx: 
+                    continue # Skip itself
+                
+                # If the edge connects to real_node and is a bulk edge
+                if (j_u == real_node or j_v == real_node) and (j_u != -1 and j_v != -1):
+                    prod_term *= (1.0 - 2.0 * spitz_probs[j_idx])
+            
+            # Apply exact boundary formula 
+            if abs(prod_term) < 1e-9:
+                p = 0.499
+            else:
+                p = 0.5 + (node_mean - 0.5) / prod_term
+                p = np.clip(p, 1e-6, 0.499)
+                
+            spitz_probs[idx] = p
+
+        #################################
+        # 3. Calculate Remm Covariances #
+        #################################
+        
         remm_covariances = np.zeros(self.n_line_edges, dtype=np.float32)
 
         if self.n_line_edges > 0:

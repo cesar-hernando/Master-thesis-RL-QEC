@@ -17,18 +17,18 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'test',  
-        'model_path': 'models/sac_gnn_35_best.pth',
+        'MODE': 'analyze_policy',  
+        'model_path': 'models/sac_gnn_43_best.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.001,
+        'p': 0.004,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
         'mismatch': 30.0,
-        'n_shots': 150_000,       # Shots per episode
-        'n_test_shots': 10_000,   # Shots for LER evaluation
-        'burn_in_steps': 0,
+        'n_shots': 65_000,       # Shots per episode
+        'n_test_shots': 0,   # Shots for LER evaluation
+        'burn_in_steps': 15_000,
         'bypass_threshold': 2,
         'action_scale': 3.0,
         'update_period': 1_000,  # CMA update frequency
@@ -38,9 +38,9 @@ if __name__ == "__main__":
         'n_layers': 1, # Number of GNN layers (affects receptive field size)
         
         # Agent / NN Settings
-        'hidden_dim': 128,
+        'hidden_dim': 256,
         'lr': 1e-4,
-        'gamma': 0.99,          # 0.0 for Contextual Bandit (Crucial for QEC!)
+        'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
         'alpha': 0.01,          # Entropy tuning
         'batch_size': 64,
