@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH --job-name=graph-optuna
+#SBATCH --output=./%x_%A_%a.out
+#SBATCH --error=./%x_%A_%a.err
+#SBATCH --time=0-18:00:00
+#SBATCH --mem=48GB
+#SBATCH --partition=gpu_lion
+#SBATCH --account=gpu_lion
+#SBATCH --gres=gpu:1
+#SBATCH --array=0-13
+#SBATCH --mail-type=NONE
+
+set -euo pipefail
+
+cd /home/felix/vscode/Master-thesis-RL-QEC
+
+# Adjust these for your cluster environment if needed.
+if command -v ml >/dev/null 2>&1; then
+  ml purge || true
+  ml load ALICE/default || true
+  ml load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1 || true
+fi
+
+if [ -f ".venv/bin/activate" ]; then
+  source .venv/bin/activate
+fi
+
+# --- Search configuration -----------------------------------------------------
+SEED=0
+STUDY_NAME="qec_graph_optuna_d5_r5"
+RESULTS_DIR="$PWD/models/optuna_results"
+MODELS_ROOT="$PWD/models/optuna"
+STUDY_DB="$RESULTS_DIR/${STUDY_NAME}.sqlite3"
+STORAGE_URI="sqlite:///$STUDY_DB"
+TRIAL_PRESET_ID="${SLURM_ARRAY_TASK_ID}"
+SAMPLER_SEED=$((SEED + TRIAL_PRESET_ID))
+
+mkdir -p "$RESULTS_DIR" "$MODELS_ROOT"
+
+ARGS=(
+  --study-name "$STUDY_NAME"
+  --storage "$STORAGE_URI"
+  --results-dir "$RESULTS_DIR"
+  --model-dir "$MODELS_ROOT"
+  --seed "$SEED"
+  --sampler-seed "$SAMPLER_SEED"
+  --trial-preset-id "$TRIAL_PRESET_ID"
+  --n-trials 1
+  --sampler random
+  --skip-if-completed
+  --distance 5
+  --n-rounds 5
+  --p 0.004
+  --mismatch 30.0
+  --p-gate-zz 0.0
+  --n-shots 65000
+  --n-test-shots 0
+  --burn-in-steps 15000
+  --bypass-threshold 2
+  --update-period 1000
+  --prior-shots 1000
+  --local-action-only
+  --gamma 0.0
+  --tau 0.005
+  --train-episodes 270
+  --buffer-capacity 100000
+)
+
+echo "Running Optuna graph search array task ${SLURM_ARRAY_TASK_ID}"
+echo "Study=${STUDY_NAME}, preset_id=${TRIAL_PRESET_ID}, sampler_seed=${SAMPLER_SEED}"
+echo "Storage=${STORAGE_URI}"
+echo "Command: python -u scripts/optuna_graph_search.py ${ARGS[*]}"
+
+python -u scripts/optuna_graph_search.py "${ARGS[@]}"
