@@ -210,8 +210,10 @@ def test(env, agent, config):
     
     policies = ['GNN', 'Zero']
     
+    # ADDED: 'ep_lers' to store the Logical Error Rate of each individual episode
     raw_results = {
-        p: {'errors': 0, 'eval_errors': 0, 'fixed_count': 0, 'broken_count': 0, 'cum': np.zeros(total_shots, dtype=np.int32)} 
+        p: {'errors': 0, 'eval_errors': 0, 'fixed_count': 0, 'broken_count': 0, 
+            'cum': np.zeros(total_shots, dtype=np.int32), 'ep_lers': []} 
         for p in policies + ['Oracle', 'Static']
     }
     
@@ -220,7 +222,6 @@ def test(env, agent, config):
         'mse_gnn_static': [], 'mse_zero_static': [],
         'p_gnn_oracle': [], 'p_zero_oracle': [], 
         'p_gnn_static': [], 'p_zero_static': [],
-    
     }
     
     for policy in policies:
@@ -238,6 +239,8 @@ def test(env, agent, config):
             step_count = 0
             
             ep_eval_policy_errs = 0 
+            ep_eval_oracle_errs = 0  # ADDED: Track episode-level oracle errors
+            ep_eval_static_errs = 0  # ADDED: Track episode-level static errors
             ep_fixed_count = 0
             ep_broken_count = 0
             
@@ -293,6 +296,8 @@ def test(env, agent, config):
                     if step_count >= burn_in_steps:
                         oracle_eval_errs += err_oracle
                         static_eval_errs += err_static
+                        ep_eval_oracle_errs += err_oracle # ADDED
+                        ep_eval_static_errs += err_static # ADDED
 
                 if step_count >= burn_in_steps:
                     ep_weights_mse_oracle.append(info["weights_mse_error"])
@@ -303,6 +308,12 @@ def test(env, agent, config):
                 obs = next_obs
                 step_count += 1
                 global_shot_idx += 1
+                
+            # ADDED: Store the LER for this specific episode
+            raw_results[policy]['ep_lers'].append(ep_eval_policy_errs / eval_shots_per_ep)
+            if policy == 'GNN':
+                raw_results['Oracle']['ep_lers'].append(ep_eval_oracle_errs / eval_shots_per_ep)
+                raw_results['Static']['ep_lers'].append(ep_eval_static_errs / eval_shots_per_ep)
                 
             # Clean printing logic
             if policy == 'GNN':
@@ -318,9 +329,14 @@ def test(env, agent, config):
             
         raw_results[policy]['eval_errors'] = policy_eval_errs
         
+        # ADDED: Calculate Means and Standard Deviations
+        policy_ler_mean = np.mean(raw_results[policy]['ep_lers'])
+        policy_ler_std = np.std(raw_results[policy]['ep_lers'])
+        
         # Clean summary logic
         print(f"\n  -> {policy} Summary:")
-        print(f"     * LER: {policy_eval_errs / total_eval_shots:.6f} ({policy_eval_errs}/{total_eval_shots})")
+        # UPDATED to print the Std Dev
+        print(f"     * LER: {policy_ler_mean:.7f} ± {policy_ler_std:.7f} ({policy_eval_errs}/{total_eval_shots})")
         if policy == 'GNN':
             fixed_pct = (policy_fixed_count / total_eval_shots) * 100
             broken_pct = (policy_broken_count / total_eval_shots) * 100
@@ -333,9 +349,11 @@ def test(env, agent, config):
             raw_results['Oracle']['eval_errors'] = oracle_eval_errs
             raw_results['Static']['eval_errors'] = static_eval_errs
 
+    # Construct final metrics dictionary
     final_metrics = {}
     for k in ['GNN', 'Zero', 'Static', 'Oracle']:
-        final_metrics[f'ler_{k.lower()}'] = raw_results[k]['eval_errors'] / total_eval_shots
+        final_metrics[f'ler_{k.lower()}'] = np.mean(raw_results[k]['ep_lers'])
+        final_metrics[f'ler_std_{k.lower()}'] = np.std(raw_results[k]['ep_lers']) # ADDED
         final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
 
     plot_testing_metrics(final_metrics)

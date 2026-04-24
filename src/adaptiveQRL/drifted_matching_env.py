@@ -80,6 +80,7 @@ class DriftedMatchingEnv(gym.Env):
         max_weight: float = 50.0,
         use_pearson_correlation: bool = True,
         use_syndrome_features: bool = False,
+        use_log_joint_prob: bool = False,
         update_with: str = 'DGR',
         dynamic_drift: bool = False,
         train_mode: bool = True,
@@ -106,6 +107,7 @@ class DriftedMatchingEnv(gym.Env):
         self.max_weight = max_weight
         self.use_pearson_correlation = use_pearson_correlation
         self.use_syndrome_features = use_syndrome_features
+        self.use_log_joint_prob = use_log_joint_prob
         self.update_with = update_with
         self.dynamic_drift = dynamic_drift
 
@@ -620,10 +622,18 @@ class DriftedMatchingEnv(gym.Env):
         self.current_action_mask = action_mask
 
         # Evaluate the DGR (Decoder) Edge Feature
-        if self.use_pearson_correlation:
+        if self.use_pearson_correlation and not self.use_log_joint_prob:
             dgr_edge_feat = self.pearson_correlations
-        else:
+        elif not self.use_log_joint_prob and not self.use_pearson_correlation:
             dgr_edge_feat = self.corr_tracer
+        elif self.use_log_joint_prob and not self.use_pearson_correlation:
+            dgr_edge_feat = -np.log(self.corr_tracer + 1e-10) # Add small epsilon to avoid log(0)
+        else:
+            raise ValueError("Invalid edge feature configuration. Please choose one of the following: \n"
+                             "1) use_pearson_correlation=True and use_log_joint_prob=False \n"
+                             "2) use_pearson_correlation=False and use_log_joint_prob=False \n"
+                             "3) use_pearson_correlation=False and use_log_joint_prob=True \n"
+                             )
 
         # Build Feature Arrays Dynamically based on the Flag
         if self.use_syndrome_features:

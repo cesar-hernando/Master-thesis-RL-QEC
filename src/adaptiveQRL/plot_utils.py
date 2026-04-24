@@ -278,31 +278,35 @@ def plot_training_metrics(metrics, config):
 
 
 def plot_testing_metrics(test_results):
-    """Generates a bar chart and timeline for all 5 evaluation metrics."""
+    """Generates a bar chart and timeline for all evaluation metrics with standard deviations."""
     os.makedirs('plots', exist_ok=True)
     
     fig, axs = plt.subplots(1, 2, figsize=(16, 6))
     fig.suptitle("Comprehensive Decoder Evaluation (Ablation Study)", fontsize=16)
     
-    # Define the 5 categories
+    # Define the 4 categories
     labels = ['GNN (Ours)', 'Zero (CMA Only)', 'Static', 'Oracle']
     keys = ['gnn', 'zero', 'static', 'oracle']
     
-    # Colors: Green (Win), Blue (Target), Purple (Ablation), Red (Baseline), Orange (Worst)
-    colors = ['#2ca02c', '#1f77b4', '#9467bd', '#d62728', '#ff7f0e']
+    # Colors: Green (Win), Blue (Target), Purple (Ablation), Red (Baseline)
+    colors = ['#2ca02c', '#1f77b4', '#9467bd', '#d62728']
     
     lers = [test_results[f'ler_{k}'] for k in keys]
+    stds = [test_results[f'ler_std_{k}'] for k in keys] # ADDED
     
-    # Plot 1: Bar Chart of Logical Error Rates
-    bars = axs[0].bar(labels, lers, color=colors, alpha=0.8)
+    # Plot 1: Bar Chart of Logical Error Rates (ADDED yerr and capsize)
+    bars = axs[0].bar(labels, lers, yerr=stds, capsize=8, color=colors, alpha=0.8, edgecolor='black')
     axs[0].set_title('Logical Error Rate (LER)')
     axs[0].set_ylabel('LER')
     axs[0].grid(axis='y', linestyle='--', alpha=0.7)
     
-    # Annotate bars with exact values
-    for bar in bars:
+    # Annotate bars with exact values and standard deviations
+    for i, bar in enumerate(bars):
         yval = bar.get_height()
-        axs[0].text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:.5f}', ha='center', va='bottom', fontweight='bold')
+        err = stds[i]
+        # Text is placed slightly above the error bar cap so it doesn't overlap
+        axs[0].text(bar.get_x() + bar.get_width()/2.0, yval + err + (max(lers)*0.02), 
+                    f'{yval:.7f}\n±{err:.7f}', ha='center', va='bottom', fontweight='bold')
 
     # Plot 2: Cumulative Errors Over Time
     shots = np.arange(1, len(test_results['cum_gnn']) + 1)
