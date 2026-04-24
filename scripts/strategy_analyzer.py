@@ -541,8 +541,8 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, choices=["collect", "analyze", "both"], default="both",
                         help="Choose whether to collect data, analyze a CSV, or both.")
     parser.add_argument("--shots", type=int, default=1_000_000, help="Number of shots to evaluate")
-    parser.add_argument("--data_path", type=str, default="data/gnn_actions.csv", help="Path to save/load the CSV data")
-    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/", help="Directory to save plots")
+    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p4e-3_1Ms_mode43b_m1_d5.csv", help="Path to save/load the CSV data")
+    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_43_p4e-3_m1_d5/", help="Directory to save plots")
     
     args = parser.parse_args()
     
