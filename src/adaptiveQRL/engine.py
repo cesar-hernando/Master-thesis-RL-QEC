@@ -167,8 +167,8 @@ def train(env, agent, buffer, config):
         # --- SMART VALIDATION LOGIC ---
         
         # 1. Check if we should unlock validation
-        if not validation_triggered and episode_reward > 0:
-            print(f"  [!] Reward crossed 0! Unlocking Validation phase for the rest of training.")
+        if not validation_triggered and episode_reward > 100:
+            print(f"  [!] Reward crossed 100! Unlocking Validation phase for the rest of training.")
             validation_triggered = True
 
         # 2. Run validation only if unlocked AND it is the 5th episode
