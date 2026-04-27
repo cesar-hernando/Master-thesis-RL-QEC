@@ -762,6 +762,9 @@ class DriftedMatchingEnv(gym.Env):
         if action.shape[0] != self.n_dec_edges:
             raise ValueError(f"Action has shape {action.shape}; expected ({self.n_dec_edges},)")
 
+        # Map the action values from [-1, 1] to [-1, 0] by scaling and shifting
+        action = (action - 1.0) / 2.0
+
         if self.local_action_only:
             applied_delta = action * self.current_action_mask * self.action_scale
         else:
