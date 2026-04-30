@@ -296,11 +296,11 @@ def run_analysis(data_path, output_dir):
     plt.figure(figsize=(10, 6))
     
     sns.kdeplot(
-        data=df_neighbors, x="action_taken", hue="logical_outcome", 
+        data=df, x="action_taken", hue="logical_outcome", 
         fill=True, common_norm=False, palette={"fixed": "seagreen", "broken": "indianred"}
     )
     sns.kdeplot(
-        data=df_neighbors, x="correlated_action_taken", 
+        data=df, x="correlated_action_taken", 
         color="black", linestyle="--", linewidth=2.5, label="Correlated MWPM (Analytical)"
     )
     
@@ -540,24 +540,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract and Analyze GNN Agent Policy")
     parser.add_argument("--mode", type=str, choices=["collect", "analyze", "both"], default="both",
                         help="Choose whether to collect data, analyze a CSV, or both.")
-    parser.add_argument("--shots", type=int, default=1_000_000, help="Number of shots to evaluate")
-    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p4e-3_1Ms_mode43b_m1_d5.csv", help="Path to save/load the CSV data")
-    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_43_p4e-3_m1_d5/", help="Directory to save plots")
+    parser.add_argument("--shots", type=int, default=10_000_000, help="Number of shots to evaluate")
+    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p1e-3_1Ms_mode49b_m1_d5.csv", help="Path to save/load the CSV data")
+    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_49b_p1e-3_m1_d5/", help="Directory to save plots")
     
     args = parser.parse_args()
     
     CONFIG = {
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.004,
+        'p': 0.001,
         'p_gate_zz': 0.0,
         'mismatch': 1.0,
         'n_shots': args.shots,
         'n_test_shots': 0,
         'burn_in_steps': 0,
         'bypass_threshold': 2,
-        'action_scale': 3.0,
-        'update_period': 2_000_000,
+        'action_scale': 5.0,
+        'update_period': 20_000_000,
         'prior_shots': 1_000,
         'local_action_only': True,
         'local_action_hops': 1,
@@ -569,7 +569,7 @@ if __name__ == "__main__":
         'gamma': 0.0,
         'tau': 0.005,
         'alpha': 0.01,
-        'model_path': 'models/sac_gnn_43_best.pth'
+        'model_path': 'models/sac_gnn_49_best.pth'
     }
     
     if args.mode in ["collect", "both"]:

@@ -208,7 +208,7 @@ def test(env, agent, config):
     total_shots = config['test_episodes'] * n_shots
     total_eval_shots = config['test_episodes'] * eval_shots_per_ep 
     
-    policies = ['GNN', 'Zero']
+    policies = ['SAC_GNN', 'Zero', 'CM']
     
     # ADDED: 'ep_lers' to store the Logical Error Rate of each individual episode
     raw_results = {
@@ -218,10 +218,13 @@ def test(env, agent, config):
     }
     
     weight_metrics = {
-        'mse_gnn_oracle': [], 'mse_zero_oracle': [],
-        'mse_gnn_static': [], 'mse_zero_static': [],
-        'p_gnn_oracle': [], 'p_zero_oracle': [], 
-        'p_gnn_static': [], 'p_zero_static': [],
+        'mse_sac_gnn_oracle': [], 'mse_zero_oracle': [],
+        'mse_sac_gnn_static': [], 'mse_zero_static': [],
+        'p_sac_gnn_static': [], 'p_zero_static': [],
+        'p_sac_gnn_oracle': [], 'p_zero_oracle': [],
+        'mse_cm_oracle': [], 'mse_cm_static': [],
+        'p_cm_static': [], 'p_cm_oracle': []
+
     }
     
     for policy in policies:
@@ -239,8 +242,8 @@ def test(env, agent, config):
             step_count = 0
             
             ep_eval_policy_errs = 0 
-            ep_eval_oracle_errs = 0  # ADDED: Track episode-level oracle errors
-            ep_eval_static_errs = 0  # ADDED: Track episode-level static errors
+            ep_eval_oracle_errs = 0  
+            ep_eval_static_errs = 0  
             ep_fixed_count = 0
             ep_broken_count = 0
             
@@ -253,12 +256,23 @@ def test(env, agent, config):
                 if step_count < burn_in_steps:
                     action = np.zeros(env.n_dec_edges, dtype=np.float32)
                 else:
-                    if policy == 'GNN': 
+                    if policy == 'SAC_GNN': 
                         if n_flashes <= bypass_threshold:
                             action = np.zeros(env.n_dec_edges, dtype=np.float32)
                         else:
                             action = agent.select_action(obs, evaluate=True)
+
                     elif policy == 'Zero': action = np.zeros(env.n_dec_edges, dtype=np.float32)
+
+                    elif policy == 'CM': 
+                        # Use the Correlated Matching solution as the action for the CM baseline
+                        if n_flashes <= bypass_threshold:
+                            action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                        else:  
+                            action = env.compute_analytical_correlated_matching_action()
+
+                    else:
+                        raise ValueError(f"Unknown policy: {policy}")
                     
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
@@ -272,7 +286,7 @@ def test(env, agent, config):
                     policy_eval_errs += err_policy
                     ep_eval_policy_errs += err_policy
                     
-                    if policy == 'GNN':
+                    if policy == 'SAC_GNN':
                         true_obs = info["true_obs"]
                         pass1_correct = (info["first_pass_obs"] == true_obs)
                         pass2_correct = (info["pred_obs"] == true_obs)
@@ -284,7 +298,7 @@ def test(env, agent, config):
                             policy_broken_count += 1
                             ep_broken_count += 1
 
-                if policy == 'GNN':
+                if policy == 'SAC_GNN':
                     err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
                     err_static = int(info["static_pred_obs"] != info["true_obs"])
                     
@@ -292,7 +306,7 @@ def test(env, agent, config):
                     static_errors += err_static
                     raw_results['Oracle']['cum'][global_shot_idx] = oracle_errors
                     raw_results['Static']['cum'][global_shot_idx] = static_errors
-                    
+
                     if step_count >= burn_in_steps:
                         oracle_eval_errs += err_oracle
                         static_eval_errs += err_static
@@ -311,12 +325,11 @@ def test(env, agent, config):
                 
             # ADDED: Store the LER for this specific episode
             raw_results[policy]['ep_lers'].append(ep_eval_policy_errs / eval_shots_per_ep)
-            if policy == 'GNN':
+            if policy == 'SAC_GNN':
                 raw_results['Oracle']['ep_lers'].append(ep_eval_oracle_errs / eval_shots_per_ep)
                 raw_results['Static']['ep_lers'].append(ep_eval_static_errs / eval_shots_per_ep)
-                
             # Clean printing logic
-            if policy == 'GNN':
+            if policy == 'SAC_GNN':
                 print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_eval_policy_errs} errors | Fixed: {ep_fixed_count} | Broken: {ep_broken_count}")
             else:
                 print(f"  Test Ep {episode+1:02d} [{policy}]: {ep_eval_policy_errs} errors")
@@ -337,7 +350,7 @@ def test(env, agent, config):
         print(f"\n  -> {policy} Summary:")
         # UPDATED to print the Std Dev
         print(f"     * LER: {policy_ler_mean:.7f} ± {policy_ler_std:.7f} ({policy_eval_errs}/{total_eval_shots})")
-        if policy == 'GNN':
+        if policy == 'SAC_GNN':
             fixed_pct = (policy_fixed_count / total_eval_shots) * 100
             broken_pct = (policy_broken_count / total_eval_shots) * 100
             raw_results[policy]['fixed_count'] = policy_fixed_count
@@ -345,13 +358,13 @@ def test(env, agent, config):
             print(f"     * Fixed CMA Errors:  {policy_fixed_count} times ({fixed_pct:.3f}% of eval shots)")
             print(f"     * Broken CMA Succes: {policy_broken_count} times ({broken_pct:.3f}% of eval shots)")
 
-        if policy == 'GNN':
+        if policy == 'SAC_GNN':
             raw_results['Oracle']['eval_errors'] = oracle_eval_errs
             raw_results['Static']['eval_errors'] = static_eval_errs
 
     # Construct final metrics dictionary
     final_metrics = {}
-    for k in ['GNN', 'Zero', 'Static', 'Oracle']:
+    for k in ['SAC_GNN', 'Zero', 'Static', 'Oracle', 'CM']:
         final_metrics[f'ler_{k.lower()}'] = np.mean(raw_results[k]['ep_lers'])
         final_metrics[f'ler_std_{k.lower()}'] = np.std(raw_results[k]['ep_lers']) # ADDED
         final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
@@ -473,6 +486,8 @@ def analyze_policy(env, agent, config):
     
     # New Comparative Plot
     plot_action_topography(direct_actions, neighbor_actions)
+
+
 
 
 

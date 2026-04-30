@@ -4,8 +4,6 @@ decoding graph based on edge correlations and first-pass selected edges, in the
 presence of drifted noise.
 '''
 
-from typing import Dict, Any
-import inspect
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -14,8 +12,6 @@ import pymatching
 import scipy.sparse as sp
 
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-
-
 
 class DriftedMatchingEnv(gym.Env):
     """
@@ -763,37 +759,32 @@ class DriftedMatchingEnv(gym.Env):
             raise ValueError(f"Action has shape {action.shape}; expected ({self.n_dec_edges},)")
 
         # Map the action values from [-1, 1] to [-1, 0] by scaling and shifting
-        action = (action - 1.0) / 2.0
+        #action = (action - 1.0) / 2.0
 
         if self.local_action_only:
             applied_delta = action * self.current_action_mask * self.action_scale
         else:
             applied_delta = action * self.action_scale
-
-        second_pass_edge_reweights = None
         
         if not np.any(applied_delta):
             selected_idx_2 = self.current_first_pass_selected_idx
             pred_obs = self.current_first_pass_pred_obs
         else:
             second_pass_weights = np.clip(self.current_weights + applied_delta, self.min_weight, self.max_weight)
-            second_pass_matching = self.current_matching
             second_pass_edge_reweights = self._build_edge_reweights(second_pass_weights)
-            
 
             ##############################################
             # 2) Run 2nd pass MWPM with reweighted edges #
             ##############################################
             
             selected_idx_2, pred_obs = self.syndrome_data_generator.get_solution_edges(
-                matching=second_pass_matching,
+                matching=self.current_matching,
                 syndrome_volume=self.current_syndrome,
                 enable_correlations=False,
                 edge_reweights=second_pass_edge_reweights,
                 return_predicted_obs=True,
                 fault_array=self.fault_array,
             )
-            
         
         ######################################################
         # 3) Update tracers using 2nd-pass selected edges    #
@@ -828,9 +819,7 @@ class DriftedMatchingEnv(gym.Env):
             # 3. Calculate LER
             self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
            ''' 
-           
-
-                                                 
+                                            
         #########################
         # 4) Compute the reward #
         #########################
@@ -860,7 +849,7 @@ class DriftedMatchingEnv(gym.Env):
             "logical_error": not(agent_correct),
             "true_obs": self.current_true_obs,
             "pred_obs": pred_obs,
-            "first_pass_obs":self.current_first_pass_pred_obs,
+            "first_pass_obs": self.current_first_pass_pred_obs,
             "oracle_pred_obs": self.oracle_predicted_obs_batch[self.step_count - 1] if not self.train_mode else None,
             "static_pred_obs":self.static_predicted_obs_batch[self.step_count - 1] if not self.train_mode else None,
             "reward": reward,
@@ -883,7 +872,7 @@ class DriftedMatchingEnv(gym.Env):
         else:
             next_obs = None
                     
-        return next_obs, reward, terminated, truncated, info   
+        return next_obs, reward, terminated, truncated, info 
     
 
     def _accumulate_occurrence(self, selected_idx: np.ndarray):
@@ -915,7 +904,7 @@ class DriftedMatchingEnv(gym.Env):
         dst = self.line_edge_index[1]
         self.corr_batch_counts += (active[src] & active[dst])
 
-    
+
     def _compute_raw_syndrome_statistics(self, recent_syndromes: np.ndarray):
         """
         Maps Spitz and Remm analytical syndrome formulas to the GNN.
@@ -1153,6 +1142,64 @@ class DriftedMatchingEnv(gym.Env):
 
         # 5. Update the new Pearson correlations from the updated tracers
         self.pearson_correlations = self._compute_pearson_correlations(self.occ_tracer, self.corr_tracer)
+
+
+    def compute_analytical_correlated_matching_action(self):
+        """
+        Computes the analytical Correlated Matching weights using conditional probability
+        P(A|B) = P(A ∩ B) / P(B). If an unselected edge neighbors multiple selected edges,
+        the maximum conditional probability (which yields the lowest MWPM weight) is applied.
+        
+        Args:
+            selected_idx: Array of indices of the edges selected by the first-pass MWPM.
+            
+        Returns:
+            action: A numpy array of shape [N_edges] containing the edge weights variation
+            according to the analytical correlated matching formulas.
+        """
+        
+        # If there are no line edges or no first-pass edges selected, return standard weights
+        if self.n_line_edges == 0 or self.current_first_pass_selected_idx is None or self.current_first_pass_selected_idx.size == 0:
+            return np.zeros(self.n_dec_edges, dtype=np.float32)
+
+        active_nodes = np.where(self.current_action_mask)[0]
+        second_pass_weights_corr = np.zeros(self.n_dec_edges, dtype=np.float32)
+        adj = self._build_bidirectional_adjacency()
+
+        for node in active_nodes:                
+            # Fetch 1-hop neighbor data
+            new_weight = self.current_weights[node] 
+            for nbr, e_idx in adj.get(node, []):
+                if self.node_feats[nbr, 1] == 1.0: # If neighbour node is selected in first pass      
+                    # Calculate the analytical math action (unbounded negative)
+                    implied_p = self.corr_tracer[e_idx] / self.occ_tracer[nbr]
+                    implied_p = np.clip(implied_p, 1e-6, 0.499999) # Avoid extreme probabilities
+                    corr_mat_weight = np.log((1.0 - implied_p) / (implied_p))
+                    # We take the minimum (largest discount) across all selected neighbors
+                    new_weight = min(new_weight, corr_mat_weight)
+            
+            second_pass_weights_corr[node] = new_weight
+
+        return (second_pass_weights_corr - self.current_weights)/ self.action_scale
+
+    
+    def _build_bidirectional_adjacency(self):
+        """
+        Creates a fast lookup dictionary for neighbors and edge attributes.
+        Because line_edge_index is [2, M], we make it bidirectional for easy graph traversal.
+        """
+        adj = {}
+        src = self.line_edge_index[0]
+        dst = self.line_edge_index[1]
+        
+        for e_idx in range(len(src)):
+            u, v = src[e_idx], dst[e_idx]
+            if u not in adj: adj[u] = []
+            if v not in adj: adj[v] = []
+            adj[u].append((v, e_idx))
+            adj[v].append((u, e_idx))
+            
+        return adj
 
 
     def get_base_graph_info(self):

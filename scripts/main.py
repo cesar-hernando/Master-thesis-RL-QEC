@@ -18,24 +18,23 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
         'MODE': 'test',  
-        'model_path': 'models/sac_gnn_44_best.pth',
+        'model_path': 'models/sac_gnn_49_best.pth',
         
         # Environment Settings
-        'distance': 7,
-        'n_rounds': 7,
-        'p': 0.004,
+        'distance': 5,
+        'n_rounds': 5,
+        'p': 0.001,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
-        'mismatch': 30.0,
-        'n_shots': 20_000,       # Shots per episode
+        'mismatch': 1.0,
+        'n_shots': 500_000,       # Shots per episode
         'n_test_shots': 0,   # Shots for LER evaluation
         'burn_in_steps': 0,
         'bypass_threshold': 2,
-        'action_scale': 3.0,
-        'update_period': 1_000,  # CMA update frequency
-        'prior_shots': 1_000,
+        'action_scale': 5.0,
+        'update_period': 1_000_000,  # CMA update frequency
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
-        'use_pearson_correlation': False,
+        'use_pearson_correlation': True,
         'use_log_joint_prob': False,  # Whether to use joint probabilities for CMA updates
         'n_layers': 1, # Number of GNN layers (affects receptive field size)
         
