@@ -44,6 +44,7 @@ if __name__ == "__main__":
         'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
         'alpha': 0.01,          # Entropy tuning
+        'target_entropy': -1.0,  # Target entropy for automatic alpha tuning
         'batch_size': 64,
         'buffer_capacity': 100_000,
         'update_frequency': 100,
@@ -103,6 +104,7 @@ if __name__ == "__main__":
         gamma=CONFIG['gamma'],
         tau=CONFIG['tau'],
         alpha=CONFIG['alpha'],
+        target_entropy=CONFIG['target_entropy'],
         n_layers=CONFIG['n_layers']
     )
 

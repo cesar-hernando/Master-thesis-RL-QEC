@@ -184,11 +184,12 @@ class GNNCritic(nn.Module):
 ####################################
 
 class SACAgent:
-    def __init__(self, node_dim, hidden_dim, static_edge_index, n_layers=1, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2):
+    def __init__(self, node_dim, hidden_dim, static_edge_index, n_layers=1, lr=1e-4, gamma=0.99, tau=0.005, alpha=0.2, target_entropy=-1.0):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.tau = tau
-        self.alpha = alpha 
+        self.alpha = alpha
+        self.target_entropy = target_entropy
 
         # Cache the static edge index as a tensor once
         self.static_edge_index_tensor = torch.tensor(static_edge_index, dtype=torch.long).to(self.device)
@@ -201,7 +202,7 @@ class SACAgent:
         self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=lr)
 
         # Target entropy is -1.0 because we use global_mean_pool (average over edges)
-        self.target_entropy = -1.0 
+        self.target_entropy = target_entropy 
         
         # Initialize log_alpha as a learnable PyTorch tensor
         self.log_alpha = torch.tensor([np.log(alpha)], dtype=torch.float32, requires_grad=True, device=self.device)
