@@ -198,8 +198,10 @@ class SACAgent:
         self.actor_optimizer = Adam(self.actor.parameters(), lr=lr)
         
         self.critic1 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
-        self.critic2 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
-        self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=lr)
+        if gamma > 0.0:
+            self.critic2 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
+            self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=lr)
+        else:self.critic_optimizer = Adam(self.critic1.parameters(), lr=lr)
 
         # Target entropy is -1.0 because we use global_mean_pool (average over edges)
         self.target_entropy = target_entropy 
@@ -272,22 +274,24 @@ class SACAgent:
                 
                 # Use tuned alpha and the average entropy ---
                 current_alpha = self.log_alpha.exp().detach()
-                target_q = torch.min(target_q1, target_q2) - current_alpha * next_log_prob_avg
-                
+                target_q = torch.min(target_q1, target_q2) - current_alpha * next_log_prob_avg                
                 y = reward + (1 - done) * self.gamma * target_q
         else:
             # Contextual Bandit Mode: Fast path, target is just the immediate reward
             y = reward
             
         current_q1 = self.critic1(x, edge_index, edge_attr, action, action_mask, batch.batch)
-        current_q2 = self.critic2(x, edge_index, edge_attr, action, action_mask, batch.batch)
-        
-        critic_loss = F.mse_loss(current_q1, y) + F.mse_loss(current_q2, y)
+        if self.gamma > 0.0:
+            current_q2 = self.critic2(x, edge_index, edge_attr, action, action_mask, batch.batch)
+            critic_loss = F.mse_loss(current_q1, y) + F.mse_loss(current_q2, y)
+        else:
+            critic_loss = F.mse_loss(current_q1, y)
         
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), max_norm=1.0)
-        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), max_norm=1.0)
+        if self.gamma > 0.0:
+            torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), max_norm=1.0)
         self.critic_optimizer.step()
 
         # ACTOR UPDATE
@@ -308,9 +312,12 @@ class SACAgent:
         log_prob_pooled = log_prob_sum / safe_divisor
         
         q1_new = self.critic1(x, edge_index, edge_attr, new_action, action_mask, batch.batch)
-        q2_new = self.critic2(x, edge_index, edge_attr, new_action, action_mask, batch.batch)
-        q_new = torch.min(q1_new, q2_new)
-        
+        if self.gamma > 0.0:
+            q2_new = self.critic2(x, edge_index, edge_attr, new_action, action_mask, batch.batch)
+            q_new = torch.min(q1_new, q2_new)
+        else:
+            q_new = q1_new
+
         actor_loss = (alpha * log_prob_pooled - q_new).mean()
         
         self.actor_optimizer.zero_grad()
