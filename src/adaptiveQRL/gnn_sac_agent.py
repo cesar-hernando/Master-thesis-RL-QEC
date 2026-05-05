@@ -201,7 +201,8 @@ class SACAgent:
         if gamma > 0.0:
             self.critic2 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers).to(self.device)
             self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=lr)
-        else:self.critic_optimizer = Adam(self.critic1.parameters(), lr=lr)
+        else:
+            self.critic_optimizer = Adam(self.critic1.parameters(), lr=lr)
 
         # Target entropy is -1.0 because we use global_mean_pool (average over edges)
         self.target_entropy = target_entropy 
@@ -350,11 +351,11 @@ class SACAgent:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         save_dict = {
             'actor': self.actor.state_dict(),
-            'critic1': self.critic1.state_dict(),
-            'critic2': self.critic2.state_dict()
+            'critic1': self.critic1.state_dict()            
         }
         # Only save target networks if they exist
         if self.gamma > 0.0:
+            save_dict['critic2'] = self.critic2.state_dict()
             save_dict['target_critic1'] = self.target_critic1.state_dict()
             save_dict['target_critic2'] = self.target_critic2.state_dict()
             
@@ -366,10 +367,10 @@ class SACAgent:
             checkpoint = torch.load(path, map_location=self.device)
             self.actor.load_state_dict(checkpoint['actor'])
             self.critic1.load_state_dict(checkpoint['critic1'])
-            self.critic2.load_state_dict(checkpoint['critic2'])
 
             # Safely load target networks if both the agent and the checkpoint support them
             if self.gamma > 0.0 and 'target_critic1' in checkpoint:
+                self.critic2.load_state_dict(checkpoint['critic2'])
                 self.target_critic1.load_state_dict(checkpoint['target_critic1'])
                 self.target_critic2.load_state_dict(checkpoint['target_critic2'])
 
