@@ -104,18 +104,17 @@ def find_completed_trial_for_preset(study: optuna.Study, preset_id: int) -> optu
 def suggest_run_config(trial: optuna.Trial) -> dict:
     choices = optuna_categorical_choices()
     return {
-        "hidden_dim": trial.suggest_categorical("hidden_dim", choices["hidden_dim"]),
-        "n_layers": trial.suggest_categorical("n_layers", choices["n_layers"]),
-        "lr": trial.suggest_categorical("lr", choices["lr"]),
-        "alpha": trial.suggest_categorical("alpha", choices["alpha"]),
-        "batch_size": trial.suggest_categorical("batch_size", choices["batch_size"]),
-        "update_frequency": trial.suggest_categorical(
-            "update_frequency", choices["update_frequency"]
-        ),
-        "local_action_hops": trial.suggest_categorical(
-            "local_action_hops", choices["local_action_hops"]
-        ),
-        "action_scale": trial.suggest_categorical("action_scale", choices["action_scale"]),
+        "hidden_dim":        trial.suggest_categorical("hidden_dim",        choices["hidden_dim"]),
+        "n_layers":          trial.suggest_categorical("n_layers",          choices["n_layers"]),
+        "lr":                trial.suggest_categorical("lr",                choices["lr"]),
+        "alpha":             trial.suggest_categorical("alpha",             choices["alpha"]),
+        "batch_size":        trial.suggest_categorical("batch_size",        choices["batch_size"]),
+        "update_frequency":  trial.suggest_categorical("update_frequency",  choices["update_frequency"]),
+        "local_action_hops": trial.suggest_categorical("local_action_hops", choices["local_action_hops"]),
+        "action_scale":      trial.suggest_categorical("action_scale",      choices["action_scale"]),
+        "target_entropy":    trial.suggest_categorical("target_entropy",    choices["target_entropy"]),
+        "tau":               trial.suggest_categorical("tau",               choices["tau"]),
+        "mlp_head":          trial.suggest_categorical("mlp_head",          choices["mlp_head"]),
     }
 
 
@@ -154,11 +153,13 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             "hidden_dim": run_cfg["hidden_dim"],
             "lr": run_cfg["lr"],
             "gamma": args.gamma,
-            "tau": args.tau,
+            "tau": run_cfg["tau"],
             "alpha": run_cfg["alpha"],
             "batch_size": run_cfg["batch_size"],
             "buffer_capacity": args.buffer_capacity,
-            "update_frequency": run_cfg["update_frequency"],
+            "update_frequency": run_cfg["update_frequency"],   # was missing — now wired in
+            "target_entropy": run_cfg["target_entropy"],
+            "mlp_head": run_cfg["mlp_head"],
             "train_episodes": args.train_episodes,
             "test_episodes": 3,
         }
@@ -208,6 +209,8 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             tau=config["tau"],
             alpha=config["alpha"],
             n_layers=config["n_layers"],
+            target_entropy=config["target_entropy"],
+            mlp_head=config["mlp_head"],
         )
         buffer = GraphReplayBuffer(capacity=config["buffer_capacity"])
 
@@ -273,14 +276,17 @@ def main() -> None:
                 return
 
         queued_params = {
-            "hidden_dim": preset["hidden_dim"],
-            "n_layers": preset["n_layers"],
-            "lr": preset["lr"],
-            "alpha": preset["alpha"],
-            "batch_size": preset["batch_size"],
-            "update_frequency": preset["update_frequency"],
+            "hidden_dim":        preset["hidden_dim"],
+            "n_layers":          preset["n_layers"],
+            "lr":                preset["lr"],
+            "alpha":             preset["alpha"],
+            "batch_size":        preset["batch_size"],
+            "update_frequency":  preset["update_frequency"],
             "local_action_hops": preset["local_action_hops"],
-            "action_scale": preset["action_scale"],
+            "action_scale":      preset["action_scale"],
+            "target_entropy":    preset["target_entropy"],
+            "tau":               preset["tau"],
+            "mlp_head":          preset["mlp_head"],
         }
         study.enqueue_trial(queued_params)
         print(f"Queued fixed preset_id={args.trial_preset_id}: {json.dumps(queued_params)}")

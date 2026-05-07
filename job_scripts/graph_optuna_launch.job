@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-13
+#SBATCH --array=0-14
 #SBATCH --output=slurm_logs/run_optuna_%A_%a.out
 #SBATCH --error=slurm_logs/run_optuna_%A_%a.err
 
