@@ -497,8 +497,7 @@ class DriftedMatchingEnv(gym.Env):
             base_circuit=self.base_circuit,
             seed=seed
         )     
-
-        '''        
+        
         # Generate a several test shots with the drifted circuit to evaluate the LER
         self.test_syndrome_batch, self.test_true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(
             drifted_circuit, seed=2002, n_shots=self.n_test_shots)
@@ -515,7 +514,7 @@ class DriftedMatchingEnv(gym.Env):
             self.test_syndrome_batch, enable_correlations=False
         ).flatten()
         self.oracle_ler = np.mean(oracle_pred_obs_batch != self.test_true_obs_batch)
-        '''
+        
 
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit, seed)
@@ -576,8 +575,8 @@ class DriftedMatchingEnv(gym.Env):
             "n_line_edges": self.n_line_edges,
             "weights_mse_error": self.weights_mse_error,
             "corr_mse_error": self.corr_mse_error,
-            #"initial_test_ler": self.test_ler,
-            #"oracle_ler": self.oracle_ler,
+            "initial_test_ler": self.test_ler,
+            "oracle_ler": self.oracle_ler,
         }
         return obs, info
     
@@ -805,7 +804,7 @@ class DriftedMatchingEnv(gym.Env):
             self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
             self.weights_mse_error_static = np.mean((self.current_weights - self.initial_base_weights)**2)
 
-            '''
+            
             # 1. Get the physical edges from PyMatching's batch decoder
             # Guaranteed output shape: (10000, 502)
             test_pred_edges_batch = self.current_matching.decode_batch(
@@ -818,7 +817,7 @@ class DriftedMatchingEnv(gym.Env):
             
             # 3. Calculate LER
             self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
-           ''' 
+            
                                             
         #########################
         # 4) Compute the reward #
@@ -860,7 +859,7 @@ class DriftedMatchingEnv(gym.Env):
             "corr_mse_error": self.corr_mse_error,
             "weights_mse_error_static": self.weights_mse_error_static,
             "corr_mse_error_static": self.corr_mse_error_static,
-            #"test_ler": self.test_ler
+            "test_ler": self.test_ler
         }
 
         ############################################################
@@ -1090,7 +1089,8 @@ class DriftedMatchingEnv(gym.Env):
         
         safe_denom = np.where(denom > 1e-9, denom, 1.0)
 
-        return np.clip(covariance / safe_denom, 0.0, 1.0)
+        # Clip the Pearson correlation to [-1, 1] 
+        return np.clip(covariance / safe_denom, -1.0, 1.0)
 
 
     def _apply_cma_and_update_graph(self):

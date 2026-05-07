@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import ast
 from tqdm import tqdm
 
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
@@ -294,20 +293,30 @@ def run_analysis(data_path, output_dir):
     # Plot 1: Action Distribution (Agent vs. Correlated MWPM)
     # ---------------------------------------------------------
     plt.figure(figsize=(10, 6))
-    
+
+    # 1. GNN Agent Actions (Solid Fill)
     sns.kdeplot(
         data=df, x="action_taken", hue="logical_outcome", 
-        fill=True, common_norm=False, palette={"fixed": "seagreen", "broken": "indianred"}
+        fill=True, common_norm=False, 
+        palette={"fixed": "seagreen", "broken": "indianred"}
     )
+
+    # 2. Correlated MWPM Actions (Dashed Outlines)
+    # Assumes you have a column tracking the correlated baseline's outcome.
     sns.kdeplot(
-        data=df, x="correlated_action_taken", 
-        color="black", linestyle="--", linewidth=2.5, label="Correlated MWPM (Analytical)"
+        data=df, x="correlated_action_taken", hue="corr_logical_outcome", 
+        fill=False, common_norm=False, linestyle="--", linewidth=2.5, 
+        palette={"fixed": "mediumseagreen", "broken": "lightcoral", "unchanged": "dimgray"}
     )
-    
+
     plt.title("Action Distribution: GNN Agent vs. Correlated MWPM Baseline")
     plt.xlabel("Action Value (Negative = Discount/Highway)")
     plt.ylabel("Density")
-    plt.legend()
+
+    # Fix the legend so it clearly separates the two models
+    handles, labels = plt.gca().get_legend_handles_labels()
+    plt.legend(handles, labels, title="Outcomes", loc="upper right")
+
     plt.savefig(os.path.join(output_dir, "xai_1_action_distribution_comparison.png"), dpi=300)
     plt.close()
 
@@ -541,8 +550,8 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, choices=["collect", "analyze", "both"], default="both",
                         help="Choose whether to collect data, analyze a CSV, or both.")
     parser.add_argument("--shots", type=int, default=10_000_000, help="Number of shots to evaluate")
-    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p1e-3_1Ms_mode49b_m1_d5.csv", help="Path to save/load the CSV data")
-    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_49b_p1e-3_m1_d5/", help="Directory to save plots")
+    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p1e-3_1Ms_mode65b_m1_d5.csv", help="Path to save/load the CSV data")
+    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_65b_p1e-3_m1_d5/", help="Directory to save plots")
     
     args = parser.parse_args()
     
@@ -569,7 +578,8 @@ if __name__ == "__main__":
         'gamma': 0.0,
         'tau': 0.005,
         'alpha': 0.01,
-        'model_path': 'models/sac_gnn_49_best.pth'
+        'target_entropy': -1.0,
+        'model_path': 'models/sac_gnn_65_best.pth'
     }
     
     if args.mode in ["collect", "both"]:
@@ -595,7 +605,7 @@ if __name__ == "__main__":
         
         agent = SACAgent(
             node_dim=NODE_DIM, hidden_dim=CONFIG['hidden_dim'], static_edge_index=env.line_edge_index,
-            lr=CONFIG['lr'], gamma=CONFIG['gamma'], tau=CONFIG['tau'], alpha=CONFIG['alpha'], n_layers=CONFIG['n_layers']
+            lr=CONFIG['lr'], gamma=CONFIG['gamma'], tau=CONFIG['tau'], alpha=CONFIG['alpha'], n_layers=CONFIG['n_layers'], target_entropy=CONFIG['target_entropy']
         )
         
         try:

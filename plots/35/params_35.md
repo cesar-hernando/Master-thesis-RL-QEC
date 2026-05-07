@@ -1,3 +1,18 @@
+HIDDEN_DIM=128
+TRAIN_EPISODES=270
+
+echo "Starting Run 1: Gamma=0.0 | Mismatch=30.0 | Update=1000"
+python -u run_job.py --mode 0 \
+    --gamma 0.0 \
+    --update_period 1000 \
+    --mismatch 30.0 \
+    --hidden_dim $HIDDEN_DIM \
+    --train_episodes $TRAIN_EPISODES \
+    --n_shots 65000 \
+    --burn_in_steps 15000 \
+    --model_path models/sac_gnn_35.pth \
+    --training_metrics_filename training_metrics_35.png
+
 CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
         'MODE': 'test',  

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"c:\\\\Users\\\\cesar\\\\Documents\\\\Python\\\\master-thesis\\\\Master-thesis-RL-QEC\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\cesar\\\\Documents\\\\Python\\\\master-thesis\\\\Master-thesis-RL-QEC\\\\plots\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Sort-Object Name)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\cesar\\\\Documents\\\\Python\\\\master-thesis\\\\Master-thesis-RL-QEC\\\\plots\" -Directory | Select-Object -ExpandProperty Name | Sort-Object {[int]$_})",
+      "PowerShell($plotsDir = \"c:\\\\Users\\\\cesar\\\\Documents\\\\Python\\\\master-thesis\\\\Master-thesis-RL-QEC\\\\plots\"; Get-ChildItem -Path $plotsDir -Directory | Where-Object {$_.Name -match '^\\\\d+$'} | Select-Object -ExpandProperty Name | Sort-Object {[int]$_})"
+    ]
+  }
+}

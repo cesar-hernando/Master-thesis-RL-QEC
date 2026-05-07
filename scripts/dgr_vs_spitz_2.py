@@ -17,7 +17,7 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 P_VALUES = [0.001, 0.003, 0.005]
 MISMATCHES = [10.0, 20.0, 30.0]
 
-N_SHOTS = 100_000          # Shots per episode (lowered slightly to accommodate grid sweep)
+N_SHOTS = 10_000          # Shots per episode (lowered slightly to accommodate grid sweep)
 N_TEST_SHOTS = 1000_000     # Batch size for evaluating the Test LER
 UPDATE_PERIOD = 1_000     # How often the environment updates the graph and calculates LER
 SEED = 2024               # Fixed seed for a fair apples-to-apples comparison

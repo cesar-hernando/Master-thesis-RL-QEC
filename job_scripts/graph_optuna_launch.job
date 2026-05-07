@@ -1,33 +1,40 @@
 #!/bin/bash
-#SBATCH --job-name=graph-optuna
-#SBATCH --output=./%x_%A_%a.out
-#SBATCH --error=./%x_%A_%a.err
-#SBATCH --time=0-18:00:00
-#SBATCH --mem=48GB
-#SBATCH --partition=gpu_lion
-#SBATCH --account=gpu_lion
+#SBATCH --job-name=optuna_array
+#SBATCH --partition=gpu-l4-24g
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-13
-#SBATCH --mail-type=NONE
+#SBATCH --output=slurm_logs/run_optuna_%A_%a.out
+#SBATCH --error=slurm_logs/run_optuna_%A_%a.err
 
 set -euo pipefail
 
-cd /home/felix/vscode/Master-thesis-RL-QEC
+echo "Job started at: $(date)"
 
-# Adjust these for your cluster environment if needed.
-if command -v ml >/dev/null 2>&1; then
-  ml purge || true
-  ml load ALICE/default || true
-  ml load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1 || true
-fi
+# Load your specific environment modules
+module load Python/3.11.5-GCCcore-13.2.0
 
-if [ -f ".venv/bin/activate" ]; then
-  source .venv/bin/activate
-fi
+# Activate your virtual environment
+source cluster_venv/bin/activate
+
+# Threading optimizations for your CPU allocation
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Ensure the slurm_logs directory exists
+mkdir -p slurm_logs
 
 # --- Search configuration -----------------------------------------------------
+# Environment/training settings mirror train_run.job where this launcher
+# exposes equivalent options. Graph hyperparameters are selected from the
+# Optuna presets in scripts/sandbox_optuna_graph_space.py.
 SEED=0
-STUDY_NAME="qec_graph_optuna_d5_r5"
+TRAIN_EPISODES=500
+STUDY_NAME="qec_graph_optuna_run_d5_r5"
 RESULTS_DIR="$PWD/models/optuna_results"
 MODELS_ROOT="$PWD/models/optuna"
 STUDY_DB="$RESULTS_DIR/${STUDY_NAME}.sqlite3"
@@ -62,13 +69,16 @@ ARGS=(
   --local-action-only
   --gamma 0.0
   --tau 0.005
-  --train-episodes 270
+  --train-episodes "$TRAIN_EPISODES"
   --buffer-capacity 100000
 )
 
 echo "Running Optuna graph search array task ${SLURM_ARRAY_TASK_ID}"
-echo "Study=${STUDY_NAME}, preset_id=${TRIAL_PRESET_ID}, sampler_seed=${SAMPLER_SEED}"
+echo "Run Optuna sweep: Burn-in | Gamma=0.0 | M=30.0 | Using P.C."
+echo "Study=${STUDY_NAME}, preset_id=${TRIAL_PRESET_ID}, sampler_seed=${SAMPLER_SEED}, train_episodes=${TRAIN_EPISODES}"
 echo "Storage=${STORAGE_URI}"
 echo "Command: python -u scripts/optuna_graph_search.py ${ARGS[*]}"
 
 python -u scripts/optuna_graph_search.py "${ARGS[@]}"
+
+echo "Job finished at: $(date)"

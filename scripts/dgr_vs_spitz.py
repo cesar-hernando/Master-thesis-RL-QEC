@@ -1,7 +1,13 @@
 """
-Comparative analysis script to evaluate the performance of DGR vs. Spitz 
-adaptive tracer methods across different physical error rates (p) and 
-drift severities (mismatch).
+Script to compare the step-by-step convergence of DGR and Spitz tracers.
+Uses independent test shots (held-out batch) to evaluate LER at each update
+period, avoiding the bias of running averages computed on the same shots used
+to update the tracers.
+
+Metrics tracked per update period:
+  - Test LER  (independent batch, unbiased)
+  - Weight MSE vs Oracle
+  - Correlation MSE vs Oracle
 """
 
 import time
@@ -11,143 +17,232 @@ import matplotlib.pyplot as plt
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 
+
 # ==========================================
 # CONFIGURATION
 # ==========================================
-N_SHOTS = 50_000         # Shots per episode (reduced from 100k for faster sweeping)
-N_TEST_SHOTS = 100_000    # Shots used to evaluate the true LER of the graph
-UPDATE_PERIOD = 1_000
-SEED = 42
+P_VALUES  = [0.001, 0.005]
+MISMATCHES = [10.0, 30.0]
 
-# Parameter grids to sweep
-P_VALUES = [0.001, 0.003, 0.005]
-MISMATCHES = [5.0, 10.0, 20.0, 30.0]
-TRACERS = ['DGR', 'Spitz']
+N_SHOTS      = 70_000    # Shots per episode (tracer update data)
+N_TEST_SHOTS = 500_000   # Independent held-out batch for LER evaluation
+UPDATE_PERIOD = 100      # Tracer CMA update frequency (shots between graph updates)
+SEED = 2024
 
-# Fixed Code Parameters
-DISTANCE = 5
-N_ROUNDS = 5
+DISTANCE    = 5
+N_ROUNDS    = 5
 MEMORY_TYPE = 'z'
 
+
 # ==========================================
-# EVALUATION FUNCTION
+# EPISODE EXECUTION
 # ==========================================
-def evaluate_tracer(generator, tracer_method, seed):
-    """Initializes the env with the given tracer and runs a zero-action episode."""
+def run_convergence_episode(generator, tracer_method, seed):
+    """
+    Runs a full episode with zero action and tracks:
+      - Test LER at each graph update (from independent held-out batch)
+      - Weight MSE vs Oracle at each graph update
+      - Correlation MSE vs Oracle at each graph update
+
+    The LER is evaluated on a separate N_TEST_SHOTS batch that was never
+    used to update the tracers, avoiding the optimistic bias of running
+    averages computed on training shots.
+
+    Parameters
+    ----------
+    generator     : SyndromeDataGenerator configured for the desired noise regime
+    tracer_method : 'DGR' or 'Spitz'
+    seed          : integer seed for reproducibility
+
+    Returns
+    -------
+    test_ler_history  : (n_updates + 1,) array — LER at step 0 and after each update
+    oracle_ler        : scalar — oracle decoder LER (constant reference)
+    static_ler        : scalar — static decoder LER (constant reference)
+    weights_mse       : (n_updates + 1,) array — weight MSE vs oracle
+    corr_mse          : (n_updates + 1,) array — correlation MSE vs oracle
+    weights_mse_static: (n_updates + 1,) array — weight MSE vs static base graph
+    corr_mse_static   : (n_updates + 1,) array — corr MSE vs static base graph
+    run_time          : wall-clock seconds
+    """
     env = DriftedMatchingEnv(
         syndrome_data_generator=generator,
         local_action_only=True,
         local_action_hops=1,
-        action_scale=1.0, 
+        action_scale=1.0,
         update_period=UPDATE_PERIOD,
-        prior_shots=1 if tracer_method == 'Spitz' else 1000,  # Spitz can start with fewer shots
-        n_test_shots=N_TEST_SHOTS,
+        prior_shots=1 if tracer_method == 'Spitz' else 1000,
+        n_test_shots=N_TEST_SHOTS,   # ← independent held-out LER batch
         use_pearson_correlation=True,
-        use_syndrome_features=True if tracer_method == 'Spitz' else False,
+        use_syndrome_features=(tracer_method == 'Spitz'),
         update_with=tracer_method,
-        train_mode=False
+        train_mode=False,
     )
-    
-    _, info = env.reset(seed=seed)
-    
+
+    obs, info = env.reset(seed=seed)
+
+    # Step 0: record initial state before any tracer updates
     static_ler = info["initial_test_ler"]
     oracle_ler = info["oracle_ler"]
-    
-    # Run the environment passively (zero action) to let the tracer adapt
+
+    n_updates = N_SHOTS // UPDATE_PERIOD  # number of graph updates in the episode
+    n_points  = n_updates + 1            # include step 0
+
+    test_ler_history   = np.zeros(n_points, dtype=np.float32)
+    weights_mse        = np.zeros(n_points, dtype=np.float32)
+    corr_mse           = np.zeros(n_points, dtype=np.float32)
+    weights_mse_static = np.zeros(n_points, dtype=np.float32)
+    corr_mse_static    = np.zeros(n_points, dtype=np.float32)
+
+    # Point 0: values from env.reset() info
+    test_ler_history[0]   = static_ler
+    weights_mse[0]        = info["weights_mse_error"]
+    corr_mse[0]           = info["corr_mse_error"]
+    # Static MSE is 0 at reset (adaptive decoder starts identical to static),
+    # so both tracers start at the same point.
+    weights_mse_static[0] = info["weights_mse_error"]
+    corr_mse_static[0]    = info["corr_mse_error"]
+
+    action     = np.zeros(env.n_dec_edges, dtype=np.float32)
+    step_idx   = 0
     terminated = False
-    truncated = False
-    action = np.zeros(env.n_dec_edges, dtype=np.float32)
-    
+    truncated  = False
+    start_time = time.time()
+
     while not (terminated or truncated):
         _, _, terminated, truncated, step_info = env.step(action)
-        
-    final_test_ler = step_info["test_ler"]
-    
-    return static_ler, oracle_ler, final_test_ler
+
+        # The env only updates test_ler and MSE metrics after a graph update.
+        # Graph updates happen every UPDATE_PERIOD shots.
+        if (step_idx + 1) % UPDATE_PERIOD == 0:
+            update_idx = (step_idx + 1) // UPDATE_PERIOD
+
+            # test_ler comes from the independent N_TEST_SHOTS batch
+            # (evaluated inside env._apply_cma_and_update_graph via
+            #  current_matching.decode_batch on self.test_syndrome_batch)
+            test_ler_history[update_idx]   = step_info["test_ler"]
+            weights_mse[update_idx]        = step_info["weights_mse_error"]
+            corr_mse[update_idx]           = step_info["corr_mse_error"]
+            weights_mse_static[update_idx] = step_info["weights_mse_error_static"]
+            corr_mse_static[update_idx]    = step_info["corr_mse_error_static"]
+
+        step_idx += 1
+
+    run_time = time.time() - start_time
+
+    return (
+        test_ler_history,
+        oracle_ler,
+        static_ler,
+        weights_mse,
+        corr_mse,
+        weights_mse_static,
+        corr_mse_static,
+        run_time,
+    )
 
 
 # ==========================================
-# MAIN EXECUTION LOOP
+# MAIN SWEEP & PLOTTING
 # ==========================================
 if __name__ == "__main__":
-    print(f"Starting Tracer Comparison: {len(P_VALUES)} p-values x {len(MISMATCHES)} mismatches")
     print("=" * 60)
-    
-    # Dictionary to store results for plotting
-    results = {p: {'Static': [], 'Oracle': [], 'DGR': [], 'Spitz': []} for p in P_VALUES}
-    
-    total_start_time = time.time()
-    
-    for p in P_VALUES:
-        print(f"\nEvaluating Base Error Rate: p = {p}")
-        print("-" * 40)
-        
-        for mismatch in MISMATCHES:
-            loop_start = time.time()
-            print(f"  -> Mismatch = {mismatch} | Generating Physics...", end="", flush=True)
-            
-            # 1. Initialize Generator ONCE per (p, mismatch) pair
-            noise_model = {
-                "version": "built-in",
-                "after_clifford_depolarization": p,
-                "before_measure_flip_probability": p,
-                "after_reset_flip_probability": p,
-                "before_round_data_depolarization": p,
-                "p_gate_zz": 0.0, 
-            }
-            
-            generator = SyndromeDataGenerator(
-                distance=DISTANCE, 
-                n_rounds=N_ROUNDS, 
-                mismatch=mismatch, 
-                noise_model=noise_model, 
-                memory_type=MEMORY_TYPE, 
-                n_shots=N_SHOTS, 
-                qec_code='surface_code'
-            )
-            print(" Done.", flush=True)
-            
-            # 2. Evaluate Tracers
-            final_lers = {}
-            for tracer in TRACERS:
-                static_ler, oracle_ler, final_ler = evaluate_tracer(generator, tracer, seed=SEED)
-                final_lers[tracer] = final_ler
-            
-            # Store results
-            results[p]['Static'].append(static_ler)
-            results[p]['Oracle'].append(oracle_ler)
-            results[p]['DGR'].append(final_lers['DGR'])
-            results[p]['Spitz'].append(final_lers['Spitz'])
-            
-            loop_time = time.time() - loop_start
-            print(f"     Static: {static_ler:.5f} | Oracle: {oracle_ler:.5f} | DGR: {final_lers['DGR']:.5f} | Spitz: {final_lers['Spitz']:.5f} ({loop_time:.1f}s)")
-            
-    print("\n" + "=" * 60)
-    print(f"All evaluations finished in {(time.time() - total_start_time)/60:.2f} minutes.")
+    print("  DUAL-METRIC CONVERGENCE ANALYSIS (Independent Test LER)")
+    print(f"  Sweeping: {len(P_VALUES)} p-values × {len(MISMATCHES)} mismatches")
+    print(f"  N_SHOTS={N_SHOTS:,}  |  N_TEST_SHOTS={N_TEST_SHOTS:,}  |  UPDATE_PERIOD={UPDATE_PERIOD}")
+    print("=" * 60)
 
-    # ==========================================
-    # PLOTTING
-    # ==========================================
-    fig, axes = plt.subplots(1, len(P_VALUES), figsize=(5 * len(P_VALUES), 5), sharey=False)
-    
-    if len(P_VALUES) == 1:
-        axes = [axes]
-        
-    for idx, p in enumerate(P_VALUES):
-        ax = axes[idx]
-        
-        ax.semilogy(MISMATCHES, results[p]['Static'], 'k--', label="Static Decoder", marker='x')
-        ax.semilogy(MISMATCHES, results[p]['DGR'], 'b-', label="Adaptive (DGR)", marker='o')
-        ax.semilogy(MISMATCHES, results[p]['Spitz'], 'r-', label="Adaptive (Spitz)", marker='s')
-        ax.semilogy(MISMATCHES, results[p]['Oracle'], 'g:', label="Oracle Decoder", marker='*')
-        
-        ax.set_title(f"Base Error Rate: p = {p}")
-        ax.set_xlabel("Drift Mismatch Multiplier")
-        ax.set_ylabel("Test LER")
-        ax.grid(True, which="both", ls="--", alpha=0.5)
-        if idx == 0:
-            ax.legend()
-            
-    plt.tight_layout()
-    plt.savefig("tracer_comparison_results.png", dpi=300)
+    n_rows = len(P_VALUES)
+    n_cols = len(MISMATCHES)
+
+    # Shared x-axis: shot count at each evaluation point (0, 100, 200, …)
+    x_shots = np.arange(0, N_SHOTS + 1, UPDATE_PERIOD)  # length = n_updates + 1
+
+    fig_ler,  axes_ler  = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 5*n_rows), squeeze=False)
+    fig_wmse, axes_wmse = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 5*n_rows), squeeze=False)
+    fig_cmse, axes_cmse = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 5*n_rows), squeeze=False)
+
+    total_start = time.time()
+
+    for r, p in enumerate(P_VALUES):
+        for c, mismatch in enumerate(MISMATCHES):
+            print(f"\n[*] p={p}  |  mismatch={mismatch}x")
+            print("    Generating physics ... ", end="", flush=True)
+
+            generator = SyndromeDataGenerator(
+                distance=DISTANCE,
+                n_rounds=N_ROUNDS,
+                mismatch=mismatch,
+                noise_model={
+                    "version": "built-in",
+                    "after_clifford_depolarization":    p,
+                    "before_measure_flip_probability":  p,
+                    "after_reset_flip_probability":     p,
+                    "before_round_data_depolarization": p,
+                    "p_gate_zz": 0.0,
+                },
+                memory_type=MEMORY_TYPE,
+                n_shots=N_SHOTS,
+                qec_code='surface_code',
+            )
+            print("done.")
+
+            print("    Running DGR   ... ", end="", flush=True)
+            (dgr_ler, oracle_ler, static_ler,
+             dgr_w_mse, dgr_c_mse, dgr_w_static, dgr_c_static,
+             t_dgr) = run_convergence_episode(generator, 'DGR', SEED)
+            print(f"done ({t_dgr:.1f}s)  | final LER={dgr_ler[-1]:.2e}")
+
+            print("    Running Spitz ... ", end="", flush=True)
+            (spitz_ler, _, _,
+             spitz_w_mse, spitz_c_mse, _, _,
+             t_spitz) = run_convergence_episode(generator, 'Spitz', SEED)
+            print(f"done ({t_spitz:.1f}s)  | final LER={spitz_ler[-1]:.2e}")
+
+            # ── Plot 1: Test LER convergence ──────────────────────────────────
+            ax = axes_ler[r, c]
+            ax.semilogy(x_shots, dgr_ler,   'b-',  lw=2.5, label="DGR")
+            ax.semilogy(x_shots, spitz_ler, 'r-',  lw=2.5, label="Spitz")
+            ax.axhline(static_ler, color='k', ls='--', lw=1.5, label="Static")
+            ax.axhline(oracle_ler, color='g', ls=':',  lw=2.0, label="Oracle")
+            ax.set_title(f"Test LER  (p={p}, drift={mismatch}x)\n"
+                         f"[{N_TEST_SHOTS:,} independent shots per evaluation]")
+            ax.grid(True, which="both", ls="--", alpha=0.5)
+            if r == n_rows - 1: ax.set_xlabel("Training shots processed")
+            if c == 0:          ax.set_ylabel("Test LER")
+            if r == 0 and c == 0: ax.legend(fontsize=10, loc="upper right")
+
+            # ── Plot 2: Weight MSE vs Oracle ──────────────────────────────────
+            ax = axes_wmse[r, c]
+            ax.semilogy(x_shots, dgr_w_mse,   'b-',  lw=2.5, label="DGR")
+            ax.semilogy(x_shots, spitz_w_mse, 'r-',  lw=2.5, label="Spitz")
+            ax.semilogy(x_shots, dgr_w_static, 'k--', lw=1.5, label="Static base")
+            ax.set_title(f"Weight MSE vs Oracle  (p={p}, drift={mismatch}x)")
+            ax.grid(True, which="both", ls="--", alpha=0.5)
+            if r == n_rows - 1: ax.set_xlabel("Training shots processed")
+            if c == 0:          ax.set_ylabel("Weight MSE")
+            if r == 0 and c == 0: ax.legend(fontsize=10, loc="upper right")
+
+            # ── Plot 3: Correlation MSE vs Oracle ─────────────────────────────
+            ax = axes_cmse[r, c]
+            ax.semilogy(x_shots, dgr_c_mse,   'b-',  lw=2.5, label="DGR")
+            ax.semilogy(x_shots, spitz_c_mse, 'r-',  lw=2.5, label="Spitz")
+            ax.semilogy(x_shots, dgr_c_static, 'k--', lw=1.5, label="Static base")
+            ax.set_title(f"Correlation MSE vs Oracle  (p={p}, drift={mismatch}x)")
+            ax.grid(True, which="both", ls="--", alpha=0.5)
+            if r == n_rows - 1: ax.set_xlabel("Training shots processed")
+            if c == 0:          ax.set_ylabel("Correlation MSE")
+            if r == 0 and c == 0: ax.legend(fontsize=10, loc="upper right")
+
+    print(f"\nAll sweeps finished in {(time.time()-total_start)/60:.2f} min.")
+
+    for fig, fname in [
+        (fig_ler,  "tracer_test_ler_convergence.png"),
+        (fig_wmse, "tracer_weight_mse_evolution.png"),
+        (fig_cmse, "tracer_correlation_mse_evolution.png"),
+    ]:
+        fig.tight_layout()
+        fig.savefig(fname, dpi=300)
+        print(f"[*] Saved '{fname}'")
+
     plt.show()

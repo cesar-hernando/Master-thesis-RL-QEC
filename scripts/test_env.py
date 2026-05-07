@@ -12,20 +12,20 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 100_000
+n_shots = 180_000
 verbose = False
 
 # Setup the physical simulation
 generator = SyndromeDataGenerator(
     distance=5, 
     n_rounds=5, 
-    mismatch=30.0,  # Drift multiplier
+    mismatch=1.0,  # Drift multiplier
     noise_model={
         "version": "built-in",
-        "after_clifford_depolarization": 0.001,
-        "before_measure_flip_probability": 0.001,
-        "after_reset_flip_probability": 0.001,
-        "before_round_data_depolarization": 0.001,
+        "after_clifford_depolarization": 0.003,
+        "before_measure_flip_probability": 0.003,
+        "after_reset_flip_probability": 0.003,
+        "before_round_data_depolarization": 0.003,
         "p_gate_zz": 0.0,  # Crosstalk ZZ error probability
     }, 
     memory_type='z', 
@@ -33,7 +33,7 @@ generator = SyndromeDataGenerator(
     qec_code='surface_code'
 )
 
-update_period = 1000
+update_period = 10000000
 
 start_env_time = time.time()
 env = DriftedMatchingEnv(
@@ -43,10 +43,10 @@ env = DriftedMatchingEnv(
     action_scale = 3.0,
     update_period=update_period,
     prior_shots=1,
-    n_test_shots=1_000_000,
+    n_test_shots=0,
     use_pearson_correlation=True,
     use_syndrome_features=True,
-    update_with='Spitz',
+    update_with='DGR',
     train_mode=False
 )
 end_env_time = time.time()
@@ -78,8 +78,8 @@ print(f"Reset time = {end_time_reset - start_time_reset} s")
 #corr_mse_error[0] = info["corr_mse_error"]
 
 # Retrieve the initial LER from the info dictionary
-test_ler.append(info["initial_test_ler"])
-test_ler_oracle = info["oracle_ler"]
+#test_ler.append(info["initial_test_ler"])
+#test_ler_oracle = info["oracle_ler"]
 
 terminated = False
 truncated = False
@@ -106,8 +106,8 @@ while not (terminated or truncated):
     logical_errors[step_idx] = float(step_info["logical_error"])
     oracle_errors[step_idx] = float(step_info["oracle_pred_obs"] != step_info["true_obs"])
     static_errors[step_idx] = float(step_info["static_pred_obs"] != step_info["true_obs"])
-    if (step_idx + 1) % env.update_period == 0:
-        test_ler.append(step_info["test_ler"])
+    #if (step_idx + 1) % env.update_period == 0:
+    #    test_ler.append(step_info["test_ler"])
     
     if step_info["true_obs"]:
         n_logical_flips += 1
@@ -142,10 +142,10 @@ print("LER (Static) = ", n_logical_errors_static/n_shots)
 print("Relative LER (Our) = ", n_logical_errors/n_logical_errors_oracle)
 print("Relative LER (Mismatched) = ", n_logical_errors_static/n_logical_errors_oracle)
 
-print("\n TEST SUMMARY:")
-print(f"Static decoder LER = {test_ler[0]:.6f}")
-print(f"Oracle decoder LER = {test_ler_oracle:.6f}")
-print(f"Final test LER after {n_shots} steps = {test_ler[-1]:.6f}")
+#print("\n TEST SUMMARY:")
+#$print(f"Static decoder LER = {test_ler[0]:.6f}")
+#print(f"Oracle decoder LER = {test_ler_oracle:.6f}")
+#print(f"Final test LER after {n_shots} steps = {test_ler[-1]:.6f}")
 
 # Generate the correct x-axis steps for the detached plot
 start_plot_idx = 0
@@ -154,7 +154,7 @@ x_steps = steps_array[start_plot_idx:]
 ############
 # PLOTTING #
 ############
-
+'''
 # Plot the evolution of the test LER over time, using the static decoder 
 # as a reference baseeline
 # Generate the correct x-axis steps for the test_ler
@@ -188,6 +188,7 @@ plt.xlabel("Step")
 plt.ylabel("Average reward")
 plt.grid()
 plt.show()
+'''
 '''
 # 3. Weights error
 plt.figure()

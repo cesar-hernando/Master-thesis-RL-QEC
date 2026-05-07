@@ -282,19 +282,19 @@ def main():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="models/sac_gnn_43_best.pth",
+        default="models/sac_gnn_64_best.pth",
         help="Path to fixed learned SAC-GNN policy.",
     )
     parser.add_argument(
         "--p-values",
         type=str,
-        default="0.003,0.005,0.007,0.009, 0.011",
+        default="0.0005,0.001,0.0015,0.002",
         help="Comma-separated physical error rates.",
     )
     
     # Adaptive Shot Parameters
-    parser.add_argument("--target-errors", type=int, default=150, help="Stop evaluating a 'p' when the best decoder hits this many errors.")
-    parser.add_argument("--max-shots", type=int, default=15_000_000, help="Absolute max shots per 'p' to prevent infinite loops at low p.")
+    parser.add_argument("--target-errors", type=int, default=300, help="Stop evaluating a 'p' when the best decoder hits this many errors.")
+    parser.add_argument("--max-shots", type=int, default=20_000_000, help="Absolute max shots per 'p' to prevent infinite loops at low p.")
     parser.add_argument("--chunk-shots", type=int, default=50_000, help="Number of shots generated per environment reset.")
     
     parser.add_argument("--seed", type=int, default=42)
@@ -302,7 +302,7 @@ def main():
     parser.add_argument("--n-rounds", type=int, default=5)
     parser.add_argument("--p-gate-zz", type=float, default=0.0)
 
-    parser.add_argument("--action-scale", type=float, default=3.0)
+    parser.add_argument("--action-scale", type=float, default=5.0)
     parser.add_argument("--bypass-threshold", type=int, default=2)
     parser.add_argument("--local-action-hops", type=int, default=1)
 

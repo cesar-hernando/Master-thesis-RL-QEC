@@ -22,7 +22,7 @@ from functools import wraps
 import numpy as np
 
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.engine import test
+from adaptiveQRL.engine_curriculum import test
 from adaptiveQRL.gnn_sac_agent import SACAgent
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 

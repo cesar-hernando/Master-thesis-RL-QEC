@@ -75,9 +75,11 @@ def parse_args() -> argparse.Namespace:
     # Agent constants (kept fixed for contextual-bandit semantics unless explicitly changed)
     parser.add_argument("--gamma", type=float, default=0.0)
     parser.add_argument("--tau", type=float, default=0.005)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=1e-4)
 
     # Training schedule settings
-    parser.add_argument("--train-episodes", type=int, default=270)
+    parser.add_argument("--train-episodes", type=int, default=500)
     parser.add_argument("--buffer-capacity", type=int, default=100_000)
 
     return parser.parse_args()
