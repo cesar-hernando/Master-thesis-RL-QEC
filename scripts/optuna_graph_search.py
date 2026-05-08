@@ -115,6 +115,7 @@ def suggest_run_config(trial: optuna.Trial) -> dict:
         "target_entropy":    trial.suggest_categorical("target_entropy",    choices["target_entropy"]),
         "tau":               trial.suggest_categorical("tau",               choices["tau"]),
         "mlp_head":          trial.suggest_categorical("mlp_head",          choices["mlp_head"]),
+        "mismatch":          trial.suggest_categorical("mismatch",          choices["mismatch"]),
     }
 
 
@@ -139,7 +140,7 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             "n_rounds": args.n_rounds,
             "p": args.p,
             "p_gate_zz": args.p_gate_zz,
-            "mismatch": args.mismatch,
+            "mismatch": run_cfg["mismatch"],   # from preset / Optuna search space
             "n_shots": args.n_shots,
             "n_test_shots": args.n_test_shots,
             "burn_in_steps": args.burn_in_steps,
@@ -287,6 +288,7 @@ def main() -> None:
             "target_entropy":    preset["target_entropy"],
             "tau":               preset["tau"],
             "mlp_head":          preset["mlp_head"],
+            "mismatch":          preset["mismatch"],
         }
         study.enqueue_trial(queued_params)
         print(f"Queued fixed preset_id={args.trial_preset_id}: {json.dumps(queued_params)}")

@@ -6,37 +6,50 @@ from dataclasses import dataclass
 # ─────────────────────────────────────────────────────────────────────────────
 # REFERENCE BASELINE
 #
-# Matches model 64 — best fully-trained run as of May 2026 (6.913% best val).
+# Matches the argparse defaults of scripts/main.py — the configuration that
+# every long training run uses unless an axis is explicitly overridden in
+# the .job script. Anchor model: model 64 (best fully-trained run as of May
+# 2026, 6.913% best val) which used these defaults plus bs=128 / hd=256 /
+# action_scale=5.0 carried over from the model 55-65 era.
 #
-# FIXED (not varied — settled by models 55-65):
-#   gamma=0.0, n_shots=65_000, burn_in=15_000, mismatch=30.0, d=5,
+# FIXED (not varied here):
+#   gamma=0.0, n_shots=65_000, burn_in=15_000, d=5,
 #   p=0.004, use_pearson_correlation=True, train_episodes=500,
-#   target_entropy=-1.0, tau=0.005
+#   target_entropy=-1.0, tau=0.005, alpha=0.01,
+#   update_frequency=100   ← the actual value in every long run
 #
-# KEY LESSONS FROM MODELS 55-65
+# VARIED ENV AXIS:
+#   mismatch — baseline 30.0 (drift factor range, 30x). Group H sweeps it
+#              downward to test whether the policy is bottlenecked by env
+#              hardness rather than training hyperparameters.
+#
+# KEY LESSONS FROM PRIOR SWEEPS
 # ──────────────────────────────
 #  • lr=1e-5  → complete failure (model 62)
-#  • lr=5e-5  → creates a long dead zone (~350/500 eps near-zero reward)
-#              before a fragile critic-spike breakthrough; not reliable
-#  • lr=1e-4  → consistent, no dead zone; best safe choice (model 64: 6.913%)
+#  • lr=5e-5  → long dead zone (~350/500 eps near-zero reward) before a
+#               fragile critic-spike breakthrough; not reliable
+#  • lr=1e-4  → consistent, no dead zone; safe choice (model 64: 6.913%)
 #  • lr=2e-4  → UNTESTED; expected to escape dead-zone faster; gradient
-#              clipping (max_norm=1) already limits instability risk
-#  • bs=64    → dropped (lower than bs=128 in all comparisons)
+#               clipping (max_norm=1) already limits instability risk
+#  • bs=64    → dropped (consistently worse than bs=128)
 #  • bs=256   → model 65 (lr=5e-5) hit 7.545% but only after the dead zone;
-#              lr=1e-4 + bs=256 + 500ep is still the key missing test
-#  • target_entropy ≠ -1.0 → -2.0 catastrophic (model 58); -0.5 noisy; fix at -1.0
-#  • tau variations → not worth it when gamma=0.0 (single critic, no target net)
-#  • update_frequency=100 → was standard in models 40-43 (best era pre-55);
-#    raised to 1000 without re-evaluation → must be re-tested with hd=256
+#               lr=1e-4 × bs=256 × 500ep is still the key missing test
+#  • target_entropy ≠ -1.0 → -2.0 catastrophic (model 58); -0.5 noisy
+#  • tau variations → not useful at gamma=0.0 (single critic, no target net)
+#  • update_frequency: 100 is the long-standing default and is the value
+#    used by every model whose results we trust. Raising it to 500 or 1000
+#    was tried and gave clearly worse results — those values are DELIBERATELY
+#    excluded from this search space and from the Optuna domain below.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def base_trial_config() -> dict:
     """
-    Reference configuration (preset 0 — model 64).
+    Reference configuration (preset 0 — argparse defaults equivalent to the
+    model 64 run).
 
     All other presets override exactly one or two keys so causal attribution
-    is unambiguous.  Three-key overrides are reserved for the final
-    "max-aggressive combo" preset and are clearly labelled.
+    is unambiguous. A small number of three-key overrides are reserved for
+    the "max-aggressive combo" presets and are clearly labelled.
     """
     return {
         # Architecture
@@ -46,7 +59,7 @@ def base_trial_config() -> dict:
         # Policy search
         "lr":                1e-4,
         "batch_size":        128,
-        "update_frequency":  1000,         # SAC gradient step every N env steps
+        "update_frequency":  100,          # SAC gradient step every N env steps — FIXED
         "target_entropy":    -1.0,         # fixed — auto-tunes alpha
         # Agent dynamics (fixed)
         "alpha":             0.01,         # initial entropy coefficient
@@ -54,14 +67,21 @@ def base_trial_config() -> dict:
         # Action
         "action_scale":      5.0,
         "local_action_hops": 1,
+        # Environment (only entries that the preset table actually sweeps)
+        "mismatch":          30.0,         # drift factor range (1.0 = no drift)
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRESET TABLE  (15 configs, IDs 0–14)
 #
+# update_frequency is held at the baseline value 100 in every preset:
+# 500 and 1000 were already tried and gave bad results, so we don't burn
+# compute on them again. The 15 slots therefore probe lr, batch size,
+# architecture, action scale, MLP head shape, and their interactions.
+#
 # One parameter changes at a time unless explicitly labelled as an
-# interaction test (groups I1 / I2).
+# interaction test (group I).
 #
 # Design rationale per group
 # ──────────────────────────
@@ -72,55 +92,67 @@ def base_trial_config() -> dict:
 #                missing data point: model 57b had it at 300ep (6.166%),
 #                model 65 had bs=256 but with lr=5e-5 (7.545% after dead zone).
 #
-#  C   upd_freq  update_frequency=100 was the standard in models 40-43
-#                (best era before model 55); the change to 1000 was never
-#                ablated. 500 tests the midpoint.
-#
-#  D   arch      n_layers=2 + hops=2 has never been tested at hd=256.
-#                hd=128 checks whether the 256-dim capacity is actually needed.
+#  D   arch      Architectural axis is "depth" — n_layers and
+#                local_action_hops are coupled and must always match (the
+#                action mask is meaningful only over the GCN's receptive
+#                field, so depth = n_layers = local_action_hops by
+#                construction). depth=2 is the only depth variant probed
+#                here; depth=3 was considered and dropped (cost vs. expected
+#                gain). hd=128 also checks whether the 256-dim capacity is
+#                actually needed.
 #
 #  E   scale     action_scale=3.0 isolates the 3→5 change made in model 45.
 #
 #  F   MLP head  Three head shape alternatives (narrow / deep / wide)
 #                to check if the current hourglass [H→2H→H→1] is a bottleneck.
 #
-#  I1  lr×uf     Higher lr + more frequent updates: faster gradient signal
-#                with less staleness.
+#  H   env       mismatch=10.0 reduces the drift factor range from 30x to
+#                10x — same noise model, less time-varying severity. Tests
+#                whether the headroom in LER vs. baseline MWPM is bounded
+#                by training hyperparameters or by the underlying drift
+#                difficulty itself; if mismatch=10 lifts performance
+#                disproportionately, the bottleneck is the env, not the agent.
 #
-#  I2  lr×uf×bs  Max-aggressive combo: all three "faster training" axes
-#                combined. Expensive but informative if the individual
-#                improvements hold.
+#  I   combos    Interactions among the "best candidate" axes (lr, bs, depth)
+#                plus one env × training cross (mismatch × lr) that asks
+#                whether training tweaks compound with an easier env or
+#                saturate. update_frequency is intentionally absent from
+#                every combo, and any combo that touches depth always sets
+#                both n_layers and local_action_hops to keep them coupled.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _VARIANTS: list[tuple[str, str, dict]] = [
-    # id  group  description                                          override
+    # id  group  description                                            override
     # ── Baseline ─────────────────────────────────────────────────────────────
-    ("A",  "Baseline — model 64 ref  (lr=1e-4, bs=128)",             {}),
+    ("0",  "Baseline — argparse defaults (lr=1e-4, bs=128, uf=100)",   {}),
     # ── Group A: Learning Rate ────────────────────────────────────────────────
-    ("A",  "lr=2e-4  (avoid dead-zone plateau; untested)",           {"lr": 2e-4}),
+    ("A",  "lr=2e-4  (avoid dead-zone plateau; untested)",             {"lr": 2e-4}),
+    # ── Group H: Env hardness (drift factor range) ───────────────────────────
+    ("H",  "mismatch=10.0  (3x less drift; easier env, isolate hardness)",
+                                                                       {"mismatch": 10.0}),
     # ── Group B: Batch Size ───────────────────────────────────────────────────
-    ("B",  "bs=256  (key missing: lr=1e-4 × bs=256 × 500ep)",        {"batch_size": 256}),
-    ("B",  "lr=2e-4 × bs=256  (LR–BS interaction)",                  {"lr": 2e-4, "batch_size": 256}),
-    # ── Group C: SAC Update Frequency ────────────────────────────────────────
-    ("C",  "update_freq=100  (10× grad steps; was best in ep40-43)", {"update_frequency": 100}),
-    ("C",  "update_freq=100 × bs=256  (uf×bs interaction)",          {"update_frequency": 100, "batch_size": 256}),
-    ("C",  "update_freq=500  (intermediate)",                         {"update_frequency": 500}),
-    # ── Group D: Architecture ─────────────────────────────────────────────────
-    ("D",  "n_layers=2 + hops=2  (deep GCN, hd=256, untested)",
+    ("B",  "bs=256  (key missing: lr=1e-4 × bs=256 × 500ep)",          {"batch_size": 256}),
+    ("B",  "lr=2e-4 × bs=256  (LR–BS interaction)",                    {"lr": 2e-4, "batch_size": 256}),
+    # ── Group D: Architecture (depth = n_layers = local_action_hops) ─────────
+    ("D",  "depth=2  (n_layers=2 × hops=2; matched receptive field)",
            {"n_layers": 2, "local_action_hops": 2}),
-    ("D",  "hidden_dim=128  (capacity-reduction check)",             {"hidden_dim": 128}),
+    ("D",  "hidden_dim=128  (capacity-reduction check)",               {"hidden_dim": 128}),
+    # ── Group I: Env × Training interaction ──────────────────────────────────
+    ("I",  "mismatch=10 × lr=2e-4  (env × LR; do tweaks compound with easier env?)",
+           {"mismatch": 10.0, "lr": 2e-4}),
     # ── Group E: Action Scale ─────────────────────────────────────────────────
-    ("E",  "action_scale=3.0  (isolate the 3→5 change in ep45)",     {"action_scale": 3.0}),
+    ("E",  "action_scale=3.0  (isolate the 3→5 change in ep45)",       {"action_scale": 3.0}),
     # ── Group F: MLP Head Alternatives ───────────────────────────────────────
-    ("F",  "head: narrow  [H→H→1]  (shallower, fewer params)",       {"mlp_head": "narrow"}),
-    ("F",  "head: deep    [H→H→H/2→H/4→1]  (pyramidal)",            {"mlp_head": "deep"}),
-    ("F",  "head: wide    [H→4H→1]  (single fat expansion layer)",   {"mlp_head": "wide"}),
-    # ── Group I1: LR × Update-Frequency Interaction ──────────────────────────
-    ("I1", "lr=2e-4 × update_freq=100  (fast lr + frequent updates)",
-           {"lr": 2e-4, "update_frequency": 100}),
-    # ── Group I2: Max-Aggressive Combo ────────────────────────────────────────
-    ("I2", "lr=2e-4 × uf=100 × bs=256  (all-aggressive combo)",
-           {"lr": 2e-4, "update_frequency": 100, "batch_size": 256}),
+    ("F",  "head: narrow  [H→H→1]  (shallower, fewer params)",         {"mlp_head": "narrow"}),
+    ("F",  "head: deep    [H→H→H/2→H/4→1]  (pyramidal)",               {"mlp_head": "deep"}),
+    ("F",  "head: wide    [H→4H→1]  (single fat expansion layer)",     {"mlp_head": "wide"}),
+    # ── Group I: Interactions (depth axis is always coupled) ─────────────────
+    ("I",  "lr=2e-4 × depth=2  (fast lr + deeper GCN)",
+           {"lr": 2e-4, "n_layers": 2, "local_action_hops": 2}),
+    ("I",  "bs=256 × depth=2  (large batch + deeper GCN)",
+           {"batch_size": 256, "n_layers": 2, "local_action_hops": 2}),
+    ("I",  "lr=2e-4 × bs=256 × depth=2  (max-aggressive combo)",
+           {"lr": 2e-4, "batch_size": 256, "n_layers": 2, "local_action_hops": 2}),
 ]
 
 
@@ -167,18 +199,26 @@ def preset_summary() -> None:
 
 @dataclass(frozen=True)
 class OptunaSearchSpace:
-    """Categorical search space derived from the manual grid (for Optuna)."""
+    """
+    Categorical search space derived from the manual grid (for Optuna).
+
+    Constraint: n_layers and local_action_hops must always be set to the
+    same value (the depth axis). Their tuples carry the same options here
+    so the Optuna sampler can be wired to suggest a single 'depth' index
+    and apply it to both keys.
+    """
     hidden_dim:        tuple[int,   ...] = (128, 256)
-    n_layers:          tuple[int,   ...] = (1, 2)
+    n_layers:          tuple[int,   ...] = (1, 2)         # coupled with local_action_hops
     lr:                tuple[float, ...] = (1e-4, 2e-4)
     alpha:             tuple[float, ...] = (0.01,)
     batch_size:        tuple[int,   ...] = (128, 256)
-    update_frequency:  tuple[int,   ...] = (100, 500, 1000)
-    local_action_hops: tuple[int,   ...] = (1, 2)
+    update_frequency:  tuple[int,   ...] = (100,)         # fixed — 500/1000 confirmed worse
+    local_action_hops: tuple[int,   ...] = (1, 2)         # coupled with n_layers
     action_scale:      tuple[float, ...] = (3.0, 5.0)
     target_entropy:    tuple[float, ...] = (-1.0,)
     tau:               tuple[float, ...] = (0.005,)
     mlp_head:          tuple[str,   ...] = ("standard", "narrow", "deep", "wide")
+    mismatch:          tuple[float, ...] = (10.0, 30.0)   # env drift factor range
 
 
 def optuna_categorical_choices() -> dict[str, list]:
@@ -196,4 +236,5 @@ def optuna_categorical_choices() -> dict[str, list]:
         "target_entropy":    list(space.target_entropy),
         "tau":               list(space.tau),
         "mlp_head":          list(space.mlp_head),
+        "mismatch":          list(space.mismatch),
     }
