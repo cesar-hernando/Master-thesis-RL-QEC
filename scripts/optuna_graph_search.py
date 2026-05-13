@@ -52,6 +52,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-startup-trials", type=int, default=8)
     parser.add_argument("--timeout-sec", type=int, default=0)
     parser.add_argument(
+        "--startup-jitter-max-sec",
+        type=float,
+        default=5.0,
+        help=(
+            "Maximum random startup delay in seconds before connecting to Optuna storage. "
+            "Useful for reducing SQLite init contention in array jobs."
+        ),
+    )
+    parser.add_argument(
         "--skip-if-completed",
         action="store_true",
         help="Exit quickly if this preset_id is already completed in the study.",
@@ -101,6 +110,48 @@ def find_completed_trial_for_preset(study: optuna.Study, preset_id: int) -> optu
     return None
 
 
+def create_study_with_sqlite_race_retry(
+    *,
+    study_name: str,
+    sampler: optuna.samplers.BaseSampler,
+    storage: str,
+    max_retries: int = 8,
+) -> optuna.Study:
+    """Create or load an Optuna study, tolerating SQLite schema init races.
+
+    With array jobs, multiple processes can try to create Optuna's tables at once.
+    SQLite may then raise "table studies already exists" during startup even with
+    load_if_exists=True. A short retry resolves this once the other process commits.
+    """
+
+    for attempt in range(max_retries):
+        try:
+            return optuna.create_study(
+                study_name=study_name,
+                direction="maximize",
+                sampler=sampler,
+                storage=storage,
+                load_if_exists=True,
+            )
+        except Exception as exc:
+            msg = str(exc)
+            is_sqlite_race = (
+                "sqlite3.OperationalError" in msg and "table studies already exists" in msg
+            )
+            if (not is_sqlite_race) or attempt == max_retries - 1:
+                raise
+
+            # Brief jittered backoff to let the competing process finish schema setup.
+            sleep_s = 0.2 * (attempt + 1) + random.uniform(0.0, 0.2)
+            print(
+                "[WARN] SQLite schema init race while creating study; "
+                f"retrying in {sleep_s:.2f}s ({attempt + 1}/{max_retries})"
+            )
+            time.sleep(sleep_s)
+
+    raise RuntimeError("Unreachable: failed to create/load study after retries")
+
+
 def suggest_run_config(trial: optuna.Trial) -> dict:
     choices = optuna_categorical_choices()
     return {
@@ -136,6 +187,7 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
         config = {
             "MODE": "train",
             "model_path": str(model_path),
+            "training_metrics_filename": f"{args.study_name}_trial_{trial.number:04d}_training_metrics.png",
             "distance": args.distance,
             "n_rounds": args.n_rounds,
             "p": args.p,
@@ -257,12 +309,18 @@ def main() -> None:
         storage_path = (args.results_dir / f"{args.study_name}.sqlite3").resolve()
         storage = f"sqlite:///{storage_path}"
 
-    study = optuna.create_study(
+    if args.startup_jitter_max_sec > 0:
+        delay_s = random.uniform(0.0, args.startup_jitter_max_sec)
+        print(
+            f"Applying startup jitter: sleeping {delay_s:.2f}s "
+            f"(max={args.startup_jitter_max_sec:.2f}s)"
+        )
+        time.sleep(delay_s)
+
+    study = create_study_with_sqlite_race_retry(
         study_name=args.study_name,
-        direction="maximize",
         sampler=build_sampler(args),
         storage=storage,
-        load_if_exists=True,
     )
 
     if args.trial_preset_id is not None:

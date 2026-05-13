@@ -15,6 +15,212 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.gnn_sac_agent import SACAgent
 
 
+def _binned_curve(x, y, n_bins=40, min_count=20):
+    """Return binned means for noisy binary/shot-level relationships."""
+    if len(x) == 0:
+        return np.array([]), np.array([]), np.array([])
+
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+
+    x_min = np.min(x)
+    x_max = np.max(x)
+    if x_max <= x_min:
+        return np.array([x_min]), np.array([np.mean(y)]), np.array([len(y)])
+
+    edges = np.linspace(x_min, x_max, n_bins + 1)
+    centers, means, counts = [], [], []
+
+    for i in range(n_bins):
+        left = edges[i]
+        right = edges[i + 1]
+        if i < n_bins - 1:
+            mask = (x >= left) & (x < right)
+        else:
+            mask = (x >= left) & (x <= right)
+
+        count = int(np.sum(mask))
+        if count < min_count:
+            continue
+
+        centers.append((left + right) * 0.5)
+        means.append(float(np.mean(y[mask])))
+        counts.append(count)
+
+    return np.asarray(centers), np.asarray(means), np.asarray(counts)
+
+
+def _render_degeneracy_dashboard(degen_data, oracle_ler, output_file="plots/weight_degeneracy_dashboard.html"):
+    """Render a compact dashboard that visualizes weight-performance degeneracy."""
+    shot_mse = np.asarray(degen_data["shot_weight_mse"], dtype=np.float64)
+    shot_err = np.asarray(degen_data["shot_agent_error"], dtype=np.float64)
+    shot_match_oracle = np.asarray(degen_data["shot_match_oracle_obs"], dtype=np.float64)
+    shot_step = np.asarray(degen_data["shot_step"], dtype=np.float64)
+
+    cp_step = np.asarray(degen_data["checkpoint_step"], dtype=np.float64)
+    cp_mse = np.asarray(degen_data["checkpoint_weight_mse"], dtype=np.float64)
+    cp_ler = np.asarray(degen_data["checkpoint_test_ler"], dtype=np.float64)
+
+    fig = make_subplots(
+        rows=2,
+        cols=2,
+        subplot_titles=(
+            "Checkpoint Frontier: Weight MSE vs Test LER",
+            "Shot-level Error Probability vs Weight MSE",
+            "Shot-level Oracle-Agreement vs Weight MSE",
+            "Temporal Evolution: Checkpoint MSE vs LER"
+        )
+    )
+
+    if cp_mse.size > 0:
+        fig.add_trace(
+            go.Scatter(
+                x=cp_mse,
+                y=cp_ler,
+                mode="markers",
+                marker=dict(size=7, color=cp_step, colorscale="Viridis", showscale=True, colorbar=dict(title="Step")),
+                name="Checkpoints"
+            ),
+            row=1,
+            col=1
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=[float(np.min(cp_mse)), float(np.max(cp_mse))],
+                y=[oracle_ler, oracle_ler],
+                mode="lines",
+                line=dict(color="green", dash="dash"),
+                name="Oracle LER"
+            ),
+            row=1,
+            col=1
+        )
+
+        fig.add_trace(
+            go.Scatter(x=cp_step, y=cp_mse, mode="lines+markers", name="Checkpoint Weight MSE"),
+            row=2,
+            col=2
+        )
+        fig.add_trace(
+            go.Scatter(x=cp_step, y=cp_ler, mode="lines+markers", name="Checkpoint Test LER"),
+            row=2,
+            col=2
+        )
+
+    if shot_mse.size > 0:
+        fig.add_trace(
+            go.Scatter(
+                x=shot_mse,
+                y=shot_err,
+                mode="markers",
+                marker=dict(size=4, color=shot_step, colorscale="Plasma", opacity=0.25),
+                name="Shot outcomes"
+            ),
+            row=1,
+            col=2
+        )
+
+        bx, by, _ = _binned_curve(shot_mse, shot_err)
+        if bx.size > 0:
+            fig.add_trace(
+                go.Scatter(x=bx, y=by, mode="lines", line=dict(width=3, color="black"), name="Binned error rate"),
+                row=1,
+                col=2
+            )
+
+        fig.add_trace(
+            go.Scatter(
+                x=shot_mse,
+                y=shot_match_oracle,
+                mode="markers",
+                marker=dict(size=4, color=shot_step, colorscale="Cividis", opacity=0.25),
+                name="Oracle agreement"
+            ),
+            row=2,
+            col=1
+        )
+
+        bx2, by2, _ = _binned_curve(shot_mse, shot_match_oracle)
+        if bx2.size > 0:
+            fig.add_trace(
+                go.Scatter(x=bx2, y=by2, mode="lines", line=dict(width=3, color="black"), name="Binned agreement"),
+                row=2,
+                col=1
+            )
+
+    fig.update_xaxes(title_text="Weight MSE to Oracle", row=1, col=1)
+    fig.update_yaxes(title_text="Test LER", row=1, col=1)
+
+    fig.update_xaxes(title_text="Weight MSE to Oracle", row=1, col=2)
+    fig.update_yaxes(title_text="P(logical error)", row=1, col=2, range=[-0.05, 1.05])
+
+    fig.update_xaxes(title_text="Weight MSE to Oracle", row=2, col=1)
+    fig.update_yaxes(title_text="P(match oracle pred)", row=2, col=1, range=[-0.05, 1.05])
+
+    fig.update_xaxes(title_text="Global evaluation step", row=2, col=2)
+    fig.update_yaxes(title_text="Metric value", row=2, col=2)
+
+    fig.update_layout(
+        title="Weight Degeneracy Diagnostics",
+        template="plotly_white",
+        height=900,
+        width=1400,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0)
+    )
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    fig.write_html(output_file)
+    print(f"[*] Degeneracy dashboard saved to '{output_file}'.")
+
+
+def _summarize_degeneracy(degen_data, oracle_ler, ler_tolerance):
+    """Print quantitative indicators for how much degeneracy the policy exploits."""
+    shot_mse = np.asarray(degen_data["shot_weight_mse"], dtype=np.float64)
+    shot_agent_error = np.asarray(degen_data["shot_agent_error"], dtype=np.float64)
+    shot_oracle_error = np.asarray(degen_data["shot_oracle_error"], dtype=np.float64)
+    shot_match_oracle = np.asarray(degen_data["shot_match_oracle_obs"], dtype=np.float64)
+
+    cp_mse = np.asarray(degen_data["checkpoint_weight_mse"], dtype=np.float64)
+    cp_ler = np.asarray(degen_data["checkpoint_test_ler"], dtype=np.float64)
+
+    if shot_mse.size == 0:
+        print("[!] No degeneracy statistics available (no evaluated shots after burn-in).")
+        return
+
+    high_mse_thr = float(np.quantile(shot_mse, 0.75))
+    high_mse_mask = shot_mse >= high_mse_thr
+
+    deg_shot_rate = float(np.mean(high_mse_mask & (shot_match_oracle > 0.5)))
+    agent_err_high = float(np.mean(shot_agent_error[high_mse_mask])) if np.any(high_mse_mask) else float("nan")
+    oracle_err_high = float(np.mean(shot_oracle_error[high_mse_mask])) if np.any(high_mse_mask) else float("nan")
+
+    if cp_mse.size > 1 and np.std(cp_mse) > 0 and np.std(cp_ler) > 0:
+        cp_corr = float(np.corrcoef(cp_mse, cp_ler)[0, 1])
+    else:
+        cp_corr = float("nan")
+
+    if cp_ler.size > 0:
+        near_oracle = cp_ler <= (oracle_ler + ler_tolerance)
+        near_oracle_rate = float(np.mean(near_oracle))
+        cp_high_thr = float(np.quantile(cp_mse, 0.75))
+        cp_high_mask = cp_mse >= cp_high_thr
+        high_mse_near_oracle = float(np.mean(cp_high_mask & near_oracle))
+    else:
+        near_oracle_rate = float("nan")
+        high_mse_near_oracle = float("nan")
+
+    print("\n" + "=" * 60)
+    print("WEIGHT DEGENERACY SUMMARY")
+    print("=" * 60)
+    print(f"Shot-level high-MSE threshold (Q75): {high_mse_thr:.6f}")
+    print(f"Degeneracy shot rate (high MSE + oracle-agree): {deg_shot_rate:.4f}")
+    print(f"Agent error rate on high-MSE shots: {agent_err_high:.6f}")
+    print(f"Oracle error rate on high-MSE shots: {oracle_err_high:.6f}")
+    print(f"Checkpoint corr(MSE, LER): {cp_corr:.4f}")
+    print(f"Near-oracle checkpoint rate (eps={ler_tolerance:g}): {near_oracle_rate:.4f}")
+    print(f"High-MSE + near-oracle checkpoint rate: {high_mse_near_oracle:.4f}")
+
+
 def _render_shot_gallery(env, saved_shots):
     """Builds a Plotly slideshow containing multiple shots with Slider navigation."""
     
@@ -223,6 +429,18 @@ def evaluate_ler_and_extract_gallery(env, agent, config, max_shots=10):
     cma_eval_errors = 0     # <--- NEW: Adaptive First-Pass (Zero Action)
     static_eval_errors = 0
     oracle_eval_errors = 0
+
+    degen_data = {
+        "shot_step": [],
+        "shot_weight_mse": [],
+        "shot_weight_l1": [],
+        "shot_agent_error": [],
+        "shot_oracle_error": [],
+        "shot_match_oracle_obs": [],
+        "checkpoint_step": [],
+        "checkpoint_weight_mse": [],
+        "checkpoint_test_ler": [],
+    }
     
     saved_shots = []
     start_time = time.time()
@@ -232,6 +450,11 @@ def evaluate_ler_and_extract_gallery(env, agent, config, max_shots=10):
         done = False
         step_count = 0
         ep_gnn_errs, ep_cma_errs, ep_static_errs = 0, 0, 0
+
+        global_ep_start = episode * n_shots
+        degen_data["checkpoint_step"].append(global_ep_start)
+        degen_data["checkpoint_weight_mse"].append(float(info["weights_mse_error"]))
+        degen_data["checkpoint_test_ler"].append(float(info["initial_test_ler"]))
         
         while not done:
             n_flashes = np.sum(env.current_syndrome != 0)
@@ -267,6 +490,7 @@ def evaluate_ler_and_extract_gallery(env, agent, config, max_shots=10):
                 err_cma = int(info["first_pass_obs"] != info["true_obs"]) # <--- NEW: CMA Error check
                 err_static = int(info["static_pred_obs"] != info["true_obs"])
                 err_oracle = int(info["oracle_pred_obs"] != info["true_obs"])
+                global_step = global_ep_start + step_count + 1
                 
                 gnn_eval_errors += err_gnn
                 cma_eval_errors += err_cma
@@ -276,6 +500,22 @@ def evaluate_ler_and_extract_gallery(env, agent, config, max_shots=10):
                 ep_gnn_errs += err_gnn
                 ep_cma_errs += err_cma
                 ep_static_errs += err_static
+
+                shot_mse = float(np.mean((w_final - env.oracle_weights) ** 2))
+                shot_l1 = float(np.mean(np.abs(w_final - env.oracle_weights)))
+                match_oracle_obs = int(info["pred_obs"] == info["oracle_pred_obs"])
+
+                degen_data["shot_step"].append(global_step)
+                degen_data["shot_weight_mse"].append(shot_mse)
+                degen_data["shot_weight_l1"].append(shot_l1)
+                degen_data["shot_agent_error"].append(err_gnn)
+                degen_data["shot_oracle_error"].append(err_oracle)
+                degen_data["shot_match_oracle_obs"].append(match_oracle_obs)
+
+                if ((step_count + 1) % env.update_period) == 0:
+                    degen_data["checkpoint_step"].append(global_step)
+                    degen_data["checkpoint_weight_mse"].append(float(info["weights_mse_error"]))
+                    degen_data["checkpoint_test_ler"].append(float(info["test_ler"]))
 
                 # --- 4. GALLERY HARVESTING ---
                 pass_2_selected_idx = set(info['selected_edges_second_pass_idx'].tolist())
@@ -330,6 +570,10 @@ def evaluate_ler_and_extract_gallery(env, agent, config, max_shots=10):
         print(f"-> GNN Improvement over CMA-Only: {improvement_cma:+.2f}%")
         
     print(f"\nEvaluation completed in {time.time() - start_time:.2f} seconds.")
+
+    ler_tolerance = config.get('degeneracy_ler_tolerance', 2e-4)
+    _summarize_degeneracy(degen_data, ler_oracle, ler_tolerance)
+    _render_degeneracy_dashboard(degen_data, ler_oracle)
     
     # --- RENDER GALLERY ---
     if saved_shots:
@@ -367,7 +611,8 @@ if __name__ == "__main__":
         'buffer_capacity': 100_000,
         'update_frequency': 100,
         'train_episodes': 50,
-        'test_episodes': 5  # Reduced slightly so you get your LER stats faster
+        'test_episodes': 5,  # Reduced slightly so you get your LER stats faster
+        'degeneracy_ler_tolerance': 2e-4,
     }
 
     print("Initializing environment...")

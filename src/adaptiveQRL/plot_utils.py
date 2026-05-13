@@ -230,6 +230,7 @@ import matplotlib.pyplot as plt
 def plot_training_metrics(metrics, config):
     """Generates a 4-panel plot showing training health over episodes."""
     os.makedirs('plots', exist_ok=True)
+    metrics_filename = config.get("training_metrics_filename", "training_metrics.png")
     
     episodes = range(1, len(metrics['rewards']) + 1)
     
@@ -276,8 +277,8 @@ def plot_training_metrics(metrics, config):
     plt.tight_layout()
     plt.subplots_adjust(top=0.92) # Give the suptitle a bit of breathing room
     
-    plt.savefig(f'plots/{config["training_metrics_filename"]}', dpi=300)
-    print(f"Training plots saved to 'plots/{config['training_metrics_filename']}'")
+    plt.savefig(f"plots/{metrics_filename}", dpi=300)
+    print(f"Training plots saved to 'plots/{metrics_filename}'")
     plt.close()
 
 
