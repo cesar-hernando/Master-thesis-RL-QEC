@@ -288,7 +288,7 @@ def main():
     parser.add_argument(
         "--p-values",
         type=str,
-        default="0.0002, 0.0006, 0.0008",
+        default="0.001, 0.0008, 0.0006, 0.0004",
         help="Comma-separated physical error rates.",
     )
     

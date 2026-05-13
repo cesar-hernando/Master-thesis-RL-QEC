@@ -10,6 +10,8 @@ import stim
 import pymatching
 import matplotlib.pyplot as plt
 
+from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+
 def evaluate_decoder(d, p, target_errors=200, max_shots=20_000_000, batch_size=100_000):
     """
     Evaluates both standard and correlated matching for a given distance and physical error rate.
@@ -27,7 +29,12 @@ def evaluate_decoder(d, p, target_errors=200, max_shots=20_000_000, batch_size=1
         after_reset_flip_probability=p,
         before_round_data_depolarization=p,
     )
-    dem = circuit.detector_error_model(decompose_errors=True)
+    #dem = circuit.detector_error_model(decompose_errors=True)
+    # Generate the RAW dem (tell Stim NOT to decompose)
+    dem_raw = circuit.detector_error_model(decompose_errors=False)
+    
+    # Use Tesseract to perform the geometrically-aware decomposition
+    dem = decompose_errors_for_stim_surface_code_coords(dem_raw)
     
     # 2. Initialize PyMatching decoders
     m_standard = pymatching.Matching.from_detector_error_model(dem, enable_correlations=False)
@@ -91,7 +98,8 @@ def main():
 
     distances = [3, 5]
     # Log-space ensures the 5 points are evenly distributed visually on the log-log plot
-    p_values = np.logspace(np.log10(1e-4), np.log10(1e-2), 5) 
+    #p_values = np.logspace(np.log10(1e-4), np.log10(1e-2), 5) 
+    p_values = np.array([4e-4])
 
     # Data structures to store results for plotting
     results = {d: {'p': [], 'std': [], 'std_err': [], 'corr': [], 'corr_err': []} for d in distances}

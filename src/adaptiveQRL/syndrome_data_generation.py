@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from typing import Optional
 
 from adaptiveQRL.surface_code_stim import SurfaceCode
+from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 
 class SyndromeDataGenerator:
@@ -71,7 +72,8 @@ class SyndromeDataGenerator:
         else:
             raise ValueError(f"Unsupported QEC code: {self.qec_code}. Currently only 'surface_code' is supported.")
         
-        base_dem = base_circuit.detector_error_model(decompose_errors=True)
+        base_dem = decompose_errors_for_stim_surface_code_coords(base_circuit.detector_error_model(decompose_errors=False))
+
         base_matching = pymatching.Matching.from_detector_error_model(base_dem, enable_correlations=False)
 
         return base_circuit, base_dem, base_matching
@@ -162,7 +164,7 @@ class SyndromeDataGenerator:
             else:
                 drifted_circuit.append(inst)
 
-        drifted_dem = drifted_circuit.detector_error_model(decompose_errors=True)
+        drifted_dem = decompose_errors_for_stim_surface_code_coords(drifted_circuit.detector_error_model(decompose_errors=False))
         drifted_matching = pymatching.Matching.from_detector_error_model(drifted_dem, enable_correlations=True) # Use correlated-matching for ground truth decoding
 
         return drifted_circuit, drifted_dem, drifted_matching
