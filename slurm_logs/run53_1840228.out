@@ -1,0 +1,718 @@
+Job started at: Wed Apr 29 21:19:29 CEST 2026
+Starting Run 53: 500 eps | No burn-in | Gamma=0.99 | Layers=1 | Mismatch=30.0 | action_scale=5 | Using P.C.
+SLURM Mode Received: 0
+Execution Pipeline: ['train']
+Loaded Configuration: {'mode': 0, 'model_path': 'models/sac_gnn_53.pth', 'training_metrics_filename': 'training_metrics_53.png', 'distance': 5, 'n_rounds': 5, 'p': 0.004, 'p_gate_zz': 0.0, 'mismatch': 30.0, 'n_shots': 50000, 'n_test_shots': 10000, 'burn_in_steps': 0, 'bypass_threshold': 2, 'action_scale': 5.0, 'update_period': 100, 'prior_shots': 1000, 'local_action_only': True, 'local_action_hops': 1, 'n_layers': 1, 'use_pearson_correlation': True, 'use_log_joint_prob': False, 'hidden_dim': 256, 'lr': 0.0001, 'gamma': 0.99, 'tau': 0.005, 'alpha': 0.01, 'batch_size': 64, 'buffer_capacity': 100000, 'update_frequency': 100, 'train_episodes': 500, 'test_episodes': 20}
+
+Initializing environment...
+
+############################################################
+### RUNNING MODE: TRAIN
+############################################################
+
+========================================
+STARTING TRAINING (Episodes: 500)
+========================================
+Train Ep: 001/500 | Reward: -830.0 | MSE: 0.2127 | C_Loss: 0.080 | A_Loss: 0.075 | Alpha: 0.0095
+Train Ep: 002/500 | Reward: -248.0 | MSE: 0.3807 | C_Loss: 0.058 | A_Loss: 0.086 | Alpha: 0.0091
+Train Ep: 003/500 | Reward: -547.0 | MSE: 0.8491 | C_Loss: 0.058 | A_Loss: 0.092 | Alpha: 0.0087
+Train Ep: 004/500 | Reward:  -55.0 | MSE: 0.2805 | C_Loss: 0.049 | A_Loss: 0.094 | Alpha: 0.0083
+Train Ep: 005/500 | Reward:  -16.0 | MSE: 0.3824 | C_Loss: 0.023 | A_Loss: 0.086 | Alpha: 0.0080
+Train Ep: 006/500 | Reward:    0.0 | MSE: 0.3662 | C_Loss: 0.005 | A_Loss: 0.077 | Alpha: 0.0076
+Train Ep: 007/500 | Reward:  -19.0 | MSE: 0.2994 | C_Loss: 0.005 | A_Loss: 0.069 | Alpha: 0.0072
+Train Ep: 008/500 | Reward:  -72.0 | MSE: 0.2521 | C_Loss: 0.008 | A_Loss: 0.060 | Alpha: 0.0069
+Train Ep: 009/500 | Reward:  -51.0 | MSE: 0.3041 | C_Loss: 0.011 | A_Loss: 0.051 | Alpha: 0.0066
+Train Ep: 010/500 | Reward: -139.0 | MSE: 0.3681 | C_Loss: 0.017 | A_Loss: 0.047 | Alpha: 0.0063
+Train Ep: 011/500 | Reward: -189.0 | MSE: 0.2790 | C_Loss: 0.025 | A_Loss: 0.042 | Alpha: 0.0060
+Train Ep: 012/500 | Reward: -280.0 | MSE: 0.4828 | C_Loss: 0.034 | A_Loss: 0.041 | Alpha: 0.0057
+Train Ep: 013/500 | Reward: -126.0 | MSE: 0.4324 | C_Loss: 0.037 | A_Loss: 0.042 | Alpha: 0.0055
+Train Ep: 014/500 | Reward: -163.0 | MSE: 0.4310 | C_Loss: 0.035 | A_Loss: 0.043 | Alpha: 0.0052
+Train Ep: 015/500 | Reward: -129.0 | MSE: 0.4244 | C_Loss: 0.028 | A_Loss: 0.041 | Alpha: 0.0050
+Train Ep: 016/500 | Reward: -155.0 | MSE: 0.2852 | C_Loss: 0.027 | A_Loss: 0.040 | Alpha: 0.0048
+Train Ep: 017/500 | Reward: -267.0 | MSE: 0.3931 | C_Loss: 0.030 | A_Loss: 0.040 | Alpha: 0.0046
+Train Ep: 018/500 | Reward:  -81.0 | MSE: 0.3378 | C_Loss: 0.030 | A_Loss: 0.042 | Alpha: 0.0044
+Train Ep: 019/500 | Reward: -154.0 | MSE: 0.4695 | C_Loss: 0.028 | A_Loss: 0.044 | Alpha: 0.0042
+Train Ep: 020/500 | Reward: -114.0 | MSE: 0.3162 | C_Loss: 0.021 | A_Loss: 0.044 | Alpha: 0.0040
+Train Ep: 021/500 | Reward: -146.0 | MSE: 0.4174 | C_Loss: 0.021 | A_Loss: 0.044 | Alpha: 0.0038
+Train Ep: 022/500 | Reward: -201.0 | MSE: 0.2769 | C_Loss: 0.026 | A_Loss: 0.042 | Alpha: 0.0036
+Train Ep: 023/500 | Reward: -264.0 | MSE: 0.3933 | C_Loss: 0.032 | A_Loss: 0.045 | Alpha: 0.0035
+Train Ep: 024/500 | Reward: -147.0 | MSE: 0.5122 | C_Loss: 0.036 | A_Loss: 0.051 | Alpha: 0.0033
+Train Ep: 025/500 | Reward: -149.0 | MSE: 0.3513 | C_Loss: 0.033 | A_Loss: 0.052 | Alpha: 0.0032
+Train Ep: 026/500 | Reward: -132.0 | MSE: 0.4614 | C_Loss: 0.028 | A_Loss: 0.055 | Alpha: 0.0030
+Train Ep: 027/500 | Reward: -117.0 | MSE: 0.3422 | C_Loss: 0.027 | A_Loss: 0.054 | Alpha: 0.0029
+Train Ep: 028/500 | Reward:  -88.0 | MSE: 0.3632 | C_Loss: 0.024 | A_Loss: 0.054 | Alpha: 0.0028
+Train Ep: 029/500 | Reward: -224.0 | MSE: 0.3857 | C_Loss: 0.028 | A_Loss: 0.053 | Alpha: 0.0026
+Train Ep: 030/500 | Reward: -101.0 | MSE: 0.4645 | C_Loss: 0.034 | A_Loss: 0.056 | Alpha: 0.0025
+Train Ep: 031/500 | Reward: -120.0 | MSE: 0.3599 | C_Loss: 0.036 | A_Loss: 0.057 | Alpha: 0.0024
+Train Ep: 032/500 | Reward:  -52.0 | MSE: 0.4625 | C_Loss: 0.031 | A_Loss: 0.056 | Alpha: 0.0023
+Train Ep: 033/500 | Reward:  -47.0 | MSE: 0.3318 | C_Loss: 0.023 | A_Loss: 0.056 | Alpha: 0.0022
+Train Ep: 034/500 | Reward: -134.0 | MSE: 0.4385 | C_Loss: 0.021 | A_Loss: 0.055 | Alpha: 0.0021
+Train Ep: 035/500 | Reward: -209.0 | MSE: 0.4139 | C_Loss: 0.025 | A_Loss: 0.056 | Alpha: 0.0020
+Train Ep: 036/500 | Reward:  -51.0 | MSE: 0.3451 | C_Loss: 0.027 | A_Loss: 0.058 | Alpha: 0.0019
+Train Ep: 037/500 | Reward:  -66.0 | MSE: 0.3583 | C_Loss: 0.022 | A_Loss: 0.059 | Alpha: 0.0018
+Train Ep: 038/500 | Reward:  -12.0 | MSE: 0.4665 | C_Loss: 0.017 | A_Loss: 0.057 | Alpha: 0.0018
+Train Ep: 039/500 | Reward:  -28.0 | MSE: 0.3900 | C_Loss: 0.012 | A_Loss: 0.057 | Alpha: 0.0017
+Train Ep: 040/500 | Reward:  -19.0 | MSE: 0.4028 | C_Loss: 0.012 | A_Loss: 0.053 | Alpha: 0.0016
+Train Ep: 041/500 | Reward:    5.0 | MSE: 0.2502 | C_Loss: 0.013 | A_Loss: 0.049 | Alpha: 0.0015
+Train Ep: 042/500 | Reward:  -23.0 | MSE: 0.3529 | C_Loss: 0.009 | A_Loss: 0.048 | Alpha: 0.0015
+Train Ep: 043/500 | Reward:  -18.0 | MSE: 0.2935 | C_Loss: 0.007 | A_Loss: 0.047 | Alpha: 0.0014
+Train Ep: 044/500 | Reward:  -25.0 | MSE: 0.3010 | C_Loss: 0.010 | A_Loss: 0.046 | Alpha: 0.0013
+Train Ep: 045/500 | Reward:  -68.0 | MSE: 0.2769 | C_Loss: 0.014 | A_Loss: 0.045 | Alpha: 0.0013
+Train Ep: 046/500 | Reward: -123.0 | MSE: 0.3671 | C_Loss: 0.021 | A_Loss: 0.043 | Alpha: 0.0012
+Train Ep: 047/500 | Reward: -107.0 | MSE: 0.3769 | C_Loss: 0.027 | A_Loss: 0.045 | Alpha: 0.0012
+Train Ep: 048/500 | Reward: -121.0 | MSE: 0.4856 | C_Loss: 0.028 | A_Loss: 0.049 | Alpha: 0.0011
+Train Ep: 049/500 | Reward:  -31.0 | MSE: 0.1460 | C_Loss: 0.026 | A_Loss: 0.050 | Alpha: 0.0011
+Train Ep: 050/500 | Reward: -104.0 | MSE: 0.4897 | C_Loss: 0.022 | A_Loss: 0.051 | Alpha: 0.0010
+Train Ep: 051/500 | Reward:  -17.0 | MSE: 0.3654 | C_Loss: 0.026 | A_Loss: 0.054 | Alpha: 0.0010
+Train Ep: 052/500 | Reward:  -28.0 | MSE: 0.3429 | C_Loss: 0.017 | A_Loss: 0.053 | Alpha: 0.0009
+Train Ep: 053/500 | Reward:   27.0 | MSE: 0.2381 | C_Loss: 0.010 | A_Loss: 0.052 | Alpha: 0.0009
+Train Ep: 054/500 | Reward:    2.0 | MSE: 0.3750 | C_Loss: 0.008 | A_Loss: 0.049 | Alpha: 0.0009
+Train Ep: 055/500 | Reward:  -28.0 | MSE: 0.2828 | C_Loss: 0.009 | A_Loss: 0.046 | Alpha: 0.0008
+Train Ep: 056/500 | Reward:   -6.0 | MSE: 0.3414 | C_Loss: 0.010 | A_Loss: 0.044 | Alpha: 0.0008
+Train Ep: 057/500 | Reward:  -35.0 | MSE: 0.3359 | C_Loss: 0.013 | A_Loss: 0.043 | Alpha: 0.0007
+Train Ep: 058/500 | Reward:   -7.0 | MSE: 0.3528 | C_Loss: 0.018 | A_Loss: 0.043 | Alpha: 0.0007
+Train Ep: 059/500 | Reward:  -33.0 | MSE: 0.3310 | C_Loss: 0.017 | A_Loss: 0.041 | Alpha: 0.0007
+Train Ep: 060/500 | Reward:    9.0 | MSE: 0.4583 | C_Loss: 0.015 | A_Loss: 0.041 | Alpha: 0.0007
+Train Ep: 061/500 | Reward:  -51.0 | MSE: 0.3805 | C_Loss: 0.016 | A_Loss: 0.040 | Alpha: 0.0006
+Train Ep: 062/500 | Reward:    4.0 | MSE: 0.3103 | C_Loss: 0.014 | A_Loss: 0.040 | Alpha: 0.0006
+Train Ep: 063/500 | Reward:   24.0 | MSE: 0.4411 | C_Loss: 0.013 | A_Loss: 0.037 | Alpha: 0.0006
+Train Ep: 064/500 | Reward:  -28.0 | MSE: 0.3235 | C_Loss: 0.011 | A_Loss: 0.036 | Alpha: 0.0005
+Train Ep: 065/500 | Reward:   -6.0 | MSE: 0.2049 | C_Loss: 0.011 | A_Loss: 0.035 | Alpha: 0.0005
+Train Ep: 066/500 | Reward:  -19.0 | MSE: 0.4387 | C_Loss: 0.012 | A_Loss: 0.035 | Alpha: 0.0005
+Train Ep: 067/500 | Reward:  -31.0 | MSE: 0.2961 | C_Loss: 0.012 | A_Loss: 0.035 | Alpha: 0.0005
+Train Ep: 068/500 | Reward:  -21.0 | MSE: 0.3529 | C_Loss: 0.011 | A_Loss: 0.035 | Alpha: 0.0005
+Train Ep: 069/500 | Reward:   -6.0 | MSE: 0.3480 | C_Loss: 0.011 | A_Loss: 0.034 | Alpha: 0.0004
+Train Ep: 070/500 | Reward:   14.0 | MSE: 0.4331 | C_Loss: 0.009 | A_Loss: 0.034 | Alpha: 0.0004
+Train Ep: 071/500 | Reward:   13.0 | MSE: 0.3218 | C_Loss: 0.006 | A_Loss: 0.033 | Alpha: 0.0004
+Train Ep: 072/500 | Reward:   -2.0 | MSE: 0.2298 | C_Loss: 0.009 | A_Loss: 0.031 | Alpha: 0.0004
+Train Ep: 073/500 | Reward:    5.0 | MSE: 0.3606 | C_Loss: 0.009 | A_Loss: 0.028 | Alpha: 0.0004
+Train Ep: 074/500 | Reward:   18.0 | MSE: 0.2866 | C_Loss: 0.009 | A_Loss: 0.026 | Alpha: 0.0003
+Train Ep: 075/500 | Reward:   -1.0 | MSE: 0.2994 | C_Loss: 0.009 | A_Loss: 0.025 | Alpha: 0.0003
+Train Ep: 076/500 | Reward:  -21.0 | MSE: 0.3548 | C_Loss: 0.012 | A_Loss: 0.022 | Alpha: 0.0003
+Train Ep: 077/500 | Reward:   10.0 | MSE: 0.4406 | C_Loss: 0.016 | A_Loss: 0.023 | Alpha: 0.0003
+Train Ep: 078/500 | Reward:  -28.0 | MSE: 0.3335 | C_Loss: 0.015 | A_Loss: 0.022 | Alpha: 0.0003
+Train Ep: 079/500 | Reward:  -17.0 | MSE: 0.2899 | C_Loss: 0.014 | A_Loss: 0.020 | Alpha: 0.0003
+Train Ep: 080/500 | Reward:   -3.0 | MSE: 0.2478 | C_Loss: 0.013 | A_Loss: 0.021 | Alpha: 0.0003
+Train Ep: 081/500 | Reward:   14.0 | MSE: 0.3894 | C_Loss: 0.008 | A_Loss: 0.021 | Alpha: 0.0003
+Train Ep: 082/500 | Reward:   21.0 | MSE: 0.4519 | C_Loss: 0.006 | A_Loss: 0.019 | Alpha: 0.0002
+Train Ep: 083/500 | Reward:    9.0 | MSE: 0.3164 | C_Loss: 0.005 | A_Loss: 0.018 | Alpha: 0.0002
+Train Ep: 084/500 | Reward:  -11.0 | MSE: 0.3680 | C_Loss: 0.008 | A_Loss: 0.017 | Alpha: 0.0002
+Train Ep: 085/500 | Reward:  -22.0 | MSE: 0.2838 | C_Loss: 0.011 | A_Loss: 0.018 | Alpha: 0.0002
+Train Ep: 086/500 | Reward:    7.0 | MSE: 0.3244 | C_Loss: 0.011 | A_Loss: 0.019 | Alpha: 0.0002
+Train Ep: 087/500 | Reward:    8.0 | MSE: 0.3451 | C_Loss: 0.008 | A_Loss: 0.019 | Alpha: 0.0002
+Train Ep: 088/500 | Reward:   -2.0 | MSE: 0.2693 | C_Loss: 0.007 | A_Loss: 0.017 | Alpha: 0.0002
+Train Ep: 089/500 | Reward:    2.0 | MSE: 0.3860 | C_Loss: 0.008 | A_Loss: 0.018 | Alpha: 0.0002
+Train Ep: 090/500 | Reward:   29.0 | MSE: 0.3203 | C_Loss: 0.008 | A_Loss: 0.019 | Alpha: 0.0002
+Train Ep: 091/500 | Reward:   27.0 | MSE: 0.2462 | C_Loss: 0.007 | A_Loss: 0.016 | Alpha: 0.0002
+Train Ep: 092/500 | Reward:   -9.0 | MSE: 0.2949 | C_Loss: 0.008 | A_Loss: 0.015 | Alpha: 0.0002
+Train Ep: 093/500 | Reward:  -30.0 | MSE: 0.2949 | C_Loss: 0.009 | A_Loss: 0.015 | Alpha: 0.0001
+Train Ep: 094/500 | Reward:    2.0 | MSE: 0.4987 | C_Loss: 0.008 | A_Loss: 0.015 | Alpha: 0.0001
+Train Ep: 095/500 | Reward:   27.0 | MSE: 0.2995 | C_Loss: 0.007 | A_Loss: 0.015 | Alpha: 0.0001
+Train Ep: 096/500 | Reward:  -10.0 | MSE: 0.4010 | C_Loss: 0.010 | A_Loss: 0.014 | Alpha: 0.0001
+Train Ep: 097/500 | Reward:   28.0 | MSE: 0.3467 | C_Loss: 0.010 | A_Loss: 0.014 | Alpha: 0.0001
+Train Ep: 098/500 | Reward:  -18.0 | MSE: 0.1465 | C_Loss: 0.007 | A_Loss: 0.012 | Alpha: 0.0001
+Train Ep: 099/500 | Reward:    9.0 | MSE: 0.3752 | C_Loss: 0.007 | A_Loss: 0.012 | Alpha: 0.0001
+Train Ep: 100/500 | Reward:  -18.0 | MSE: 0.4429 | C_Loss: 0.007 | A_Loss: 0.013 | Alpha: 0.0001
+Train Ep: 101/500 | Reward:   12.0 | MSE: 0.4148 | C_Loss: 0.007 | A_Loss: 0.013 | Alpha: 0.0001
+Train Ep: 102/500 | Reward:   25.0 | MSE: 0.2259 | C_Loss: 0.005 | A_Loss: 0.012 | Alpha: 0.0001
+Train Ep: 103/500 | Reward:   29.0 | MSE: 0.3695 | C_Loss: 0.006 | A_Loss: 0.010 | Alpha: 0.0001
+Train Ep: 104/500 | Reward:    3.0 | MSE: 0.2170 | C_Loss: 0.006 | A_Loss: 0.008 | Alpha: 0.0001
+Train Ep: 105/500 | Reward:   15.0 | MSE: 0.2546 | C_Loss: 0.006 | A_Loss: 0.007 | Alpha: 0.0001
+Train Ep: 106/500 | Reward:   30.0 | MSE: 0.2980 | C_Loss: 0.006 | A_Loss: 0.005 | Alpha: 0.0001
+Train Ep: 107/500 | Reward:    9.0 | MSE: 0.2590 | C_Loss: 0.006 | A_Loss: 0.003 | Alpha: 0.0001
+Train Ep: 108/500 | Reward:  -30.0 | MSE: 0.3260 | C_Loss: 0.008 | A_Loss: 0.002 | Alpha: 0.0001
+Train Ep: 109/500 | Reward:  -50.0 | MSE: 0.3358 | C_Loss: 0.015 | A_Loss: 0.003 | Alpha: 0.0001
+Train Ep: 110/500 | Reward:  -49.0 | MSE: 0.3985 | C_Loss: 0.024 | A_Loss: 0.005 | Alpha: 0.0001
+Train Ep: 111/500 | Reward:    6.0 | MSE: 0.3594 | C_Loss: 0.019 | A_Loss: 0.006 | Alpha: 0.0001
+Train Ep: 112/500 | Reward:    8.0 | MSE: 0.2629 | C_Loss: 0.009 | A_Loss: 0.005 | Alpha: 0.0001
+Train Ep: 113/500 | Reward:   38.0 | MSE: 0.3929 | C_Loss: 0.005 | A_Loss: 0.004 | Alpha: 0.0001
+Train Ep: 114/500 | Reward:   15.0 | MSE: 0.2490 | C_Loss: 0.006 | A_Loss: 0.002 | Alpha: 0.0001
+Train Ep: 115/500 | Reward:   50.0 | MSE: 0.3104 | C_Loss: 0.005 | A_Loss: 0.000 | Alpha: 0.0001
+Train Ep: 116/500 | Reward:   47.0 | MSE: 0.3045 | C_Loss: 0.006 | A_Loss: -0.001 | Alpha: 0.0001
+Train Ep: 117/500 | Reward:   27.0 | MSE: 0.2770 | C_Loss: 0.006 | A_Loss: -0.004 | Alpha: 0.0001
+Train Ep: 118/500 | Reward:    4.0 | MSE: 0.2864 | C_Loss: 0.005 | A_Loss: -0.005 | Alpha: 0.0001
+Train Ep: 119/500 | Reward:   18.0 | MSE: 0.3592 | C_Loss: 0.005 | A_Loss: -0.005 | Alpha: 0.0000
+Train Ep: 120/500 | Reward:   13.0 | MSE: 0.1731 | C_Loss: 0.004 | A_Loss: -0.005 | Alpha: 0.0000
+Train Ep: 121/500 | Reward:   14.0 | MSE: 0.3173 | C_Loss: 0.002 | A_Loss: -0.006 | Alpha: 0.0000
+Train Ep: 122/500 | Reward:   32.0 | MSE: 0.3651 | C_Loss: 0.003 | A_Loss: -0.007 | Alpha: 0.0000
+Train Ep: 123/500 | Reward:    7.0 | MSE: 0.3587 | C_Loss: 0.003 | A_Loss: -0.007 | Alpha: 0.0000
+Train Ep: 124/500 | Reward:   15.0 | MSE: 0.3149 | C_Loss: 0.003 | A_Loss: -0.008 | Alpha: 0.0000
+Train Ep: 125/500 | Reward:   10.0 | MSE: 0.3949 | C_Loss: 0.002 | A_Loss: -0.008 | Alpha: 0.0000
+Train Ep: 126/500 | Reward:    6.0 | MSE: 0.3606 | C_Loss: 0.002 | A_Loss: -0.008 | Alpha: 0.0000
+Train Ep: 127/500 | Reward:    1.0 | MSE: 0.2146 | C_Loss: 0.001 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 128/500 | Reward:    0.0 | MSE: 0.2770 | C_Loss: 0.000 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 129/500 | Reward:    5.0 | MSE: 0.3667 | C_Loss: 0.000 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 130/500 | Reward:   12.0 | MSE: 0.3473 | C_Loss: 0.000 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 131/500 | Reward:    3.0 | MSE: 0.2729 | C_Loss: 0.001 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 132/500 | Reward:    7.0 | MSE: 0.3417 | C_Loss: 0.001 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 133/500 | Reward:   20.0 | MSE: 0.3249 | C_Loss: 0.002 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 134/500 | Reward:   15.0 | MSE: 0.3218 | C_Loss: 0.002 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 135/500 | Reward:    3.0 | MSE: 0.3609 | C_Loss: 0.003 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 136/500 | Reward:   10.0 | MSE: 0.3256 | C_Loss: 0.001 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 137/500 | Reward:    6.0 | MSE: 0.3696 | C_Loss: 0.002 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 138/500 | Reward:   11.0 | MSE: 0.5854 | C_Loss: 0.005 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 139/500 | Reward:   54.0 | MSE: 0.3142 | C_Loss: 0.008 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 140/500 | Reward:  -11.0 | MSE: 0.3496 | C_Loss: 0.011 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 141/500 | Reward:   39.0 | MSE: 0.3325 | C_Loss: 0.008 | A_Loss: -0.013 | Alpha: 0.0000
+Train Ep: 142/500 | Reward:    3.0 | MSE: 0.3510 | C_Loss: 0.004 | A_Loss: -0.012 | Alpha: 0.0000
+Train Ep: 143/500 | Reward:   -1.0 | MSE: 0.3371 | C_Loss: 0.001 | A_Loss: -0.012 | Alpha: 0.0000
+Train Ep: 144/500 | Reward:   -2.0 | MSE: 0.3673 | C_Loss: 0.001 | A_Loss: -0.012 | Alpha: 0.0000
+Train Ep: 145/500 | Reward:  -19.0 | MSE: 0.3067 | C_Loss: 0.002 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 146/500 | Reward:    6.0 | MSE: 0.3804 | C_Loss: 0.002 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 147/500 | Reward:   17.0 | MSE: 0.3253 | C_Loss: 0.001 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 148/500 | Reward:   10.0 | MSE: 0.3076 | C_Loss: 0.001 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 149/500 | Reward:   10.0 | MSE: 0.3100 | C_Loss: 0.001 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 150/500 | Reward:   14.0 | MSE: 0.3023 | C_Loss: 0.002 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 151/500 | Reward:    4.0 | MSE: 0.2964 | C_Loss: 0.001 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 152/500 | Reward:   -2.0 | MSE: 0.2863 | C_Loss: 0.002 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 153/500 | Reward:    5.0 | MSE: 0.3218 | C_Loss: 0.001 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 154/500 | Reward:   10.0 | MSE: 0.4524 | C_Loss: 0.002 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 155/500 | Reward:    8.0 | MSE: 0.3941 | C_Loss: 0.001 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 156/500 | Reward:    1.0 | MSE: 0.2983 | C_Loss: 0.001 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 157/500 | Reward:    1.0 | MSE: 0.2423 | C_Loss: 0.001 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 158/500 | Reward:    9.0 | MSE: 0.2430 | C_Loss: 0.002 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 159/500 | Reward:   -2.0 | MSE: 0.4639 | C_Loss: 0.002 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 160/500 | Reward:  -22.0 | MSE: 0.4287 | C_Loss: 0.005 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 161/500 | Reward:   -8.0 | MSE: 0.3042 | C_Loss: 0.010 | A_Loss: -0.008 | Alpha: 0.0000
+Train Ep: 162/500 | Reward:  -24.0 | MSE: 0.1974 | C_Loss: 0.013 | A_Loss: -0.005 | Alpha: 0.0000
+Train Ep: 163/500 | Reward:   15.0 | MSE: 0.4375 | C_Loss: 0.008 | A_Loss: -0.006 | Alpha: 0.0000
+Train Ep: 164/500 | Reward:   25.0 | MSE: 0.2795 | C_Loss: 0.003 | A_Loss: -0.006 | Alpha: 0.0000
+Train Ep: 165/500 | Reward:   24.0 | MSE: 0.4319 | C_Loss: 0.002 | A_Loss: -0.007 | Alpha: 0.0000
+Train Ep: 166/500 | Reward:   15.0 | MSE: 0.2443 | C_Loss: 0.003 | A_Loss: -0.007 | Alpha: 0.0000
+Train Ep: 167/500 | Reward:   28.0 | MSE: 0.3578 | C_Loss: 0.003 | A_Loss: -0.009 | Alpha: 0.0000
+Train Ep: 168/500 | Reward:   24.0 | MSE: 0.2841 | C_Loss: 0.002 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 169/500 | Reward:    4.0 | MSE: 0.3098 | C_Loss: 0.001 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 170/500 | Reward:   23.0 | MSE: 0.3536 | C_Loss: 0.001 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 171/500 | Reward:   25.0 | MSE: 0.2961 | C_Loss: 0.001 | A_Loss: -0.010 | Alpha: 0.0000
+Train Ep: 172/500 | Reward:   51.0 | MSE: 0.3800 | C_Loss: 0.003 | A_Loss: -0.011 | Alpha: 0.0000
+Train Ep: 173/500 | Reward:   58.0 | MSE: 0.3898 | C_Loss: 0.006 | A_Loss: -0.013 | Alpha: 0.0000
+Train Ep: 174/500 | Reward:   53.0 | MSE: 0.3334 | C_Loss: 0.010 | A_Loss: -0.017 | Alpha: 0.0000
+Train Ep: 175/500 | Reward:   56.0 | MSE: 0.3138 | C_Loss: 0.014 | A_Loss: -0.017 | Alpha: 0.0000
+Train Ep: 176/500 | Reward:   77.0 | MSE: 0.4454 | C_Loss: 0.013 | A_Loss: -0.020 | Alpha: 0.0000
+Train Ep: 177/500 | Reward:  -54.0 | MSE: 0.4083 | C_Loss: 0.018 | A_Loss: -0.023 | Alpha: 0.0000
+Train Ep: 178/500 | Reward:   27.0 | MSE: 0.3262 | C_Loss: 0.016 | A_Loss: -0.023 | Alpha: 0.0000
+Train Ep: 179/500 | Reward:   16.0 | MSE: 0.2850 | C_Loss: 0.007 | A_Loss: -0.022 | Alpha: 0.0000
+Train Ep: 180/500 | Reward:   90.0 | MSE: 0.2166 | C_Loss: 0.003 | A_Loss: -0.023 | Alpha: 0.0000
+Train Ep: 181/500 | Reward:   98.0 | MSE: 0.3436 | C_Loss: 0.008 | A_Loss: -0.026 | Alpha: 0.0000
+Train Ep: 182/500 | Reward:   96.0 | MSE: 0.4087 | C_Loss: 0.012 | A_Loss: -0.029 | Alpha: 0.0000
+Train Ep: 183/500 | Reward:   95.0 | MSE: 0.2794 | C_Loss: 0.010 | A_Loss: -0.033 | Alpha: 0.0000
+Train Ep: 184/500 | Reward:   80.0 | MSE: 0.4754 | C_Loss: 0.013 | A_Loss: -0.036 | Alpha: 0.0000
+Train Ep: 185/500 | Reward:   77.0 | MSE: 0.3556 | C_Loss: 0.017 | A_Loss: -0.039 | Alpha: 0.0000
+Train Ep: 186/500 | Reward:   77.0 | MSE: 0.3611 | C_Loss: 0.019 | A_Loss: -0.042 | Alpha: 0.0000
+Train Ep: 187/500 | Reward:   95.0 | MSE: 0.2610 | C_Loss: 0.018 | A_Loss: -0.045 | Alpha: 0.0000
+Train Ep: 188/500 | Reward:   63.0 | MSE: 0.3132 | C_Loss: 0.011 | A_Loss: -0.046 | Alpha: 0.0000
+Train Ep: 189/500 | Reward:  111.0 | MSE: 0.2619 | C_Loss: 0.011 | A_Loss: -0.047 | Alpha: 0.0000
+  [!] Reward crossed 100! Unlocking Validation phase for the rest of training.
+Train Ep: 190/500 | Reward:   72.0 | MSE: 0.2601 | C_Loss: 0.017 | A_Loss: -0.050 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5050
+  -> Relative Improvement: 3.974%
+  *** New Best Model! Net Score improved from -inf to 0.039741395702605056 ***
+[*] Models successfully saved to models/sac_gnn_53_best.pth
+Train Ep: 191/500 | Reward:   75.0 | MSE: 0.2015 | C_Loss: 0.020 | A_Loss: -0.054 | Alpha: 0.0000
+Train Ep: 192/500 | Reward:  146.0 | MSE: 0.2544 | C_Loss: 0.016 | A_Loss: -0.055 | Alpha: 0.0000
+Train Ep: 193/500 | Reward:  107.0 | MSE: 0.3109 | C_Loss: 0.018 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 194/500 | Reward:   73.0 | MSE: 0.2775 | C_Loss: 0.017 | A_Loss: -0.061 | Alpha: 0.0000
+Train Ep: 195/500 | Reward:   70.0 | MSE: 0.2877 | C_Loss: 0.014 | A_Loss: -0.062 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5153
+  -> Relative Improvement: 2.016%
+Train Ep: 196/500 | Reward:   83.0 | MSE: 0.2231 | C_Loss: 0.012 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 197/500 | Reward:   53.0 | MSE: 0.2259 | C_Loss: 0.009 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 198/500 | Reward:   61.0 | MSE: 0.2589 | C_Loss: 0.007 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 199/500 | Reward:   81.0 | MSE: 0.2255 | C_Loss: 0.007 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 200/500 | Reward:   15.0 | MSE: 0.1805 | C_Loss: 0.008 | A_Loss: -0.067 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5186
+  -> Relative Improvement: 1.388%
+Train Ep: 201/500 | Reward:   37.0 | MSE: 0.3692 | C_Loss: 0.005 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 202/500 | Reward:   38.0 | MSE: 0.3066 | C_Loss: 0.005 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 203/500 | Reward:   91.0 | MSE: 0.2691 | C_Loss: 0.007 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 204/500 | Reward:   23.0 | MSE: 0.3067 | C_Loss: 0.012 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 205/500 | Reward:   -5.0 | MSE: 0.3315 | C_Loss: 0.015 | A_Loss: -0.067 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5147
+  -> Relative Improvement: 2.130%
+Train Ep: 206/500 | Reward:   34.0 | MSE: 0.2209 | C_Loss: 0.013 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 207/500 | Reward:   14.0 | MSE: 0.2889 | C_Loss: 0.004 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 208/500 | Reward:   10.0 | MSE: 0.2152 | C_Loss: 0.001 | A_Loss: -0.062 | Alpha: 0.0000
+Train Ep: 209/500 | Reward:    9.0 | MSE: 0.2405 | C_Loss: 0.001 | A_Loss: -0.061 | Alpha: 0.0000
+Train Ep: 210/500 | Reward:   31.0 | MSE: 0.2572 | C_Loss: 0.002 | A_Loss: -0.059 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5190
+  -> Relative Improvement: 1.312%
+Train Ep: 211/500 | Reward:   19.0 | MSE: 0.2974 | C_Loss: 0.002 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 212/500 | Reward:   28.0 | MSE: 0.2582 | C_Loss: 0.003 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 213/500 | Reward:   45.0 | MSE: 0.3790 | C_Loss: 0.006 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 214/500 | Reward:  -21.0 | MSE: 0.2004 | C_Loss: 0.009 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 215/500 | Reward:   43.0 | MSE: 0.2828 | C_Loss: 0.014 | A_Loss: -0.056 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5048
+  -> Relative Improvement: 4.012%
+  *** New Best Model! Net Score improved from 0.039741395702605056 to 0.04012169613995056 ***
+[*] Models successfully saved to models/sac_gnn_53_best.pth
+Train Ep: 216/500 | Reward:   39.0 | MSE: 0.3120 | C_Loss: 0.012 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 217/500 | Reward:   49.0 | MSE: 0.2725 | C_Loss: 0.006 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 218/500 | Reward:   39.0 | MSE: 0.2130 | C_Loss: 0.005 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 219/500 | Reward:   76.0 | MSE: 0.2949 | C_Loss: 0.004 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 220/500 | Reward:   42.0 | MSE: 0.1999 | C_Loss: 0.007 | A_Loss: -0.058 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5180
+  -> Relative Improvement: 1.502%
+Train Ep: 221/500 | Reward:  146.0 | MSE: 0.2966 | C_Loss: 0.009 | A_Loss: -0.060 | Alpha: 0.0000
+Train Ep: 222/500 | Reward:  212.0 | MSE: 0.3560 | C_Loss: 0.021 | A_Loss: -0.063 | Alpha: 0.0001
+Train Ep: 223/500 | Reward:   64.0 | MSE: 0.3153 | C_Loss: 0.027 | A_Loss: -0.068 | Alpha: 0.0001
+Train Ep: 224/500 | Reward:   84.0 | MSE: 0.3800 | C_Loss: 0.023 | A_Loss: -0.069 | Alpha: 0.0001
+Train Ep: 225/500 | Reward:   82.0 | MSE: 0.3213 | C_Loss: 0.021 | A_Loss: -0.072 | Alpha: 0.0001
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 4997
+  -> Relative Improvement: 4.982%
+  *** New Best Model! Net Score improved from 0.04012169613995056 to 0.049819357292260884 ***
+[*] Models successfully saved to models/sac_gnn_53_best.pth
+Train Ep: 226/500 | Reward:   51.0 | MSE: 0.2771 | C_Loss: 0.017 | A_Loss: -0.073 | Alpha: 0.0001
+Train Ep: 227/500 | Reward:   82.0 | MSE: 0.2619 | C_Loss: 0.014 | A_Loss: -0.073 | Alpha: 0.0001
+Train Ep: 228/500 | Reward:  108.0 | MSE: 0.2583 | C_Loss: 0.015 | A_Loss: -0.075 | Alpha: 0.0000
+Train Ep: 229/500 | Reward:   72.0 | MSE: 0.3919 | C_Loss: 0.014 | A_Loss: -0.077 | Alpha: 0.0000
+Train Ep: 230/500 | Reward:   32.0 | MSE: 0.2412 | C_Loss: 0.016 | A_Loss: -0.075 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5003
+  -> Relative Improvement: 4.868%
+Train Ep: 231/500 | Reward:   45.0 | MSE: 0.3065 | C_Loss: 0.019 | A_Loss: -0.075 | Alpha: 0.0000
+Train Ep: 232/500 | Reward:   29.0 | MSE: 0.2484 | C_Loss: 0.016 | A_Loss: -0.074 | Alpha: 0.0000
+Train Ep: 233/500 | Reward:   37.0 | MSE: 0.1716 | C_Loss: 0.007 | A_Loss: -0.074 | Alpha: 0.0000
+Train Ep: 234/500 | Reward:   43.0 | MSE: 0.3332 | C_Loss: 0.005 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 235/500 | Reward:   66.0 | MSE: 0.3070 | C_Loss: 0.006 | A_Loss: -0.073 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5182
+  -> Relative Improvement: 1.464%
+Train Ep: 236/500 | Reward:   58.0 | MSE: 0.2298 | C_Loss: 0.006 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 237/500 | Reward:   48.0 | MSE: 0.2629 | C_Loss: 0.006 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 238/500 | Reward:   25.0 | MSE: 0.2985 | C_Loss: 0.004 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 239/500 | Reward:   79.0 | MSE: 0.3367 | C_Loss: 0.004 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 240/500 | Reward:   34.0 | MSE: 0.3259 | C_Loss: 0.007 | A_Loss: -0.072 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5212
+  -> Relative Improvement: 0.894%
+Train Ep: 241/500 | Reward:   92.0 | MSE: 0.2580 | C_Loss: 0.008 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 242/500 | Reward:  123.0 | MSE: 0.3025 | C_Loss: 0.013 | A_Loss: -0.077 | Alpha: 0.0000
+Train Ep: 243/500 | Reward:   76.0 | MSE: 0.5632 | C_Loss: 0.023 | A_Loss: -0.082 | Alpha: 0.0000
+Train Ep: 244/500 | Reward:   25.0 | MSE: 0.4186 | C_Loss: 0.034 | A_Loss: -0.081 | Alpha: 0.0000
+Train Ep: 245/500 | Reward:   40.0 | MSE: 0.3531 | C_Loss: 0.035 | A_Loss: -0.080 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5126
+  -> Relative Improvement: 2.529%
+Train Ep: 246/500 | Reward:   83.0 | MSE: 0.4968 | C_Loss: 0.025 | A_Loss: -0.080 | Alpha: 0.0000
+Train Ep: 247/500 | Reward:   69.0 | MSE: 0.3403 | C_Loss: 0.021 | A_Loss: -0.081 | Alpha: 0.0000
+Train Ep: 248/500 | Reward:   92.0 | MSE: 0.3640 | C_Loss: 0.012 | A_Loss: -0.081 | Alpha: 0.0000
+Train Ep: 249/500 | Reward:   76.0 | MSE: 0.5676 | C_Loss: 0.011 | A_Loss: -0.082 | Alpha: 0.0000
+Train Ep: 250/500 | Reward:   68.0 | MSE: 0.5454 | C_Loss: 0.014 | A_Loss: -0.083 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5060
+  -> Relative Improvement: 3.784%
+Train Ep: 251/500 | Reward:   45.0 | MSE: 0.4548 | C_Loss: 0.010 | A_Loss: -0.084 | Alpha: 0.0000
+Train Ep: 252/500 | Reward:   45.0 | MSE: 0.4968 | C_Loss: 0.008 | A_Loss: -0.084 | Alpha: 0.0000
+Train Ep: 253/500 | Reward:  104.0 | MSE: 0.3138 | C_Loss: 0.008 | A_Loss: -0.085 | Alpha: 0.0000
+Train Ep: 254/500 | Reward:   82.0 | MSE: 0.3968 | C_Loss: 0.010 | A_Loss: -0.086 | Alpha: 0.0000
+Train Ep: 255/500 | Reward:   72.0 | MSE: 0.3825 | C_Loss: 0.009 | A_Loss: -0.087 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5063
+  -> Relative Improvement: 3.727%
+Train Ep: 256/500 | Reward:   61.0 | MSE: 0.3402 | C_Loss: 0.011 | A_Loss: -0.086 | Alpha: 0.0000
+Train Ep: 257/500 | Reward:   78.0 | MSE: 0.3619 | C_Loss: 0.010 | A_Loss: -0.087 | Alpha: 0.0000
+Train Ep: 258/500 | Reward:   53.0 | MSE: 0.3109 | C_Loss: 0.013 | A_Loss: -0.089 | Alpha: 0.0000
+Train Ep: 259/500 | Reward:   79.0 | MSE: 0.3545 | C_Loss: 0.014 | A_Loss: -0.090 | Alpha: 0.0000
+Train Ep: 260/500 | Reward:   43.0 | MSE: 0.2325 | C_Loss: 0.013 | A_Loss: -0.091 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5058
+  -> Relative Improvement: 3.822%
+Train Ep: 261/500 | Reward:    1.0 | MSE: 0.5247 | C_Loss: 0.018 | A_Loss: -0.092 | Alpha: 0.0000
+Train Ep: 262/500 | Reward:   44.0 | MSE: 0.6361 | C_Loss: 0.029 | A_Loss: -0.090 | Alpha: 0.0000
+Train Ep: 263/500 | Reward:   49.0 | MSE: 0.3877 | C_Loss: 0.030 | A_Loss: -0.090 | Alpha: 0.0000
+Train Ep: 264/500 | Reward:   56.0 | MSE: 0.2893 | C_Loss: 0.020 | A_Loss: -0.089 | Alpha: 0.0000
+Train Ep: 265/500 | Reward:    2.0 | MSE: 0.4337 | C_Loss: 0.015 | A_Loss: -0.088 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5051
+  -> Relative Improvement: 3.955%
+Train Ep: 266/500 | Reward:   24.0 | MSE: 0.4813 | C_Loss: 0.016 | A_Loss: -0.086 | Alpha: 0.0000
+Train Ep: 267/500 | Reward:   29.0 | MSE: 0.3684 | C_Loss: 0.014 | A_Loss: -0.083 | Alpha: 0.0000
+Train Ep: 268/500 | Reward:    2.0 | MSE: 0.3987 | C_Loss: 0.006 | A_Loss: -0.082 | Alpha: 0.0000
+Train Ep: 269/500 | Reward:   46.0 | MSE: 0.3692 | C_Loss: 0.005 | A_Loss: -0.082 | Alpha: 0.0000
+Train Ep: 270/500 | Reward:   30.0 | MSE: 0.2643 | C_Loss: 0.007 | A_Loss: -0.079 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5073
+  -> Relative Improvement: 3.537%
+Train Ep: 271/500 | Reward:   49.0 | MSE: 0.4095 | C_Loss: 0.010 | A_Loss: -0.078 | Alpha: 0.0000
+Train Ep: 272/500 | Reward:   37.0 | MSE: 0.3407 | C_Loss: 0.009 | A_Loss: -0.077 | Alpha: 0.0000
+Train Ep: 273/500 | Reward:    5.0 | MSE: 0.3567 | C_Loss: 0.008 | A_Loss: -0.076 | Alpha: 0.0000
+Train Ep: 274/500 | Reward:   36.0 | MSE: 0.2927 | C_Loss: 0.009 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 275/500 | Reward:    5.0 | MSE: 0.2526 | C_Loss: 0.008 | A_Loss: -0.071 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5386
+  -> Relative Improvement: -2.415%
+Train Ep: 276/500 | Reward:   20.0 | MSE: 0.5410 | C_Loss: 0.012 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 277/500 | Reward:   -2.0 | MSE: 0.2545 | C_Loss: 0.012 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 278/500 | Reward:   65.0 | MSE: 0.4478 | C_Loss: 0.011 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 279/500 | Reward:   31.0 | MSE: 0.4301 | C_Loss: 0.013 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 280/500 | Reward:   12.0 | MSE: 0.4331 | C_Loss: 0.013 | A_Loss: -0.067 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5081
+  -> Relative Improvement: 3.385%
+Train Ep: 281/500 | Reward:   64.0 | MSE: 0.5924 | C_Loss: 0.019 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 282/500 | Reward:   28.0 | MSE: 0.6308 | C_Loss: 0.021 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 283/500 | Reward:   97.0 | MSE: 0.4144 | C_Loss: 0.014 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 284/500 | Reward:   44.0 | MSE: 0.4465 | C_Loss: 0.014 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 285/500 | Reward:   59.0 | MSE: 0.4447 | C_Loss: 0.017 | A_Loss: -0.067 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5096
+  -> Relative Improvement: 3.099%
+Train Ep: 286/500 | Reward:  123.0 | MSE: 0.5792 | C_Loss: 0.018 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 287/500 | Reward:   48.0 | MSE: 0.5145 | C_Loss: 0.016 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 288/500 | Reward:   39.0 | MSE: 0.4525 | C_Loss: 0.018 | A_Loss: -0.074 | Alpha: 0.0000
+Train Ep: 289/500 | Reward:   88.0 | MSE: 0.4444 | C_Loss: 0.016 | A_Loss: -0.075 | Alpha: 0.0000
+Train Ep: 290/500 | Reward:   51.0 | MSE: 0.4332 | C_Loss: 0.012 | A_Loss: -0.076 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5254
+  -> Relative Improvement: 0.095%
+Train Ep: 291/500 | Reward:   15.0 | MSE: 0.4066 | C_Loss: 0.007 | A_Loss: -0.076 | Alpha: 0.0000
+Train Ep: 292/500 | Reward:   42.0 | MSE: 0.4481 | C_Loss: 0.005 | A_Loss: -0.075 | Alpha: 0.0000
+Train Ep: 293/500 | Reward:   44.0 | MSE: 0.3364 | C_Loss: 0.006 | A_Loss: -0.074 | Alpha: 0.0000
+Train Ep: 294/500 | Reward:   83.0 | MSE: 0.3271 | C_Loss: 0.008 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 295/500 | Reward:   68.0 | MSE: 0.2936 | C_Loss: 0.012 | A_Loss: -0.074 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5071
+  -> Relative Improvement: 3.575%
+Train Ep: 296/500 | Reward:   21.0 | MSE: 0.5198 | C_Loss: 0.019 | A_Loss: -0.076 | Alpha: 0.0000
+Train Ep: 297/500 | Reward:    8.0 | MSE: 0.4496 | C_Loss: 0.018 | A_Loss: -0.075 | Alpha: 0.0000
+Train Ep: 298/500 | Reward:   35.0 | MSE: 0.3699 | C_Loss: 0.012 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 299/500 | Reward:   37.0 | MSE: 0.4108 | C_Loss: 0.011 | A_Loss: -0.071 | Alpha: 0.0000
+Train Ep: 300/500 | Reward:   36.0 | MSE: 0.3573 | C_Loss: 0.009 | A_Loss: -0.071 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5244
+  -> Relative Improvement: 0.285%
+Train Ep: 301/500 | Reward:   21.0 | MSE: 0.3428 | C_Loss: 0.004 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 302/500 | Reward:   24.0 | MSE: 0.3135 | C_Loss: 0.003 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 303/500 | Reward:   56.0 | MSE: 0.3725 | C_Loss: 0.004 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 304/500 | Reward:   31.0 | MSE: 0.3734 | C_Loss: 0.006 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 305/500 | Reward:   22.0 | MSE: 0.3603 | C_Loss: 0.004 | A_Loss: -0.067 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5185
+  -> Relative Improvement: 1.407%
+Train Ep: 306/500 | Reward:   52.0 | MSE: 0.2983 | C_Loss: 0.004 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 307/500 | Reward:   70.0 | MSE: 0.3653 | C_Loss: 0.007 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 308/500 | Reward:   51.0 | MSE: 0.3600 | C_Loss: 0.009 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 309/500 | Reward:   70.0 | MSE: 0.2973 | C_Loss: 0.011 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 310/500 | Reward:   69.0 | MSE: 0.3468 | C_Loss: 0.014 | A_Loss: -0.071 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5184
+  -> Relative Improvement: 1.426%
+Train Ep: 311/500 | Reward:   11.0 | MSE: 0.2788 | C_Loss: 0.015 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 312/500 | Reward:   51.0 | MSE: 0.3887 | C_Loss: 0.013 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 313/500 | Reward:   30.0 | MSE: 0.3076 | C_Loss: 0.015 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 314/500 | Reward:   26.0 | MSE: 0.2912 | C_Loss: 0.011 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 315/500 | Reward:    5.0 | MSE: 0.7409 | C_Loss: 0.014 | A_Loss: -0.071 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5252
+  -> Relative Improvement: 0.133%
+Train Ep: 316/500 | Reward:   72.0 | MSE: 0.6703 | C_Loss: 0.025 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 317/500 | Reward:   43.0 | MSE: 0.4276 | C_Loss: 0.017 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 318/500 | Reward:    3.0 | MSE: 0.5068 | C_Loss: 0.010 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 319/500 | Reward:   25.0 | MSE: 0.4222 | C_Loss: 0.006 | A_Loss: -0.071 | Alpha: 0.0000
+Train Ep: 320/500 | Reward:  -63.0 | MSE: 0.2934 | C_Loss: 0.007 | A_Loss: -0.069 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5210
+  -> Relative Improvement: 0.932%
+Train Ep: 321/500 | Reward:    8.0 | MSE: 0.3029 | C_Loss: 0.007 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 322/500 | Reward:   16.0 | MSE: 0.3153 | C_Loss: 0.004 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 323/500 | Reward:    0.0 | MSE: 0.3519 | C_Loss: 0.002 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 324/500 | Reward:   35.0 | MSE: 0.3246 | C_Loss: 0.002 | A_Loss: -0.062 | Alpha: 0.0000
+Train Ep: 325/500 | Reward:    4.0 | MSE: 0.3412 | C_Loss: 0.002 | A_Loss: -0.060 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5218
+  -> Relative Improvement: 0.780%
+Train Ep: 326/500 | Reward:   10.0 | MSE: 0.3606 | C_Loss: 0.002 | A_Loss: -0.059 | Alpha: 0.0000
+Train Ep: 327/500 | Reward:    2.0 | MSE: 0.3334 | C_Loss: 0.001 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 328/500 | Reward:    8.0 | MSE: 0.3338 | C_Loss: 0.002 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 329/500 | Reward:    3.0 | MSE: 0.3829 | C_Loss: 0.001 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 330/500 | Reward:   11.0 | MSE: 0.3503 | C_Loss: 0.001 | A_Loss: -0.055 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5224
+  -> Relative Improvement: 0.666%
+Train Ep: 331/500 | Reward:   50.0 | MSE: 0.4853 | C_Loss: 0.001 | A_Loss: -0.053 | Alpha: 0.0000
+Train Ep: 332/500 | Reward:   56.0 | MSE: 0.4575 | C_Loss: 0.005 | A_Loss: -0.054 | Alpha: 0.0000
+Train Ep: 333/500 | Reward:   22.0 | MSE: 0.4137 | C_Loss: 0.006 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 334/500 | Reward:   75.0 | MSE: 0.2472 | C_Loss: 0.009 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 335/500 | Reward:   93.0 | MSE: 0.3284 | C_Loss: 0.013 | A_Loss: -0.059 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5074
+  -> Relative Improvement: 3.518%
+Train Ep: 336/500 | Reward:   43.0 | MSE: 0.4998 | C_Loss: 0.023 | A_Loss: -0.063 | Alpha: 0.0000
+Train Ep: 337/500 | Reward:   58.0 | MSE: 0.4285 | C_Loss: 0.025 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 338/500 | Reward:   68.0 | MSE: 0.4036 | C_Loss: 0.024 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 339/500 | Reward:   26.0 | MSE: 0.8179 | C_Loss: 0.025 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 340/500 | Reward:  113.0 | MSE: 0.4842 | C_Loss: 0.024 | A_Loss: -0.065 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5164
+  -> Relative Improvement: 1.806%
+Train Ep: 341/500 | Reward:   37.0 | MSE: 0.2746 | C_Loss: 0.013 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 342/500 | Reward:   73.0 | MSE: 0.4136 | C_Loss: 0.005 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 343/500 | Reward:   58.0 | MSE: 0.4979 | C_Loss: 0.010 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 344/500 | Reward:   83.0 | MSE: 0.4664 | C_Loss: 0.012 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 345/500 | Reward:   65.0 | MSE: 0.5105 | C_Loss: 0.011 | A_Loss: -0.068 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5102
+  -> Relative Improvement: 2.985%
+Train Ep: 346/500 | Reward:   63.0 | MSE: 0.5331 | C_Loss: 0.011 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 347/500 | Reward:   59.0 | MSE: 0.3645 | C_Loss: 0.010 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 348/500 | Reward:   36.0 | MSE: 0.2922 | C_Loss: 0.009 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 349/500 | Reward:   47.0 | MSE: 0.3455 | C_Loss: 0.007 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 350/500 | Reward:   32.0 | MSE: 0.4137 | C_Loss: 0.007 | A_Loss: -0.072 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5151
+  -> Relative Improvement: 2.054%
+Train Ep: 351/500 | Reward: -148.0 | MSE: 0.3803 | C_Loss: 0.009 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 352/500 | Reward:   31.0 | MSE: 0.2949 | C_Loss: 0.020 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 353/500 | Reward:   25.0 | MSE: 0.6987 | C_Loss: 0.026 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 354/500 | Reward:   68.0 | MSE: 0.5028 | C_Loss: 0.025 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 355/500 | Reward:   90.0 | MSE: 0.4758 | C_Loss: 0.023 | A_Loss: -0.069 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5041
+  -> Relative Improvement: 4.145%
+Train Ep: 356/500 | Reward:   67.0 | MSE: 0.5000 | C_Loss: 0.018 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 357/500 | Reward:    7.0 | MSE: 0.4468 | C_Loss: 0.021 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 358/500 | Reward:   -3.0 | MSE: 0.6304 | C_Loss: 0.030 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 359/500 | Reward:   34.0 | MSE: 0.5482 | C_Loss: 0.032 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 360/500 | Reward:    1.0 | MSE: 0.5850 | C_Loss: 0.034 | A_Loss: -0.065 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5064
+  -> Relative Improvement: 3.708%
+Train Ep: 361/500 | Reward:  -27.0 | MSE: 0.5534 | C_Loss: 0.037 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 362/500 | Reward:  -95.0 | MSE: 0.6237 | C_Loss: 0.036 | A_Loss: -0.061 | Alpha: 0.0000
+Train Ep: 363/500 | Reward:   -5.0 | MSE: 0.4143 | C_Loss: 0.034 | A_Loss: -0.059 | Alpha: 0.0000
+Train Ep: 364/500 | Reward:   98.0 | MSE: 0.4029 | C_Loss: 0.026 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 365/500 | Reward:  101.0 | MSE: 0.5532 | C_Loss: 0.028 | A_Loss: -0.058 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5044
+  -> Relative Improvement: 4.088%
+Train Ep: 366/500 | Reward:  104.0 | MSE: 0.4812 | C_Loss: 0.027 | A_Loss: -0.058 | Alpha: 0.0000
+Train Ep: 367/500 | Reward:   41.0 | MSE: 0.4263 | C_Loss: 0.023 | A_Loss: -0.061 | Alpha: 0.0000
+Train Ep: 368/500 | Reward:   73.0 | MSE: 0.2947 | C_Loss: 0.016 | A_Loss: -0.060 | Alpha: 0.0000
+Train Ep: 369/500 | Reward:   66.0 | MSE: 0.3331 | C_Loss: 0.010 | A_Loss: -0.061 | Alpha: 0.0000
+Train Ep: 370/500 | Reward:  104.0 | MSE: 0.3756 | C_Loss: 0.009 | A_Loss: -0.060 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5061
+  -> Relative Improvement: 3.765%
+Train Ep: 371/500 | Reward:   73.0 | MSE: 0.3400 | C_Loss: 0.012 | A_Loss: -0.063 | Alpha: 0.0000
+Train Ep: 372/500 | Reward:   76.0 | MSE: 0.3382 | C_Loss: 0.009 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 373/500 | Reward:   77.0 | MSE: 0.3179 | C_Loss: 0.008 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 374/500 | Reward:   33.0 | MSE: 0.3849 | C_Loss: 0.007 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 375/500 | Reward:   73.0 | MSE: 0.4010 | C_Loss: 0.007 | A_Loss: -0.066 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5058
+  -> Relative Improvement: 3.822%
+Train Ep: 376/500 | Reward:   54.0 | MSE: 0.3599 | C_Loss: 0.008 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 377/500 | Reward:   65.0 | MSE: 0.3622 | C_Loss: 0.008 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 378/500 | Reward:   49.0 | MSE: 0.4737 | C_Loss: 0.010 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 379/500 | Reward:   52.0 | MSE: 0.3531 | C_Loss: 0.008 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 380/500 | Reward:   61.0 | MSE: 0.3569 | C_Loss: 0.008 | A_Loss: -0.068 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5049
+  -> Relative Improvement: 3.993%
+Train Ep: 381/500 | Reward:   77.0 | MSE: 0.5300 | C_Loss: 0.009 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 382/500 | Reward:  102.0 | MSE: 0.3686 | C_Loss: 0.013 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 383/500 | Reward:   88.0 | MSE: 0.4354 | C_Loss: 0.013 | A_Loss: -0.072 | Alpha: 0.0000
+Train Ep: 384/500 | Reward:   74.0 | MSE: 0.3362 | C_Loss: 0.014 | A_Loss: -0.074 | Alpha: 0.0000
+Train Ep: 385/500 | Reward:  -18.0 | MSE: 0.4620 | C_Loss: 0.015 | A_Loss: -0.076 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5257
+  -> Relative Improvement: 0.038%
+Train Ep: 386/500 | Reward:    0.0 | MSE: 0.2834 | C_Loss: 0.007 | A_Loss: -0.075 | Alpha: 0.0000
+Train Ep: 387/500 | Reward:    2.0 | MSE: 0.3240 | C_Loss: 0.001 | A_Loss: -0.073 | Alpha: 0.0000
+Train Ep: 388/500 | Reward:    4.0 | MSE: 0.3957 | C_Loss: 0.000 | A_Loss: -0.071 | Alpha: 0.0000
+Train Ep: 389/500 | Reward:   44.0 | MSE: 0.6291 | C_Loss: 0.002 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 390/500 | Reward:   16.0 | MSE: 0.2595 | C_Loss: 0.002 | A_Loss: -0.069 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5228
+  -> Relative Improvement: 0.589%
+Train Ep: 391/500 | Reward:   14.0 | MSE: 0.2789 | C_Loss: 0.003 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 392/500 | Reward:    6.0 | MSE: 0.3126 | C_Loss: 0.002 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 393/500 | Reward:   13.0 | MSE: 0.4219 | C_Loss: 0.001 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 394/500 | Reward:    1.0 | MSE: 0.2790 | C_Loss: 0.002 | A_Loss: -0.062 | Alpha: 0.0000
+Train Ep: 395/500 | Reward:   25.0 | MSE: 0.3965 | C_Loss: 0.002 | A_Loss: -0.061 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5225
+  -> Relative Improvement: 0.647%
+Train Ep: 396/500 | Reward:   27.0 | MSE: 0.3244 | C_Loss: 0.003 | A_Loss: -0.060 | Alpha: 0.0000
+Train Ep: 397/500 | Reward:   41.0 | MSE: 0.3402 | C_Loss: 0.005 | A_Loss: -0.061 | Alpha: 0.0000
+Train Ep: 398/500 | Reward:   15.0 | MSE: 0.4724 | C_Loss: 0.003 | A_Loss: -0.060 | Alpha: 0.0000
+Train Ep: 399/500 | Reward:   60.0 | MSE: 0.3308 | C_Loss: 0.003 | A_Loss: -0.059 | Alpha: 0.0000
+Train Ep: 400/500 | Reward:   19.0 | MSE: 0.3416 | C_Loss: 0.004 | A_Loss: -0.058 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5197
+  -> Relative Improvement: 1.179%
+Train Ep: 401/500 | Reward:   36.0 | MSE: 0.3738 | C_Loss: 0.004 | A_Loss: -0.058 | Alpha: 0.0000
+Train Ep: 402/500 | Reward:   68.0 | MSE: 0.3516 | C_Loss: 0.006 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 403/500 | Reward:    9.0 | MSE: 0.4627 | C_Loss: 0.005 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 404/500 | Reward:   11.0 | MSE: 0.4263 | C_Loss: 0.004 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 405/500 | Reward:    5.0 | MSE: 0.2402 | C_Loss: 0.001 | A_Loss: -0.055 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5223
+  -> Relative Improvement: 0.685%
+Train Ep: 406/500 | Reward:   26.0 | MSE: 0.3957 | C_Loss: 0.002 | A_Loss: -0.053 | Alpha: 0.0000
+Train Ep: 407/500 | Reward:   16.0 | MSE: 0.3241 | C_Loss: 0.002 | A_Loss: -0.053 | Alpha: 0.0000
+Train Ep: 408/500 | Reward:   33.0 | MSE: 0.3858 | C_Loss: 0.004 | A_Loss: -0.052 | Alpha: 0.0000
+Train Ep: 409/500 | Reward:   14.0 | MSE: 0.2821 | C_Loss: 0.004 | A_Loss: -0.051 | Alpha: 0.0000
+Train Ep: 410/500 | Reward:   87.0 | MSE: 0.4593 | C_Loss: 0.005 | A_Loss: -0.050 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5029
+  -> Relative Improvement: 4.373%
+Train Ep: 411/500 | Reward:   64.0 | MSE: 0.5178 | C_Loss: 0.009 | A_Loss: -0.051 | Alpha: 0.0000
+Train Ep: 412/500 | Reward:   51.0 | MSE: 0.3349 | C_Loss: 0.009 | A_Loss: -0.053 | Alpha: 0.0000
+Train Ep: 413/500 | Reward:   54.0 | MSE: 0.3692 | C_Loss: 0.007 | A_Loss: -0.053 | Alpha: 0.0000
+Train Ep: 414/500 | Reward:   73.0 | MSE: 0.2491 | C_Loss: 0.007 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 415/500 | Reward:   69.0 | MSE: 0.3684 | C_Loss: 0.007 | A_Loss: -0.056 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5092
+  -> Relative Improvement: 3.176%
+Train Ep: 416/500 | Reward:   78.0 | MSE: 0.3848 | C_Loss: 0.008 | A_Loss: -0.058 | Alpha: 0.0000
+Train Ep: 417/500 | Reward:   71.0 | MSE: 0.3616 | C_Loss: 0.008 | A_Loss: -0.060 | Alpha: 0.0000
+Train Ep: 418/500 | Reward:   92.0 | MSE: 0.4769 | C_Loss: 0.009 | A_Loss: -0.062 | Alpha: 0.0000
+Train Ep: 419/500 | Reward:   57.0 | MSE: 0.4235 | C_Loss: 0.009 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 420/500 | Reward:   61.0 | MSE: 0.4302 | C_Loss: 0.009 | A_Loss: -0.065 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5106
+  -> Relative Improvement: 2.909%
+Train Ep: 421/500 | Reward:   90.0 | MSE: 0.2580 | C_Loss: 0.008 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 422/500 | Reward:   52.0 | MSE: 0.2414 | C_Loss: 0.011 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 423/500 | Reward:   75.0 | MSE: 0.4306 | C_Loss: 0.014 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 424/500 | Reward:   69.0 | MSE: 0.6512 | C_Loss: 0.016 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 425/500 | Reward:   64.0 | MSE: 0.4365 | C_Loss: 0.015 | A_Loss: -0.065 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5017
+  -> Relative Improvement: 4.602%
+Train Ep: 426/500 | Reward:   34.0 | MSE: 0.4302 | C_Loss: 0.016 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 427/500 | Reward:  124.0 | MSE: 0.4392 | C_Loss: 0.017 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 428/500 | Reward:   46.0 | MSE: 0.4294 | C_Loss: 0.023 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 429/500 | Reward:   52.0 | MSE: 0.4338 | C_Loss: 0.026 | A_Loss: -0.071 | Alpha: 0.0000
+Train Ep: 430/500 | Reward:   42.0 | MSE: 0.5093 | C_Loss: 0.024 | A_Loss: -0.072 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5106
+  -> Relative Improvement: 2.909%
+Train Ep: 431/500 | Reward:  -23.0 | MSE: 0.4256 | C_Loss: 0.026 | A_Loss: -0.071 | Alpha: 0.0000
+Train Ep: 432/500 | Reward:  -54.0 | MSE: 0.5167 | C_Loss: 0.031 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 433/500 | Reward:    9.0 | MSE: 0.5107 | C_Loss: 0.034 | A_Loss: -0.066 | Alpha: 0.0000
+Train Ep: 434/500 | Reward:   31.0 | MSE: 0.5232 | C_Loss: 0.027 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 435/500 | Reward:   87.0 | MSE: 0.6356 | C_Loss: 0.018 | A_Loss: -0.067 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5062
+  -> Relative Improvement: 3.746%
+Train Ep: 436/500 | Reward:   33.0 | MSE: 0.4643 | C_Loss: 0.019 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 437/500 | Reward:   29.0 | MSE: 0.4177 | C_Loss: 0.020 | A_Loss: -0.070 | Alpha: 0.0000
+Train Ep: 438/500 | Reward:   50.0 | MSE: 0.5481 | C_Loss: 0.014 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 439/500 | Reward:   32.0 | MSE: 0.5688 | C_Loss: 0.017 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 440/500 | Reward:   15.0 | MSE: 0.5729 | C_Loss: 0.026 | A_Loss: -0.069 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5055
+  -> Relative Improvement: 3.879%
+Train Ep: 441/500 | Reward:   57.0 | MSE: 0.5305 | C_Loss: 0.030 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 442/500 | Reward:   73.0 | MSE: 0.3589 | C_Loss: 0.023 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 443/500 | Reward:   46.0 | MSE: 0.4054 | C_Loss: 0.016 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 444/500 | Reward:   70.0 | MSE: 0.3862 | C_Loss: 0.018 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 445/500 | Reward:   66.0 | MSE: 0.4284 | C_Loss: 0.016 | A_Loss: -0.066 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5019
+  -> Relative Improvement: 4.564%
+Train Ep: 446/500 | Reward:   75.0 | MSE: 0.5118 | C_Loss: 0.012 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 447/500 | Reward:   44.0 | MSE: 0.3983 | C_Loss: 0.012 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 448/500 | Reward:   37.0 | MSE: 0.4215 | C_Loss: 0.011 | A_Loss: -0.068 | Alpha: 0.0000
+Train Ep: 449/500 | Reward:   50.0 | MSE: 0.4779 | C_Loss: 0.009 | A_Loss: -0.069 | Alpha: 0.0000
+Train Ep: 450/500 | Reward:   -7.0 | MSE: 0.4252 | C_Loss: 0.012 | A_Loss: -0.068 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5141
+  -> Relative Improvement: 2.244%
+Train Ep: 451/500 | Reward:   40.0 | MSE: 0.4415 | C_Loss: 0.014 | A_Loss: -0.067 | Alpha: 0.0000
+Train Ep: 452/500 | Reward:    6.0 | MSE: 0.3599 | C_Loss: 0.009 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 453/500 | Reward:   12.0 | MSE: 0.3428 | C_Loss: 0.005 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 454/500 | Reward:   31.0 | MSE: 0.3893 | C_Loss: 0.004 | A_Loss: -0.062 | Alpha: 0.0000
+Train Ep: 455/500 | Reward:  -10.0 | MSE: 0.3023 | C_Loss: 0.003 | A_Loss: -0.061 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5154
+  -> Relative Improvement: 1.997%
+Train Ep: 456/500 | Reward:   18.0 | MSE: 0.3949 | C_Loss: 0.005 | A_Loss: -0.059 | Alpha: 0.0000
+Train Ep: 457/500 | Reward:   29.0 | MSE: 0.3070 | C_Loss: 0.003 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 458/500 | Reward:    9.0 | MSE: 0.3871 | C_Loss: 0.002 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 459/500 | Reward:   25.0 | MSE: 0.2993 | C_Loss: 0.003 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 460/500 | Reward:   13.0 | MSE: 0.3825 | C_Loss: 0.002 | A_Loss: -0.054 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5238
+  -> Relative Improvement: 0.399%
+Train Ep: 461/500 | Reward:    9.0 | MSE: 0.4017 | C_Loss: 0.002 | A_Loss: -0.053 | Alpha: 0.0000
+Train Ep: 462/500 | Reward:    1.0 | MSE: 0.4402 | C_Loss: 0.001 | A_Loss: -0.052 | Alpha: 0.0000
+Train Ep: 463/500 | Reward:    1.0 | MSE: 0.4215 | C_Loss: 0.001 | A_Loss: -0.050 | Alpha: 0.0000
+Train Ep: 464/500 | Reward:   30.0 | MSE: 0.3824 | C_Loss: 0.002 | A_Loss: -0.049 | Alpha: 0.0000
+Train Ep: 465/500 | Reward:   59.0 | MSE: 0.5257 | C_Loss: 0.006 | A_Loss: -0.049 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5151
+  -> Relative Improvement: 2.054%
+Train Ep: 466/500 | Reward:   -3.0 | MSE: 0.7185 | C_Loss: 0.015 | A_Loss: -0.049 | Alpha: 0.0000
+Train Ep: 467/500 | Reward:  103.0 | MSE: 0.4673 | C_Loss: 0.023 | A_Loss: -0.051 | Alpha: 0.0000
+Train Ep: 468/500 | Reward:   31.0 | MSE: 0.6396 | C_Loss: 0.023 | A_Loss: -0.052 | Alpha: 0.0000
+Train Ep: 469/500 | Reward:   32.0 | MSE: 0.5481 | C_Loss: 0.026 | A_Loss: -0.052 | Alpha: 0.0000
+Train Ep: 470/500 | Reward: -114.0 | MSE: 0.6729 | C_Loss: 0.034 | A_Loss: -0.053 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5463
+  -> Relative Improvement: -3.879%
+Train Ep: 471/500 | Reward:    9.0 | MSE: 0.9828 | C_Loss: 0.041 | A_Loss: -0.049 | Alpha: 0.0000
+Train Ep: 472/500 | Reward:  119.0 | MSE: 0.4587 | C_Loss: 0.036 | A_Loss: -0.048 | Alpha: 0.0000
+Train Ep: 473/500 | Reward:   44.0 | MSE: 0.4853 | C_Loss: 0.025 | A_Loss: -0.048 | Alpha: 0.0000
+Train Ep: 474/500 | Reward:   -3.0 | MSE: 0.7096 | C_Loss: 0.022 | A_Loss: -0.050 | Alpha: 0.0000
+Train Ep: 475/500 | Reward:   34.0 | MSE: 0.5636 | C_Loss: 0.020 | A_Loss: -0.049 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5151
+  -> Relative Improvement: 2.054%
+Train Ep: 476/500 | Reward:   30.0 | MSE: 0.7356 | C_Loss: 0.021 | A_Loss: -0.047 | Alpha: 0.0000
+Train Ep: 477/500 | Reward:  -19.0 | MSE: 0.7159 | C_Loss: 0.023 | A_Loss: -0.048 | Alpha: 0.0000
+Train Ep: 478/500 | Reward:   39.0 | MSE: 0.6476 | C_Loss: 0.032 | A_Loss: -0.045 | Alpha: 0.0000
+Train Ep: 479/500 | Reward:   25.0 | MSE: 0.5793 | C_Loss: 0.035 | A_Loss: -0.043 | Alpha: 0.0000
+Train Ep: 480/500 | Reward:   43.0 | MSE: 0.6085 | C_Loss: 0.029 | A_Loss: -0.043 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5057
+  -> Relative Improvement: 3.841%
+Train Ep: 481/500 | Reward:   82.0 | MSE: 0.4453 | C_Loss: 0.022 | A_Loss: -0.044 | Alpha: 0.0000
+Train Ep: 482/500 | Reward:   76.0 | MSE: 0.4020 | C_Loss: 0.015 | A_Loss: -0.045 | Alpha: 0.0000
+Train Ep: 483/500 | Reward:  128.0 | MSE: 0.5112 | C_Loss: 0.018 | A_Loss: -0.046 | Alpha: 0.0000
+Train Ep: 484/500 | Reward:  136.0 | MSE: 0.4718 | C_Loss: 0.018 | A_Loss: -0.051 | Alpha: 0.0000
+Train Ep: 485/500 | Reward:   79.0 | MSE: 0.4591 | C_Loss: 0.013 | A_Loss: -0.054 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5091
+  -> Relative Improvement: 3.195%
+Train Ep: 486/500 | Reward:   64.0 | MSE: 0.2609 | C_Loss: 0.011 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 487/500 | Reward:    3.0 | MSE: 0.5331 | C_Loss: 0.009 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 488/500 | Reward:   52.0 | MSE: 0.3621 | C_Loss: 0.009 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 489/500 | Reward:  134.0 | MSE: 0.4515 | C_Loss: 0.012 | A_Loss: -0.059 | Alpha: 0.0000
+Train Ep: 490/500 | Reward:  100.0 | MSE: 0.4082 | C_Loss: 0.019 | A_Loss: -0.061 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5057
+  -> Relative Improvement: 3.841%
+Train Ep: 491/500 | Reward:   92.0 | MSE: 0.4175 | C_Loss: 0.024 | A_Loss: -0.063 | Alpha: 0.0000
+Train Ep: 492/500 | Reward:   23.0 | MSE: 0.5399 | C_Loss: 0.024 | A_Loss: -0.065 | Alpha: 0.0000
+Train Ep: 493/500 | Reward:    8.0 | MSE: 0.4608 | C_Loss: 0.023 | A_Loss: -0.064 | Alpha: 0.0000
+Train Ep: 494/500 | Reward:   51.0 | MSE: 0.4759 | C_Loss: 0.025 | A_Loss: -0.063 | Alpha: 0.0000
+Train Ep: 495/500 | Reward:   46.0 | MSE: 0.5483 | C_Loss: 0.025 | A_Loss: -0.063 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5151
+  -> Relative Improvement: 2.054%
+Train Ep: 496/500 | Reward:  -72.0 | MSE: 0.4686 | C_Loss: 0.026 | A_Loss: -0.062 | Alpha: 0.0000
+Train Ep: 497/500 | Reward:   39.0 | MSE: 0.4144 | C_Loss: 0.024 | A_Loss: -0.058 | Alpha: 0.0000
+Train Ep: 498/500 | Reward:   40.0 | MSE: 0.3874 | C_Loss: 0.021 | A_Loss: -0.057 | Alpha: 0.0000
+Train Ep: 499/500 | Reward:   64.0 | MSE: 0.3482 | C_Loss: 0.015 | A_Loss: -0.056 | Alpha: 0.0000
+Train Ep: 500/500 | Reward:   87.0 | MSE: 0.3401 | C_Loss: 0.011 | A_Loss: -0.056 | Alpha: 0.0000
+  [!] Running Isolated Validation (Pure CMA vs GNN)...
+  -> Val Results: Pure Baseline Errors: 5259 | GNN Errors: 5047
+  -> Relative Improvement: 4.031%
+
+Training complete in 64054.89 seconds.
+[*] Models successfully saved to models/sac_gnn_53.pth
+Training plots saved to 'plots/training_metrics_53.png'
+[*] The best performing model during validation was saved to: models/sac_gnn_53_best.pth
+Training run time = 64056.56 s
+Job finished at: Thu Apr 30 15:11:30 CEST 2026

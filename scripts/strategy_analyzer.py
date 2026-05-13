@@ -550,15 +550,15 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, choices=["collect", "analyze", "both"], default="both",
                         help="Choose whether to collect data, analyze a CSV, or both.")
     parser.add_argument("--shots", type=int, default=10_000_000, help="Number of shots to evaluate")
-    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p1e-3_1Ms_mode65b_m1_d5.csv", help="Path to save/load the CSV data")
-    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_65b_p1e-3_m1_d5/", help="Directory to save plots")
+    parser.add_argument("--data_path", type=str, default="data/gnn_actions_p1e-3_1Ms_mode64b_m1_d7.csv", help="Path to save/load the CSV data")
+    parser.add_argument("--plot_dir", type=str, default="plots/strategy_analysis/model_64b_p1e-3_m1_d7/", help="Directory to save plots")
     
     args = parser.parse_args()
     
     CONFIG = {
-        'distance': 5,
-        'n_rounds': 5,
-        'p': 0.001,
+        'distance': 7,
+        'n_rounds': 7,
+        'p': 0.005,
         'p_gate_zz': 0.0,
         'mismatch': 1.0,
         'n_shots': args.shots,
@@ -579,7 +579,7 @@ if __name__ == "__main__":
         'tau': 0.005,
         'alpha': 0.01,
         'target_entropy': -1.0,
-        'model_path': 'models/sac_gnn_65_best.pth'
+        'model_path': 'models/sac_gnn_64_best.pth'
     }
     
     if args.mode in ["collect", "both"]:

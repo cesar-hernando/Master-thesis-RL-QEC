@@ -341,15 +341,18 @@ def test(env, agent, config):
             weight_metrics[f'p_{pol_key}_static'].append(ep_corr_mse_static)
             
         raw_results[policy]['eval_errors'] = policy_eval_errs
-        
-        # ADDED: Calculate Means and Standard Deviations
+
+        # Binomial standard error: sigma = sqrt(p_L * (1 - p_L) / N).
+        # When mismatch == 1 every episode shares the same circuit, so shots can be pooled.
+        # Otherwise each episode samples a different drifted circuit, so use per-episode shots.
+        mismatch = config.get('mismatch', 1.0)
+        n_for_std = eval_shots_per_ep * config['test_episodes'] if mismatch == 1.0 else eval_shots_per_ep
         policy_ler_mean = np.mean(raw_results[policy]['ep_lers'])
-        policy_ler_std = np.std(raw_results[policy]['ep_lers'])
-        
+        policy_ler_std = np.sqrt(policy_ler_mean * (1 - policy_ler_mean) / n_for_std) if n_for_std > 0 else 0.0
+
         # Clean summary logic
         print(f"\n  -> {policy} Summary:")
-        # UPDATED to print the Std Dev
-        print(f"     * LER: {policy_ler_mean:.7f} ± {policy_ler_std:.7f} ({policy_eval_errs}/{total_eval_shots})")
+        print(f"     * LER: {policy_ler_mean:.3e} ± {policy_ler_std:.3e} ({policy_eval_errs}/{total_eval_shots})")
         if policy == 'SAC_GNN':
             fixed_pct = (policy_fixed_count / total_eval_shots) * 100
             broken_pct = (policy_broken_count / total_eval_shots) * 100
@@ -365,8 +368,11 @@ def test(env, agent, config):
     # Construct final metrics dictionary
     final_metrics = {}
     for k in ['SAC_GNN', 'Zero', 'Static', 'Oracle', 'CM']:
-        final_metrics[f'ler_{k.lower()}'] = np.mean(raw_results[k]['ep_lers'])
-        final_metrics[f'ler_std_{k.lower()}'] = np.std(raw_results[k]['ep_lers']) # ADDED
+        ler_mean = np.mean(raw_results[k]['ep_lers'])
+        final_metrics[f'ler_{k.lower()}'] = ler_mean
+        final_metrics[f'ler_std_{k.lower()}'] = (
+            np.sqrt(ler_mean * (1 - ler_mean) / n_for_std) if n_for_std > 0 else 0.0
+        )
         final_metrics[f'cum_{k.lower()}'] = raw_results[k]['cum']
 
     plot_testing_metrics(final_metrics)

@@ -21,12 +21,12 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 # ==========================================
 # CONFIGURATION
 # ==========================================
-P_VALUES  = [0.001, 0.005]
+P_VALUES  = [0.003, 0.005]
 MISMATCHES = [10.0, 30.0]
 
-N_SHOTS      = 70_000    # Shots per episode (tracer update data)
-N_TEST_SHOTS = 500_000   # Independent held-out batch for LER evaluation
-UPDATE_PERIOD = 100      # Tracer CMA update frequency (shots between graph updates)
+N_SHOTS      = 150_000    # Shots per episode (tracer update data)
+N_TEST_SHOTS = 1_0000_000   # Independent held-out batch for LER evaluation
+UPDATE_PERIOD = 1_000      # Tracer CMA update frequency (shots between graph updates)
 SEED = 2024
 
 DISTANCE    = 5
@@ -71,7 +71,8 @@ def run_convergence_episode(generator, tracer_method, seed):
         local_action_hops=1,
         action_scale=1.0,
         update_period=UPDATE_PERIOD,
-        prior_shots=1 if tracer_method == 'Spitz' else 1000,
+        #prior_shots=1 if tracer_method == 'Spitz' else 1000,
+        prior_shots=1000,
         n_test_shots=N_TEST_SHOTS,   # ← independent held-out LER batch
         use_pearson_correlation=True,
         use_syndrome_features=(tracer_method == 'Spitz'),
@@ -130,6 +131,15 @@ def run_convergence_episode(generator, tracer_method, seed):
 
     run_time = time.time() - start_time
 
+    snapshot = {
+        'final_weights':  env.current_weights.copy(),
+        'final_pearson':  env.pearson_correlations.copy(),
+        'static_weights': env.initial_base_weights.copy(),
+        'oracle_weights': env.oracle_weights.copy(),
+        'static_pearson': env.initial_pearson_corr.copy(),
+        'oracle_pearson': env.oracle_correlations.copy(),
+    }
+
     return (
         test_ler_history,
         oracle_ler,
@@ -139,6 +149,7 @@ def run_convergence_episode(generator, tracer_method, seed):
         weights_mse_static,
         corr_mse_static,
         run_time,
+        snapshot,
     )
 
 
@@ -190,13 +201,13 @@ if __name__ == "__main__":
             print("    Running DGR   ... ", end="", flush=True)
             (dgr_ler, oracle_ler, static_ler,
              dgr_w_mse, dgr_c_mse, dgr_w_static, dgr_c_static,
-             t_dgr) = run_convergence_episode(generator, 'DGR', SEED)
+             t_dgr, dgr_snap) = run_convergence_episode(generator, 'DGR', SEED)
             print(f"done ({t_dgr:.1f}s)  | final LER={dgr_ler[-1]:.2e}")
 
             print("    Running Spitz ... ", end="", flush=True)
             (spitz_ler, _, _,
              spitz_w_mse, spitz_c_mse, _, _,
-             t_spitz) = run_convergence_episode(generator, 'Spitz', SEED)
+             t_spitz, spitz_snap) = run_convergence_episode(generator, 'Spitz', SEED)
             print(f"done ({t_spitz:.1f}s)  | final LER={spitz_ler[-1]:.2e}")
 
             # ── Plot 1: Test LER convergence ──────────────────────────────────
@@ -233,6 +244,62 @@ if __name__ == "__main__":
             if r == n_rows - 1: ax.set_xlabel("Training shots processed")
             if c == 0:          ax.set_ylabel("Correlation MSE")
             if r == 0 and c == 0: ax.legend(fontsize=10, loc="upper right")
+
+            # ── Plot 4: Final weight distribution histograms ──────────────────
+            weight_sources = [
+                ("Static",  dgr_snap['static_weights'], 'k'),
+                ("Oracle",  dgr_snap['oracle_weights'], 'g'),
+                ("DGR",     dgr_snap['final_weights'],  'b'),
+                ("Spitz",   spitz_snap['final_weights'],'r'),
+            ]
+            w_min = min(arr.min() for _, arr, _ in weight_sources)
+            w_max = max(arr.max() for _, arr, _ in weight_sources)
+            w_bins = np.linspace(w_min, w_max, 41)
+
+            fig_w_hist, axes_w_hist = plt.subplots(2, 2, figsize=(12, 9), sharex=True, sharey=True)
+            for ax, (label, arr, color) in zip(axes_w_hist.flat, weight_sources):
+                ax.hist(arr, bins=w_bins, color=color, alpha=0.75, edgecolor='black')
+                ax.set_title(f"{label}  (n={arr.size}, mean={arr.mean():.2f})")
+                ax.grid(True, ls="--", alpha=0.4)
+            for ax in axes_w_hist[-1, :]:
+                ax.set_xlabel("Edge weight")
+            for ax in axes_w_hist[:, 0]:
+                ax.set_ylabel("Edge count")
+            fig_w_hist.suptitle(
+                f"Final weight distribution  (p={p}, drift={mismatch}x)",
+                fontsize=14
+            )
+            fig_w_hist.tight_layout()
+            fig_w_hist.savefig(f"weight_hist_p{p}_m{mismatch}.png", dpi=300)
+            plt.close(fig_w_hist)
+
+            # ── Plot 5: Final Pearson correlation distribution histograms ─────
+            corr_sources = [
+                ("Static",  dgr_snap['static_pearson'], 'k'),
+                ("Oracle",  dgr_snap['oracle_pearson'], 'g'),
+                ("DGR",     dgr_snap['final_pearson'],  'b'),
+                ("Spitz",   spitz_snap['final_pearson'],'r'),
+            ]
+            c_min = min(arr.min() for _, arr, _ in corr_sources)
+            c_max = max(arr.max() for _, arr, _ in corr_sources)
+            c_bins = np.linspace(c_min, c_max, 41)
+
+            fig_c_hist, axes_c_hist = plt.subplots(2, 2, figsize=(12, 9), sharex=True, sharey=True)
+            for ax, (label, arr, color) in zip(axes_c_hist.flat, corr_sources):
+                ax.hist(arr, bins=c_bins, color=color, alpha=0.75, edgecolor='black')
+                ax.set_title(f"{label}  (n={arr.size}, mean={arr.mean():.3f})")
+                ax.grid(True, ls="--", alpha=0.4)
+            for ax in axes_c_hist[-1, :]:
+                ax.set_xlabel("Pearson correlation")
+            for ax in axes_c_hist[:, 0]:
+                ax.set_ylabel("Line-edge count")
+            fig_c_hist.suptitle(
+                f"Final Pearson correlation distribution  (p={p}, drift={mismatch}x)",
+                fontsize=14
+            )
+            fig_c_hist.tight_layout()
+            fig_c_hist.savefig(f"pearson_hist_p{p}_m{mismatch}.png", dpi=300)
+            plt.close(fig_c_hist)
 
     print(f"\nAll sweeps finished in {(time.time()-total_start)/60:.2f} min.")
 

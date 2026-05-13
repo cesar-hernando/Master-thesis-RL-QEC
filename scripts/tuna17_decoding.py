@@ -169,9 +169,14 @@ from qiskit_quantuminspire.qi_provider import QIProvider
 # CONFIGURATION
 # =============================================================================
 N_SHOTS        = 2048
+# N_ROUNDS=3 matches the canonical Stim surface_code:rotated_memory_z
+# generator (1 + (d-1) + 1 effective stabiliser-extraction rounds). One
+# round on its own cannot distinguish a data-qubit X error from a Z-ancilla
+# readout flip, so it gives no fault tolerance — the canonical 1+d+1
+# structure is what makes d=3 actually distance-3.
 N_ROUNDS       = 3
 BACKEND_NAME   = "Tuna-17"
-PHYSICAL_NOISE = 0.02
+PHYSICAL_NOISE = 0.03         # ~3% per CX, roughly matched to Tuna-17 specs
 DATA_DIR       = "data"
 FILENAME       = f"{DATA_DIR}/{BACKEND_NAME}_d3_r{N_ROUNDS}_shots.npz"
 
@@ -180,64 +185,119 @@ FILENAME       = f"{DATA_DIR}/{BACKEND_NAME}_d3_r{N_ROUNDS}_shots.npz"
 # 1. HARDWARE CIRCUIT GENERATION
 # =============================================================================
 
+# Tuna-17 role assignment derived from the chip's coupling map AND aligned
+# to the canonical Stim surface_code:rotated_memory_z generator. The
+# generator places the logical-Z observable along the TOP ROW of the data
+# grid (X-type top/bottom boundaries, Z-type left/right boundaries), so
+# this script swaps roles relative to my earlier hand-rolled schedule:
+#
+# Stim label  ->  Tuna physical (after the Stim-to-Tuna isomorphism)
+#   data Q1, Q3, Q5, Q8, Q10, Q12, Q15, Q17, Q19  ->  Q1, Q2, Q3, Q7, Q8, Q9, Q13, Q14, Q15
+#   X-anc Q2  (top boundary)                      ->  Q0
+#   X-anc Q11 (top-right interior)                ->  Q5
+#   X-anc Q16 (bottom-left interior)              ->  Q11
+#   X-anc Q25 (bottom boundary)                   ->  Q16
+#   Z-anc Q9  (top-left interior)                 ->  Q4
+#   Z-anc Q13 (right boundary)                    ->  Q6
+#   Z-anc Q14 (left boundary)                     ->  Q10
+#   Z-anc Q18 (bottom-right interior)             ->  Q12
+#
+# Logical Z = Z(Q1)·Z(Q2)·Z(Q3) (top row in the data 3x3 grid).
+DATA_QUBITS = [1, 2, 3, 7, 8, 9, 13, 14, 15]
+X_ANCILLAS  = [0, 5, 11, 16]
+Z_ANCILLAS  = [4, 6, 10, 12]
+
+# Ancilla measurement order, matching Stim's canonical
+#   M 2 9 11 13 14 16 18 25
+# under the mapping above. The detector rec[] indices below depend on this
+# order, so DO NOT reorder without also fixing the DEM.
+ANC_M_ORDER = [0, 4, 5, 6, 10, 11, 12, 16]
+
+# Canonical Tomita-Svore 4-layer CX schedule, taken verbatim from the Stim
+# generator's rotated-memory-z circuit and remapped to Tuna-17 indices.
+# In each layer X-ancillas drive their data neighbour (CX X_anc -> data)
+# while Z-ancillas absorb from theirs (CX data -> Z_anc). All 24 CXs are
+# native Tuna-17 edges; each data qubit is touched at most once per layer.
+LAYER1_X = [(0, 2), (5, 9), (11, 14)]    # X-anc -> SE-corner data
+LAYER1_Z = [(8, 4), (13, 10), (15, 12)]  # SE-corner data -> Z-anc
+
+LAYER2_X = [(0, 1), (5, 8), (11, 13)]    # X-anc -> SW-corner data
+LAYER2_Z = [(2, 4), (7, 10), (9, 12)]    # NE-corner data -> Z-anc
+
+LAYER3_X = [(5, 3), (11, 8), (16, 15)]   # X-anc -> NE-corner data
+LAYER3_Z = [(7, 4), (9, 6), (14, 12)]    # SW-corner data -> Z-anc
+
+LAYER4_X = [(5, 2), (11, 7), (16, 14)]   # X-anc -> NW-corner data
+LAYER4_Z = [(1, 4), (3, 6), (8, 12)]     # NW-corner data -> Z-anc
+
+# Z-stabiliser supports (data-qubit indices into DATA_QUBITS) for each
+# Z ancilla. Used by the FINAL detectors and the coupling-map sanity check.
+#   Q4  (top-left interior, weight-4): Q1, Q2, Q7, Q8       -> idx 0, 1, 3, 4
+#   Q6  (right boundary,   weight-2): Q3, Q9                -> idx 2, 5
+#   Q10 (left boundary,    weight-2): Q7, Q13               -> idx 3, 6
+#   Q12 (bot-right interior, weight-4): Q8, Q9, Q14, Q15    -> idx 4, 5, 7, 8
+Z_STAB_DATA_IDX = {
+    4:  [0, 1, 3, 4],
+    6:  [2, 5],
+    10: [3, 6],
+    12: [4, 5, 7, 8],
+}
+
+
 def build_d3_surface_code(rounds: int = 3) -> QuantumCircuit:
     """
-    Build a distance-3 rotated surface code Z-memory experiment for Tuna-17.
+    Build the canonical d=3 rotated surface-code Z-memory experiment for
+    Tuna-17. Mirrors Stim's surface_code:rotated_memory_z generator
+    structure, remapped onto Tuna-17 physical qubits.
 
-    Qubit layout (all 17 Tuna-17 physical qubits):
-        Data qubits : Q0–Q8   (indices 0–8)
-        X ancillas  : Q9–Q12  (indices 9–12)
-        Z ancillas  : Q13–Q16 (indices 13–16)
-
-    Classical register layout per shot:
-        A single unified register is used to prevent hardware backend truncation.
-        Length: 8*rounds + 9.
+    Classical register: single unified register of length 8*rounds + 9.
+    Each round writes 8 ancilla measurements in ANC_M_ORDER (X and Z
+    interleaved by qubit index). The final 9 bits are the data readouts
+    in DATA_QUBITS order, so Q1, Q2, Q3 (the logical-Z top-row support)
+    land at indices 0, 1, 2 — i.e. cr[8*rounds], cr[8*rounds+1], cr[8*rounds+2].
     """
     q  = QuantumRegister(17, 'q')
     cr = ClassicalRegister(8 * rounds + 9, 'c')
     qc = QuantumCircuit(q, cr)
 
-    # ── 4-step CX schedule ────────────────────────────────────────────────────
-    Z_NW = [(0, 14), (4, 15), (6, 16)];  X_NW = [(10, 1), (11, 3), (12, 5)]
-    Z_NE = [(1, 14), (5, 15), (7, 16)];  X_NE = [(10, 2), (11, 4), (9,  0)]
-    Z_SW = [(3, 14), (7, 15), (1, 13)];  X_SW = [(10, 4), (11, 6), (12, 8)]
-    Z_SE = [(4, 14), (8, 15), (2, 13)];  X_SE = [(10, 5), (11, 7), (9,  3)]
+    def cx_layer(circuit, x_pairs, z_pairs):
+        # X-ancillas drive their data neighbour; Z-ancillas absorb from theirs.
+        for ctrl, tgt in x_pairs:
+            circuit.cx(q[ctrl], q[tgt])
+        for ctrl, tgt in z_pairs:
+            circuit.cx(q[ctrl], q[tgt])
 
-    def apply_step(circuit, z_pairs, x_pairs):
-        for dq, aq in z_pairs:
-            circuit.cx(q[dq], q[aq])
-        for aq, dq in x_pairs:
-            circuit.cx(q[aq], q[dq])
-
+    # Reset all 17 qubits at the start: data qubits must be in |0>^9 for the
+    # Z-memory experiment, otherwise round-0 Z stabilisers fire on residual
+    # thermal excitation and the logical observable is random.
+    qc.reset([q[i] for i in range(17)])
     qc.barrier()
 
     for r in range(rounds):
-        # Reset ancillas every round (explicit reset mirrors the Stim DEM)
-        qc.reset([q[i] for i in range(9, 17)])
+        # Ancilla MR-style: explicit reset at start of round, measurement
+        # at the end. Data qubits are NOT reset between rounds — they
+        # carry the encoded state.
+        qc.reset([q[a] for a in ANC_M_ORDER])
+        qc.h([q[a] for a in X_ANCILLAS])
 
-        # Prepare X ancillas in |+⟩
-        qc.h([q[i] for i in range(9, 13)])
+        cx_layer(qc, LAYER1_X, LAYER1_Z)
+        cx_layer(qc, LAYER2_X, LAYER2_Z)
+        cx_layer(qc, LAYER3_X, LAYER3_Z)
+        cx_layer(qc, LAYER4_X, LAYER4_Z)
 
-        # 4-step syndrome extraction
-        apply_step(qc, Z_NW, X_NW)
-        apply_step(qc, Z_NE, X_NE)
-        apply_step(qc, Z_SW, X_SW)
-        apply_step(qc, Z_SE, X_SE)
+        qc.h([q[a] for a in X_ANCILLAS])
 
-        # Un-Hadamard X ancillas
-        qc.h([q[i] for i in range(9, 13)])
-
-        # Measure ancillas into the single syndrome register sequentially
-        for i in range(4):
-            qc.measure(q[9  + i], cr[r * 8 + i])
-            qc.measure(q[13 + i], cr[r * 8 + 4 + i])
+        # Measure all 8 ancillas in the canonical Stim M order. The
+        # detector rec[] indices in build_matching_dem and
+        # raw_syndromes_to_detectors assume this exact order.
+        for i, anc in enumerate(ANC_M_ORDER):
+            qc.measure(q[anc], cr[r * 8 + i])
 
         qc.barrier()
 
-    # Final data readout mapped to the end of the unified register
-    for i in range(9):
-        qc.measure(q[i], cr[8 * rounds + i])
-        
+    for i, dq in enumerate(DATA_QUBITS):
+        qc.measure(q[dq], cr[8 * rounds + i])
+
     return qc
 
 
@@ -255,12 +315,12 @@ def parse_memory_shot(shot_str: str, rounds: int):
     2. Uses fixed lengths to correctly slice the single unified string.
     """
     clean = shot_str.replace(" ", "").strip()
-    
+
     # Pad to ensure length is correct, though it should be exactly 8*rounds + 9
     total_bits = (8 * rounds) + 9
     clean = clean.zfill(total_bits)
-    
-    # REVERSE the string! Qiskit prints MSB-first. Reversing it means 
+
+    # REVERSE the string! Qiskit prints MSB-first. Reversing it means
     # rev_str[0] corresponds exactly to cr[0].
     rev_str = clean[::-1]
 
@@ -270,14 +330,13 @@ def parse_memory_shot(shot_str: str, rounds: int):
     # Extract data (last 9 measurements)
     data_bits = [int(b) for b in rev_str[8 * rounds:]]
 
-    # Because rev_str[0] = cr[0], data_bits[0] corresponds to q[0]
-    # Logical Z_L = parity of left column: Q0, Q3, Q6
-    q0 = data_bits[0]
-    q3 = data_bits[3]
-    q6 = data_bits[6]
-    logical_flip = bool((q0 ^ q3 ^ q6) == 1)
+    # Final 9 data measurements are written in DATA_QUBITS order
+    # = [Q1, Q2, Q3, Q7, Q8, Q9, Q13, Q14, Q15]. The canonical Stim
+    # surface_code:rotated_memory_z generator uses logical Z = top row,
+    # i.e. Q1 ⊗ Q2 ⊗ Q3 — those are at indices 0, 1, 2 in DATA_QUBITS.
+    logical_flip = bool((data_bits[0] ^ data_bits[1] ^ data_bits[2]) == 1)
 
-    return syn_bits, logical_flip
+    return syn_bits, data_bits, logical_flip
 
 
 def run_and_parse_surface_code(
@@ -298,20 +357,56 @@ def run_and_parse_surface_code(
     qc = build_d3_surface_code(rounds=rounds)
     print(f"[*] Circuit built: {qc.num_qubits} qubits, depth {qc.depth()}")
 
-    # Transpile — try strict zero-SWAP first, fall back to standard routing
-    print("[*] Transpiling for Tuna-17 topology...")
-    try:
-        qc_t = transpile(
-            qc,
-            backend=backend,
-            optimization_level=3,
-            routing_method='none',  # enforce zero-SWAP to preserve error model
+    # ── COUPLING-MAP SANITY CHECK ─────────────────────────────────────────────
+    # Verify the 24 CX pairs the circuit needs are actually edges in Tuna-17's
+    # coupling map BEFORE transpiling. If they're not, no permutation of the
+    # qubit labels can route this circuit without SWAPs and the resulting
+    # syndrome data is meaningless under our DEM.
+    cmap = backend.coupling_map
+    edges = set()
+    if cmap is not None:
+        for a, b in cmap.get_edges():
+            edges.add(frozenset((a, b)))
+    print(f"[*] Tuna-17 coupling map: {len(edges)} undirected edges")
+    print(f"    edges: {sorted(tuple(sorted(e)) for e in edges)}")
+
+    required = set()
+    for pair_list in [LAYER1_X, LAYER1_Z, LAYER2_X, LAYER2_Z,
+                      LAYER3_X, LAYER3_Z, LAYER4_X, LAYER4_Z]:
+        for a, b in pair_list:
+            required.add(frozenset((a, b)))
+    missing = required - edges
+    if missing and edges:
+        print(f"[!] {len(missing)}/{len(required)} required CX pairs are NOT direct edges:")
+        for e in sorted(tuple(sorted(x)) for x in missing):
+            print(f"      Q{e[0]}-Q{e[1]}")
+        print("[!] Identity layout cannot be routed without SWAPs. The data/ancilla")
+        print("    role assignment in build_d3_surface_code is incompatible with")
+        print("    Tuna-17's physical topology. Fix the qubit indices in Z_NW/X_NW/...")
+        print("    to match Tuna-17 before re-submitting.")
+
+    # ── TRANSPILATION ─────────────────────────────────────────────────────────
+    # Use optimization_level=1 (NOT 3): level 3 re-synthesises blocks of gates
+    # which can silently break the H-CX-H structure that distinguishes X from
+    # Z stabiliser readout. SWAP-free routing is MANDATORY: if it fails we
+    # abort rather than silently corrupt the error model.
+    print("[*] Transpiling for Tuna-17 topology (optimization_level=1, no SWAPs)...")
+    qc_t = transpile(
+        qc,
+        backend=backend,
+        optimization_level=1,
+        routing_method='none',
+        layout_method='trivial',  # honour our hand-chosen qubit indices
+    )
+    n_swap = qc_t.count_ops().get('swap', 0)
+    print(f"    transpiled depth={qc_t.depth()}, gate counts={dict(qc_t.count_ops())}")
+    if n_swap > 0:
+        raise RuntimeError(
+            f"Transpilation inserted {n_swap} SWAP gates — the resulting circuit "
+            f"does NOT match the Stim DEM and syndrome data will be invalid. "
+            f"Fix the qubit role assignment in build_d3_surface_code() to match "
+            f"Tuna-17's coupling map."
         )
-        print(f"    SWAP-free transpilation succeeded (depth={qc_t.depth()})")
-    except Exception as exc:
-        print(f"    Zero-SWAP routing failed ({exc}); falling back to standard routing.")
-        qc_t = transpile(qc, backend=backend, optimization_level=3)
-        print(f"    Standard transpilation (depth={qc_t.depth()})")
 
     # Submit
     print(f"[*] Submitting job to {backend_name} ({shots} shots) ...")
@@ -332,7 +427,9 @@ def run_and_parse_surface_code(
             result = job.result()
         except Exception as exc:
             err_str = str(exc).lower()
-            if any(k in err_str for k in ("timeout", "network", "connection", "gaierror")):
+            if any(k in err_str for k in ("timeout", "network", "connection", "connect to host",
+                                            "gaierror", "getaddrinfo", "dns", "temporarily unavailable",
+                                            "ssl", "reset by peer")):
                 print(f"    [!] Transient error: {exc}. Retrying in {poll_interval}s...")
                 time.sleep(poll_interval)
             else:
@@ -347,15 +444,18 @@ def run_and_parse_surface_code(
         )
 
     raw_syndromes_list = []
+    raw_data_list = []
     true_observables_list = []
 
     for shot_str in raw_memory:
-        syn_bits, logical_flip = parse_memory_shot(shot_str, rounds=rounds)
+        syn_bits, data_bits, logical_flip = parse_memory_shot(shot_str, rounds=rounds)
         raw_syndromes_list.append(syn_bits)
+        raw_data_list.append(data_bits)
         true_observables_list.append(logical_flip)
 
     return (
         np.array(raw_syndromes_list,    dtype=np.int8),
+        np.array(raw_data_list,         dtype=np.int8),
         np.array(true_observables_list, dtype=bool),
     )
 
@@ -364,41 +464,71 @@ def run_and_parse_surface_code(
 # 3. DETECTOR EVENT CONVERSION
 # =============================================================================
 
-def raw_syndromes_to_detectors(raw_syndromes: np.ndarray) -> np.ndarray:
+def raw_syndromes_to_detectors(
+    raw_syndromes: np.ndarray,
+    data_bits: np.ndarray,
+    rounds: int,
+) -> np.ndarray:
     """
-    Convert raw ancilla measurements into relative detector events.
+    Convert raw ancilla + data measurements into detector events for the
+    canonical d=3 rotated-surface-code Z-memory.
 
-    Bit layout of raw_syndromes (columns):
-        0– 3  : Round 0 · X ancillas Q9–Q12
-        4– 7  : Round 0 · Z ancillas Q13–Q16
-        8–11  : Round 1 · X ancillas Q9–Q12
-        12–15 : Round 1 · Z ancillas Q13–Q16
-        16–19 : Round 2 · X ancillas Q9–Q12
-        20–23 : Round 2 · Z ancillas Q13–Q16
+    raw_syndromes shape: (n_shots, 8*rounds), each row laid out per round in
+        ANC_M_ORDER = [Q0(X), Q4(Z), Q5(X), Q6(Z), Q10(Z), Q11(X), Q12(Z), Q16(X)].
+    data_bits shape: (n_shots, 9), each row in DATA_QUBITS order
+        [Q1, Q2, Q3, Q7, Q8, Q9, Q13, Q14, Q15].
 
-    Detector layout (20 total = 4 + 8 + 8):
-        0– 3  : Z detectors round 0 (absolute — no prior round)
-        4– 7  : X detectors round 1 (round-1 XOR round-0)
-        8–11  : Z detectors round 1 (round-1 XOR round-0)
-        12–15 : X detectors round 2 (round-2 XOR round-1)
-        16–19 : Z detectors round 2 (round-2 XOR round-1)
+    Detector layout (4 + 8*(rounds-1) + 4 = 8*rounds total):
+        Round 0  : 4 detectors — round-0 Z-anc measurements, absolute.
+                   (Z stabs are deterministic in |0>^9; X stabs are
+                   random and are NOT promoted to detectors here.)
+        Round r >= 1 : 8 detectors — XOR diff of all 8 ancillas vs round r-1.
+        Final    : 4 detectors — for each Z ancilla, re-derive the
+                   Z stabiliser parity from the FINAL data measurements
+                   and XOR against the same Z ancilla's last round
+                   measurement. These close the 1+(d-1)+1 detector loop
+                   so X errors that occurred between the last syndrome
+                   round and the final data readout are still caught.
     """
-    assert raw_syndromes.shape[1] == 24, (
-        f"Expected 24 raw syndrome bits (3 rounds × 8 ancillas), "
+    expected_cols = 8 * rounds
+    assert raw_syndromes.shape[1] == expected_cols, (
+        f"Expected {expected_cols} raw syndrome bits ({rounds} rounds × 8 ancillas), "
         f"got {raw_syndromes.shape[1]}"
     )
+    assert data_bits.shape[1] == 9, (
+        f"Expected 9 data-qubit bits per shot, got {data_bits.shape[1]}"
+    )
     n = raw_syndromes.shape[0]
-    detectors = np.zeros((n, 20), dtype=np.int8)
+    n_dets = 4 + 8 * (rounds - 1) + 4
+    detectors = np.zeros((n, n_dets), dtype=np.int8)
 
-    X_r0 = raw_syndromes[:, 0:4];   Z_r0 = raw_syndromes[:, 4:8]
-    X_r1 = raw_syndromes[:, 8:12];  Z_r1 = raw_syndromes[:, 12:16]
-    X_r2 = raw_syndromes[:, 16:20]; Z_r2 = raw_syndromes[:, 20:24]
+    # Position of each Z ancilla in ANC_M_ORDER. Used to pull Z-anc
+    # measurements out of the per-round 8-bit blocks.
+    anc_pos = {a: ANC_M_ORDER.index(a) for a in ANC_M_ORDER}
+    z_positions = [anc_pos[z] for z in Z_ANCILLAS]   # [1, 3, 4, 6]
 
-    detectors[:, 0:4]   = Z_r0           # round 0: Z only
-    detectors[:, 4:8]   = X_r1 ^ X_r0   # round 1: X diff
-    detectors[:, 8:12]  = Z_r1 ^ Z_r0   # round 1: Z diff
-    detectors[:, 12:16] = X_r2 ^ X_r1   # round 2: X diff
-    detectors[:, 16:20] = Z_r2 ^ Z_r1   # round 2: Z diff
+    # ── Round 0: 4 absolute Z detectors ──────────────────────────────────────
+    for i, zpos in enumerate(z_positions):
+        detectors[:, i] = raw_syndromes[:, zpos]
+
+    # ── Rounds r >= 1: 8 XOR detectors per round, all 8 ancillas ─────────────
+    for r in range(1, rounds):
+        det_offset = 4 + (r - 1) * 8
+        prev = (r - 1) * 8
+        cur  = r * 8
+        detectors[:, det_offset : det_offset + 8] = (
+            raw_syndromes[:, cur : cur + 8] ^ raw_syndromes[:, prev : prev + 8]
+        )
+
+    # ── Final 4 detectors: re-derive Z stabs from data, XOR last round Z-anc ─
+    last_round_offset = (rounds - 1) * 8
+    final_offset = 4 + 8 * (rounds - 1)
+    for i, z_anc in enumerate(Z_ANCILLAS):
+        last_z = raw_syndromes[:, last_round_offset + anc_pos[z_anc]]
+        data_parity = np.zeros(n, dtype=np.int8)
+        for d_idx in Z_STAB_DATA_IDX[z_anc]:
+            data_parity ^= data_bits[:, d_idx]
+        detectors[:, final_offset + i] = last_z ^ data_parity
 
     return detectors
 
@@ -409,68 +539,97 @@ def raw_syndromes_to_detectors(raw_syndromes: np.ndarray) -> np.ndarray:
 
 def build_matching_dem(
     rounds: int = 3,
-    physical_noise: float = 0.02,
+    physical_noise: float = 0.05,
 ) -> stim.DetectorErrorModel:
     """
-    Build a Stim DEM mirroring the Tuna-17 d=3 Z-memory circuit.
+    Build a Stim DEM mirroring Stim's canonical
+    surface_code:rotated_memory_z circuit, remapped to Tuna-17 indices.
 
-    Noise model:
-        DEPOLARIZE2(p) on every two-qubit CX gate
-        X_ERROR(p)     on ancilla reset (rounds > 0 only)
-        M(p)           on every ancilla measurement  ← readout misclassification
+    Detector layout matches raw_syndromes_to_detectors:
+        4 round-0 Z-anc detectors,
+        8 XOR detectors per round 1..rounds-1,
+        4 final data-derived Z-stab detectors.
 
-    Observable: logical Z_L = Q0 ⊗ Q3 ⊗ Q6 (left column of data grid).
+    Observable: logical Z_L = Z(Q1) ⊗ Z(Q2) ⊗ Z(Q3) (top row).
     """
     c = stim.Circuit()
+    p = physical_noise
 
-    DATA    = list(range(9))
-    X_ANC   = list(range(9,  13))
-    Z_ANC   = list(range(13, 17))
-    ANC_ALL = X_ANC + Z_ANC
-
-    Z_NW = [(0, 14), (4, 15), (6, 16)];  X_NW = [(10, 1), (11, 3), (12, 5)]
-    Z_NE = [(1, 14), (5, 15), (7, 16)];  X_NE = [(10, 2), (11, 4), (9,  0)]
-    Z_SW = [(3, 14), (7, 15), (1, 13)];  X_SW = [(10, 4), (11, 6), (12, 8)]
-    Z_SE = [(4, 14), (8, 15), (2, 13)];  X_SE = [(10, 5), (11, 7), (9,  3)]
-
-    def apply_step(circuit, z_pairs, x_pairs):
-        for dq, aq in z_pairs:
-            circuit.append("CX", [dq, aq])
-        for aq, dq in x_pairs:
-            circuit.append("CX", [aq, dq])
-        flat = [q for pair in z_pairs + [(a, d) for a, d in x_pairs] for q in pair]
+    def cx_layer(circuit, x_pairs, z_pairs):
+        for ctrl, tgt in x_pairs:
+            circuit.append("CX", [ctrl, tgt])
+        for ctrl, tgt in z_pairs:
+            circuit.append("CX", [ctrl, tgt])
+        flat = [q for pair in (x_pairs + z_pairs) for q in pair]
         if flat:
-            circuit.append("DEPOLARIZE2", flat, physical_noise)
+            circuit.append("DEPOLARIZE2", flat, p)
 
     for r in range(rounds):
-        c.append("R", ANC_ALL)
+        c.append("R", ANC_M_ORDER)
         if r > 0:
-            c.append("X_ERROR", ANC_ALL, physical_noise)
+            c.append("X_ERROR", ANC_M_ORDER, p)
 
-        c.append("H", X_ANC)
-        apply_step(c, Z_NW, X_NW)
-        apply_step(c, Z_NE, X_NE)
-        apply_step(c, Z_SW, X_SW)
-        apply_step(c, Z_SE, X_SE)
-        c.append("H", X_ANC)
+        c.append("H", X_ANCILLAS)
+        cx_layer(c, LAYER1_X, LAYER1_Z)
+        cx_layer(c, LAYER2_X, LAYER2_Z)
+        cx_layer(c, LAYER3_X, LAYER3_Z)
+        cx_layer(c, LAYER4_X, LAYER4_Z)
+        c.append("H", X_ANCILLAS)
 
-        # M(p) correctly models readout bit-flip (unlike X_ERROR after M)
-        c.append("M", ANC_ALL, physical_noise)
+        # M with built-in bit-flip noise — modelled inside Stim as a flip
+        # of the recorded outcome rather than an X error after the gate.
+        c.append("M", ANC_M_ORDER, p)
+
+        # ── Detectors ────────────────────────────────────────────────────
+        # ANC_M_ORDER positions (rec offsets within last 8 measurements):
+        #   pos 0: Q0  (X) -> rec[-8]
+        #   pos 1: Q4  (Z) -> rec[-7]
+        #   pos 2: Q5  (X) -> rec[-6]
+        #   pos 3: Q6  (Z) -> rec[-5]
+        #   pos 4: Q10 (Z) -> rec[-4]
+        #   pos 5: Q11 (X) -> rec[-3]
+        #   pos 6: Q12 (Z) -> rec[-2]
+        #   pos 7: Q16 (X) -> rec[-1]
+        z_offsets = [-7, -5, -4, -2]   # Q4, Q6, Q10, Q12
 
         if r == 0:
-            for i in range(4):
-                c.append("DETECTOR", [stim.target_rec(-4 + i)])
+            # Round 0: Z-anc only (X-anc round-0 outcomes are random for
+            # |0>^9 data and are NOT promoted to detectors).
+            for off in z_offsets:
+                c.append("DETECTOR", [stim.target_rec(off)])
         else:
-            for i in range(4):
-                c.append("DETECTOR", [stim.target_rec(-8 + i), stim.target_rec(-16 + i)])
-            for i in range(4):
-                c.append("DETECTOR", [stim.target_rec(-4 + i), stim.target_rec(-12 + i)])
+            # All 8 ancillas, XOR'd with the same ancilla from round r-1
+            # (8 measurements ago in the rec stream).
+            for i in range(8):
+                cur = -8 + i
+                prv = cur - 8
+                c.append("DETECTOR",
+                         [stim.target_rec(cur), stim.target_rec(prv)])
 
-    c.append("M", DATA)
+    # Final data measurement
+    c.append("M", DATA_QUBITS, p)
+
+    # ── Final 4 detectors: each Z stabiliser, re-derived from the final
+    # data measurements, XOR'd against that Z-anc's last round outcome.
+    # DATA_QUBITS rec offsets after final M (last 9 records):
+    #   [Q1, Q2, Q3, Q7, Q8, Q9, Q13, Q14, Q15] -> rec[-9..-1]
+    # Last-round Z-anc rec offsets (data block of 9 sits between):
+    #   Q4  pos 1 -> rec[-9 - (8 - 1)] = rec[-16]
+    #   Q6  pos 3 -> rec[-9 - (8 - 3)] = rec[-14]
+    #   Q10 pos 4 -> rec[-9 - (8 - 4)] = rec[-13]
+    #   Q12 pos 6 -> rec[-9 - (8 - 6)] = rec[-11]
+    z_anc_rec = {4: -16, 6: -14, 10: -13, 12: -11}
+    for z_anc, idx_list in Z_STAB_DATA_IDX.items():
+        # Convert DATA_QUBITS index i -> rec offset (-9 + i)
+        data_recs = [stim.target_rec(-9 + i) for i in idx_list]
+        c.append("DETECTOR",
+                 [stim.target_rec(z_anc_rec[z_anc])] + data_recs)
+
+    # Logical Z = top row, data_bits indices 0, 1, 2 -> rec[-9, -8, -7]
     c.append("OBSERVABLE_INCLUDE", [
-        stim.target_rec(-9),   # Q0
-        stim.target_rec(-6),   # Q3
-        stim.target_rec(-3),   # Q6
+        stim.target_rec(-9),   # Q1
+        stim.target_rec(-8),   # Q2
+        stim.target_rec(-7),   # Q3
     ], 0)
 
     return c.detector_error_model(decompose_errors=True)
@@ -507,14 +666,20 @@ if __name__ == "__main__":
         data             = np.load(FILENAME)
         raw_syndromes    = data['syndromes']
         true_observables = data['observables']
+        raw_data         = data['data_bits'] if 'data_bits' in data.files else None
     else:
         print(f"\n[*] No cached dataset found — submitting to {BACKEND_NAME}...")
-        raw_syndromes, true_observables = run_and_parse_surface_code(
+        raw_syndromes, raw_data, true_observables = run_and_parse_surface_code(
             backend_name=BACKEND_NAME,
             shots=N_SHOTS,
             rounds=N_ROUNDS,
         )
-        np.savez_compressed(FILENAME, syndromes=raw_syndromes, observables=true_observables)
+        np.savez_compressed(
+            FILENAME,
+            syndromes=raw_syndromes,
+            data_bits=raw_data,
+            observables=true_observables,
+        )
         print(f"[*] Data saved to {FILENAME}")
 
     n_shots_actual  = raw_syndromes.shape[0]
@@ -527,9 +692,18 @@ if __name__ == "__main__":
 
     # ── 6.2 Detector events ───────────────────────────────────────────────────
     print("\n[*] Computing detector events...")
-    detector_events = raw_syndromes_to_detectors(raw_syndromes)
-    assert detector_events.shape == (n_shots_actual, 20), (
-        f"Expected shape ({n_shots_actual}, 20), got {detector_events.shape}"
+    if raw_data is None:
+        raise RuntimeError(
+            "Cached .npz lacks 'data_bits'. Delete the cache and re-submit "
+            "so build_d3_surface_code / parse_memory_shot can record final "
+            "data measurements (needed by the final-round Z-stab detectors)."
+        )
+    detector_events = raw_syndromes_to_detectors(
+        raw_syndromes, raw_data, rounds=N_ROUNDS
+    )
+    expected_n_dets = 4 + 8 * (N_ROUNDS - 1) + 4
+    assert detector_events.shape == (n_shots_actual, expected_n_dets), (
+        f"Expected shape ({n_shots_actual}, {expected_n_dets}), got {detector_events.shape}"
     )
     print(f"    Detector matrix: {detector_events.shape}  "
           f"(avg firing rate = {detector_events.mean():.4f})")

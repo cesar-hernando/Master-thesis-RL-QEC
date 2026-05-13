@@ -288,14 +288,14 @@ def main():
     parser.add_argument(
         "--p-values",
         type=str,
-        default="0.0005,0.001,0.0015,0.002",
+        default="0.0002, 0.0006, 0.0008",
         help="Comma-separated physical error rates.",
     )
     
     # Adaptive Shot Parameters
     parser.add_argument("--target-errors", type=int, default=300, help="Stop evaluating a 'p' when the best decoder hits this many errors.")
-    parser.add_argument("--max-shots", type=int, default=20_000_000, help="Absolute max shots per 'p' to prevent infinite loops at low p.")
-    parser.add_argument("--chunk-shots", type=int, default=50_000, help="Number of shots generated per environment reset.")
+    parser.add_argument("--max-shots", type=int, default=200_000_000, help="Absolute max shots per 'p' to prevent infinite loops at low p.")
+    parser.add_argument("--chunk-shots", type=int, default=200_000, help="Number of shots generated per environment reset.")
     
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--distance", type=int, default=5)

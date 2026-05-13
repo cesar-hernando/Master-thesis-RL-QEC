@@ -303,14 +303,26 @@ def plot_testing_metrics(test_results):
     axs[0].set_title('Logical Error Rate (LER)')
     axs[0].set_ylabel('LER')
     axs[0].grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Annotate bars with exact values and standard deviations
+    axs[0].ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+
+    # Give the annotations vertical breathing room so they don't get clipped
+    max_top = max(y + s for y, s in zip(lers, stds)) if lers else 1.0
+    axs[0].set_ylim(top=max_top * 1.30)
+
+    # Annotate bars with mean ± binomial std using a shared scientific exponent for readability
     for i, bar in enumerate(bars):
         yval = bar.get_height()
         err = stds[i]
-        # Text is placed slightly above the error bar cap so it doesn't overlap
-        axs[0].text(bar.get_x() + bar.get_width()/2.0, yval + err + (max(lers)*0.02), 
-                    f'{yval:.7f}\n±{err:.7f}', ha='center', va='bottom', fontweight='bold')
+        if yval > 0:
+            exp = int(np.floor(np.log10(yval)))
+            mant_y = yval / (10 ** exp)
+            mant_e = err / (10 ** exp)
+            text = f'({mant_y:.2f} ± {mant_e:.2f})\n×10$^{{{exp}}}$'
+        else:
+            text = f'0\n±{err:.1e}'
+        axs[0].text(bar.get_x() + bar.get_width() / 2.0,
+                    yval + err + max_top * 0.02,
+                    text, ha='center', va='bottom', fontweight='bold', fontsize=10)
 
     # Plot 2: Cumulative Errors Over Time
     shots = np.arange(1, len(test_results['cum_sac_gnn']) + 1)
