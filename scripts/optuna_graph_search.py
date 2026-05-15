@@ -5,6 +5,7 @@ import json
 import random
 import time
 from pathlib import Path
+import os
 
 import numpy as np
 import optuna
@@ -135,8 +136,10 @@ def create_study_with_sqlite_race_retry(
             )
         except Exception as exc:
             msg = str(exc)
+            # Broaden the net: Catch ANY "already exists" or "locked" error during init
             is_sqlite_race = (
-                "sqlite3.OperationalError" in msg and "table studies already exists" in msg
+                "sqlite3.OperationalError" in msg and 
+                ("already exists" in msg or "database is locked" in msg)
             )
             if (not is_sqlite_race) or attempt == max_retries - 1:
                 raise
@@ -310,10 +313,15 @@ def main() -> None:
         storage = f"sqlite:///{storage_path}"
 
     if args.startup_jitter_max_sec > 0:
-        delay_s = random.uniform(0.0, args.startup_jitter_max_sec)
+        # Get the Slurm array ID (default to 0 if running locally)
+        array_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))
+        
+        # Base delay of 2s per job ID, plus a tiny random jitter
+        delay_s = (array_id * 2.0) + random.uniform(0.0, args.startup_jitter_max_sec)
+        
         print(
-            f"Applying startup jitter: sleeping {delay_s:.2f}s "
-            f"(max={args.startup_jitter_max_sec:.2f}s)"
+            f"Applying staggered startup delay: sleeping {delay_s:.2f}s "
+            f"(array_id={array_id})"
         )
         time.sleep(delay_s)
 
