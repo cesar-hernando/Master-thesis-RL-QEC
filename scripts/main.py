@@ -23,19 +23,20 @@ if __name__ == "__main__":
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.001,
+        'p': 0.0005,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
         'mismatch': 1.0,
-        'n_shots': 500_000,       # Shots per episode
+        'n_shots': 1_000_000,       # Shots per episode
         'n_test_shots': 0,   # Shots for LER evaluation
         'burn_in_steps': 0,
         'bypass_threshold': 2,
         'action_scale': 5.0,
-        'update_period': 1_000_000,  # CMA update frequency
+        'update_period': 2_000_000,  # CMA update frequency
         'prior_shots': 1_000,  # Shots for initial CMA prior
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         'use_pearson_correlation': True,
+        'use_endpoint_firing': True,  # Add [d1_fired, d2_fired, is_boundary] to node features
         'use_log_joint_prob': False,  # Whether to use joint probabilities for CMA updates
         'n_layers': 1, # Number of GNN layers (affects receptive field size)
         
@@ -86,7 +87,8 @@ if __name__ == "__main__":
         prior_shots=CONFIG['prior_shots'],
         n_test_shots=CONFIG['n_test_shots'],             
         use_pearson_correlation=CONFIG['use_pearson_correlation'],
-        use_syndrome_features=False, 
+        use_syndrome_features=False,
+        use_endpoint_firing=CONFIG.get('use_endpoint_firing', False),
         use_log_joint_prob=CONFIG['use_log_joint_prob'],
         update_with='DGR',
         train_mode=(CONFIG['MODE'] == 'train')

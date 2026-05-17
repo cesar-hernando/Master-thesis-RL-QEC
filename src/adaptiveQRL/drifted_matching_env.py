@@ -21,9 +21,13 @@ class DriftedMatchingEnv(gym.Env):
     Observation (graph in array form)
     ---------------------------------
     A fixed-size dictionary (good for PyTorch Geometric) containing:
-      - node_features: [N_edges, 2]
+      - node_features: [N_edges, D] where D depends on enabled feature flags
           [:, 0] = current MWPM edge weight (base updated with the occurrence tracer)
           [:, 1] = selected by first MWPM pass (0/1)
+          [+1 if use_syndrome_features] = Spitz tracer estimate
+          [+3 if use_endpoint_firing]   = (d1_fired, d2_fired, is_boundary)
+              where d1 is the canonical real-detector endpoint, d2 is the other
+              endpoint (0 for boundary edges), is_boundary flags boundary edges
       - edge_index: [2, M_line]
           Line-graph connectivity (nodes = decoding-graph edges)
       - edge_attr: [M_line, 1]
@@ -76,6 +80,7 @@ class DriftedMatchingEnv(gym.Env):
         max_weight: float = 50.0,
         use_pearson_correlation: bool = True,
         use_syndrome_features: bool = False,
+        use_endpoint_firing: bool = False,
         use_log_joint_prob: bool = False,
         update_with: str = 'DGR',
         dynamic_drift: bool = False,
@@ -103,6 +108,7 @@ class DriftedMatchingEnv(gym.Env):
         self.max_weight = max_weight
         self.use_pearson_correlation = use_pearson_correlation
         self.use_syndrome_features = use_syndrome_features
+        self.use_endpoint_firing = use_endpoint_firing
         self.use_log_joint_prob = use_log_joint_prob
         self.update_with = update_with
         self.dynamic_drift = dynamic_drift
@@ -136,25 +142,48 @@ class DriftedMatchingEnv(gym.Env):
         self.n_line_edges = self.line_edge_index.shape[1]
         self.initial_pearson_corr = self._compute_pearson_correlations(self.base_p, self.initial_corr_tracer)
 
-        # Pre-allocate the node and edge features
+        # Precompute per-edge endpoint detector indices for the endpoint-firing features.
+        # Canonical layout for boundary edges: d1 = real detector, d2 slot is a dummy index 0
+        # whose contribution is zeroed out at fill-time via the is_boundary mask.
+        edge_d1_idx = np.zeros(self.n_dec_edges, dtype=np.int64)
+        edge_d2_idx_safe = np.zeros(self.n_dec_edges, dtype=np.int64)
+        edge_is_boundary = np.zeros(self.n_dec_edges, dtype=np.float32)
+        for i, (u, v) in enumerate(self.dec_edge_list):
+            if u == -1 and v == -1:
+                edge_is_boundary[i] = 1.0
+            elif u == -1:
+                edge_d1_idx[i] = v
+                edge_is_boundary[i] = 1.0
+            elif v == -1:
+                edge_d1_idx[i] = u
+                edge_is_boundary[i] = 1.0
+            else:
+                edge_d1_idx[i] = u
+                edge_d2_idx_safe[i] = v
+        self.edge_d1_idx = edge_d1_idx
+        self.edge_d2_idx_safe = edge_d2_idx_safe
+        self.edge_is_boundary = edge_is_boundary
+
+        # Compute node-feature layout. Order: [weight, selected, (spitz), (d1, d2, is_boundary)]
+        node_feat_dim = 2
         if self.use_syndrome_features:
-            self.node_feats = np.zeros((self.n_dec_edges, 3), dtype=np.float32)
-            if self.n_line_edges > 0:
-                self.edge_feats = np.zeros((self.n_line_edges, 2), dtype=np.float32)
-            else:
-                self.edge_feats = np.zeros((0, 2), dtype=np.float32)
+            node_feat_dim += 1
+        if self.use_endpoint_firing:
+            node_feat_dim += 3
+        edge_attr_dim = 2 if self.use_syndrome_features else 1
+
+        self._endpoint_d1_col = (3 if self.use_syndrome_features else 2) if self.use_endpoint_firing else None
+        self._endpoint_d2_col = self._endpoint_d1_col + 1 if self.use_endpoint_firing else None
+        self._endpoint_b_col = self._endpoint_d1_col + 2 if self.use_endpoint_firing else None
+
+        self.node_feats = np.zeros((self.n_dec_edges, node_feat_dim), dtype=np.float32)
+        if self.n_line_edges > 0:
+            self.edge_feats = np.zeros((self.n_line_edges, edge_attr_dim), dtype=np.float32)
         else:
-            self.node_feats = np.zeros((self.n_dec_edges, 2), dtype=np.float32)
-            if self.n_line_edges > 0:
-                self.edge_feats = np.zeros((self.n_line_edges, 1), dtype=np.float32)
-            else:
-                self.edge_feats = np.zeros((0, 1), dtype=np.float32)
+            self.edge_feats = np.zeros((0, edge_attr_dim), dtype=np.float32)
 
         # Pre-calculate geometry for render method
         self._calculate_rendering_geometry()
-
-        node_feat_dim = 3 if self.use_syndrome_features else 2
-        edge_attr_dim = 2 if self.use_syndrome_features else 1
 
         # Define the Gym Observation and Action Spaces (fixed size for a given base circuit / distance)
         self.observation_space = spaces.Dict({
@@ -633,19 +662,27 @@ class DriftedMatchingEnv(gym.Env):
                              )
 
         # Build Feature Arrays Dynamically based on the Flag
+        self.node_feats[:, 0] = self.current_weights
+        self.node_feats[:, 1] = selected_flag
+
         if self.use_syndrome_features:
-            self.node_feats[:, 0] = self.current_weights
-            self.node_feats[:, 1] = selected_flag
             self.node_feats[:, 2] = self.spitz_tracer
-            
             if self.n_line_edges > 0:
                 self.edge_feats[:, 0] = dgr_edge_feat
                 self.edge_feats[:, 1] = self.remm_tracer
         else:
-            self.node_feats[:, 0] = self.current_weights
-            self.node_feats[:, 1] = selected_flag
             if self.n_line_edges > 0:
                 self.edge_feats[:, 0] = dgr_edge_feat
+
+        if self.use_endpoint_firing:
+            # syndrome is a flat array of length n_detectors with 0/1 entries
+            d1_fired = syndrome[self.edge_d1_idx].astype(np.float32)
+            d2_fired_raw = syndrome[self.edge_d2_idx_safe].astype(np.float32)
+            # Zero out the d2 slot for boundary edges (virtual boundary node has no firing semantics)
+            d2_fired = np.where(self.edge_is_boundary > 0, 0.0, d2_fired_raw).astype(np.float32)
+            self.node_feats[:, self._endpoint_d1_col] = d1_fired
+            self.node_feats[:, self._endpoint_d2_col] = d2_fired
+            self.node_feats[:, self._endpoint_b_col] = self.edge_is_boundary
 
         obs = {
             "node_features": self.node_feats.copy(),
