@@ -82,6 +82,7 @@ class DriftedMatchingEnv(gym.Env):
         use_syndrome_features: bool = False,
         use_endpoint_firing: bool = False,
         use_log_joint_prob: bool = False,
+        start_from_oracle: bool = False,
         update_with: str = 'DGR',
         dynamic_drift: bool = False,
         train_mode: bool = True,
@@ -110,6 +111,10 @@ class DriftedMatchingEnv(gym.Env):
         self.use_syndrome_features = use_syndrome_features
         self.use_endpoint_firing = use_endpoint_firing
         self.use_log_joint_prob = use_log_joint_prob
+        # When True: seed each episode's decoder at the drifted-oracle weights AND
+        # disable the CMA tracer-driven alignment reweighting. The GNN is then
+        # trained to perturb on top of the oracle, not on top of CMA-aligned weights.
+        self.start_from_oracle = start_from_oracle
         self.update_with = update_with
         self.dynamic_drift = dynamic_drift
 
@@ -566,6 +571,21 @@ class DriftedMatchingEnv(gym.Env):
         _, oracle_joint_probs = self._build_line_graph_edges(drifted_dem, return_k_hop_adj_mat=False)
         self.oracle_correlations = self._compute_pearson_correlations(oracle_probs, oracle_joint_probs)
 
+        # Seed the decoder at the drifted oracle: bypass alignment reweighting entirely.
+        # The GNN will perturb on top of the oracle weights, not on top of CMA-aligned weights.
+        if self.start_from_oracle:
+            self.current_weights = self.oracle_weights.copy()
+            self.current_matching = pymatching.Matching.from_check_matrix(
+                self.H, weights=self.current_weights
+            )
+            self.pearson_correlations = self.oracle_correlations.copy()
+            # Recompute the reported "initial" LER with the oracle-start matching
+            test_pred_edges_batch = self.current_matching.decode_batch(
+                self.test_syndrome_batch, enable_correlations=False
+            )
+            test_pred_obs_batch = (test_pred_edges_batch @ self.fault_array) % 2
+            self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
+
         # Calculate the initial weights mse error between adaptive (base initially) and oracle decoder
         self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
 
@@ -826,12 +846,16 @@ class DriftedMatchingEnv(gym.Env):
         # 3) Update tracers using 2nd-pass selected edges    #
         ######################################################
 
-        self._accumulate_occurrence(selected_idx_2)
-        self._accumulate_correlation(selected_idx_2)
+        # When seeded at the oracle, alignment reweighting is disabled: skip both
+        # tracer accumulation and the periodic CMA-driven graph update.
+        if not self.start_from_oracle:
+            self._accumulate_occurrence(selected_idx_2)
+            self._accumulate_correlation(selected_idx_2)
         self.shots_since_update += 1
 
         if self.shots_since_update >= self.update_period:
-            self._apply_cma_and_update_graph()
+            if not self.start_from_oracle:
+                self._apply_cma_and_update_graph()
             self.shots_since_update = 0
 
             # Compute the MSE error between the weights and correlations of our adaptive decoder

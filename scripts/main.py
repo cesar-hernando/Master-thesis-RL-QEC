@@ -17,26 +17,27 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'test',  
-        'model_path': 'models/sac_gnn_64_best.pth',
+        'MODE': 'train',  
+        'model_path': 'models/test.pth',
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
-        'p': 0.0005,
+        'p': 0.004,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
-        'mismatch': 1.0,
-        'n_shots': 1_000_000,       # Shots per episode
+        'mismatch': 30.0,
+        'n_shots': 65_000,       # Shots per episode
         'n_test_shots': 0,   # Shots for LER evaluation
-        'burn_in_steps': 0,
+        'burn_in_steps': 15_000,
         'bypass_threshold': 2,
         'action_scale': 5.0,
-        'update_period': 2_000_000,  # CMA update frequency
+        'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,  # Shots for initial CMA prior
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         'use_pearson_correlation': True,
         'use_endpoint_firing': True,  # Add [d1_fired, d2_fired, is_boundary] to node features
+        'start_from_oracle': False,   # If True: seed each episode at oracle weights and disable CMA reweighting
         'use_log_joint_prob': False,  # Whether to use joint probabilities for CMA updates
         'n_layers': 1, # Number of GNN layers (affects receptive field size)
         
@@ -90,6 +91,7 @@ if __name__ == "__main__":
         use_syndrome_features=False,
         use_endpoint_firing=CONFIG.get('use_endpoint_firing', False),
         use_log_joint_prob=CONFIG['use_log_joint_prob'],
+        start_from_oracle=CONFIG.get('start_from_oracle', False),
         update_with='DGR',
         train_mode=(CONFIG['MODE'] == 'train')
     )
