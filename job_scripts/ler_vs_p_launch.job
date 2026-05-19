@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH --job-name=ler_vs_p
+#SBATCH --partition=gpu-l4-24g
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G
+#SBATCH --gres=gpu:1
+#SBATCH --output=slurm_logs/ler_vs_p_%j.out
+#SBATCH --error=slurm_logs/ler_vs_p_%j.err
+
+set -euo pipefail
+
+echo "Job started at: $(date)"
+
+# Load environment modules
+module load Python/3.11.5-GCCcore-13.2.0
+
+# Activate virtual environment
+source cluster_venv/bin/activate
+
+# Threading optimizations
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Ensure output directories exist
+mkdir -p slurm_logs
+mkdir -p plots/ler_vs_p
+mkdir -p data/ler_vs_p
+
+# --- Run configuration --------------------------------------------------------
+MODEL_PATH="models/qec_graph_optuna_run_d5_trial_0000_best.pth"
+P_VALUES="0.001, 0.0008, 0.0006, 0.0004, 0.0003, 0.0002, 0.0001, 0.00008"
+
+OUT_TAG="${SLURM_JOB_ID}"
+OUT_PNG="plots/ler_vs_p/ler_vs_p_mwpm_corr_neural_${OUT_TAG}.png"
+OUT_CSV="data/ler_vs_p/ler_vs_p_mwpm_corr_neural_${OUT_TAG}.csv"
+
+ARGS=(
+  --model-path "$MODEL_PATH"
+  --p-values "$P_VALUES"
+  --target-errors 300
+  --max-shots 1000000000
+  --chunk-shots 200000
+  --seed 42
+  --distance 5
+  --n-rounds 5
+  --p-gate-zz 0.0
+  --action-scale 5.0
+  --bypass-threshold 2
+  --local-action-hops 1
+  --hidden-dim 256
+  --n-layers 1
+  --lr 1e-4
+  --alpha 0.01
+  # Env feature toggles — must match how the model was trained.
+  # Flip to --no-use-endpoint-firing / --no-start-from-oracle to disable.
+  --use-endpoint-firing
+  --start-from-oracle
+  --out-png "$OUT_PNG"
+  --out-csv "$OUT_CSV"
+)
+
+echo "Running LER vs physical-rate sweep"
+echo "Model: ${MODEL_PATH}"
+echo "P values: ${P_VALUES}"
+echo "Output PNG: ${OUT_PNG}"
+echo "Output CSV: ${OUT_CSV}"
+echo "Command: python -u scripts/plot_ler_vs_physical_rate.py ${ARGS[*]}"
+
+python -u scripts/plot_ler_vs_physical_rate.py "${ARGS[@]}"
+
+echo "Job finished at: $(date)"

@@ -53,7 +53,14 @@ def make_generator(p: float, n_shots: int, distance: int, n_rounds: int, mismatc
     )
 
 
-def make_env(generator: SyndromeDataGenerator, n_shots: int, action_scale: float, local_action_hops: int):
+def make_env(
+    generator: SyndromeDataGenerator,
+    n_shots: int,
+    action_scale: float,
+    local_action_hops: int,
+    start_from_oracle: bool,
+    use_endpoint_firing: bool,
+):
     # Force "no updates" inside an episode chunk.
     frozen_update_period = n_shots + 1
 
@@ -68,6 +75,8 @@ def make_env(generator: SyndromeDataGenerator, n_shots: int, action_scale: float
         use_pearson_correlation=True,
         use_syndrome_features=False,
         use_log_joint_prob=False,
+        start_from_oracle=start_from_oracle,
+        use_endpoint_firing=use_endpoint_firing,
         update_with="DGR",
         train_mode=False,
     )
@@ -142,6 +151,8 @@ def run_sweep(args):
             n_shots=args.chunk_shots,
             action_scale=args.action_scale,
             local_action_hops=args.local_action_hops,
+            start_from_oracle=args.start_from_oracle,
+            use_endpoint_firing=args.use_endpoint_firing,
         )
 
         sample_obs, _ = env.reset(seed=args.seed)
@@ -282,7 +293,7 @@ def main():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="models/sac_gnn_64_best.pth",
+        default="models/sac_gnn_67_best.pth",
         help="Path to fixed learned SAC-GNN policy.",
     )
     parser.add_argument(
@@ -294,7 +305,7 @@ def main():
     
     # Adaptive Shot Parameters
     parser.add_argument("--target-errors", type=int, default=300, help="Stop evaluating a 'p' when the best decoder hits this many errors.")
-    parser.add_argument("--max-shots", type=int, default=200_000_000, help="Absolute max shots per 'p' to prevent infinite loops at low p.")
+    parser.add_argument("--max-shots", type=int, default=1_000_000_000, help="Absolute max shots per 'p' to prevent infinite loops at low p.")
     parser.add_argument("--chunk-shots", type=int, default=200_000, help="Number of shots generated per environment reset.")
     
     parser.add_argument("--seed", type=int, default=42)
@@ -305,6 +316,20 @@ def main():
     parser.add_argument("--action-scale", type=float, default=5.0)
     parser.add_argument("--bypass-threshold", type=int, default=2)
     parser.add_argument("--local-action-hops", type=int, default=1)
+
+    # Env feature toggles (must match how the loaded model was trained)
+    parser.add_argument(
+        "--use-endpoint-firing",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Add (d1_fired, d2_fired, is_boundary) endpoint features to each node. Use --no-use-endpoint-firing to disable.",
+    )
+    parser.add_argument(
+        "--start-from-oracle",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Seed each episode at drifted-oracle weights and disable CMA tracer alignment. Use --no-start-from-oracle to disable.",
+    )
 
     parser.add_argument("--hidden-dim", type=int, default=256)
     parser.add_argument("--n-layers", type=int, default=1)
