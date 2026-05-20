@@ -75,7 +75,7 @@ class DriftedMatchingEnv(gym.Env):
         action_scale: float = 1.0,
         update_period: int = 1000,
         prior_shots: int = 1000,
-        n_test_shots: int = 10_000,
+        n_test_shots: int = 0,
         min_weight: float = 1e-6,
         max_weight: float = 50.0,
         use_pearson_correlation: bool = True,
@@ -512,7 +512,7 @@ class DriftedMatchingEnv(gym.Env):
 
         # Initialize the dynamic LER trackers (calculated periodically every time the decoding graph is 
         # updated with new drift knowledge)
-        self.ler = np.zeros(self.max_steps//self.update_period + 1, dtype=np.float32)
+        #self.ler = np.zeros(self.max_steps//self.update_period + 1, dtype=np.float32)
 
         # Initialize absolute counters for the actual observed MWPM shots
         self.shots_since_update = 0
@@ -531,7 +531,7 @@ class DriftedMatchingEnv(gym.Env):
             base_circuit=self.base_circuit,
             seed=seed
         )     
-        
+        '''
         # Generate a several test shots with the drifted circuit to evaluate the LER
         self.test_syndrome_batch, self.test_true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(
             drifted_circuit, seed=2002, n_shots=self.n_test_shots)
@@ -548,7 +548,7 @@ class DriftedMatchingEnv(gym.Env):
             self.test_syndrome_batch, enable_correlations=False
         ).flatten()
         self.oracle_ler = np.mean(oracle_pred_obs_batch != self.test_true_obs_batch)
-        
+        '''
 
         # Pre-generate syndrome data and true observable for the entire episode (all shots under the same drift)
         self.syndrome_batch, self.true_obs_batch = self.syndrome_data_generator.simulate_syndrome_data(drifted_circuit, seed)
@@ -579,23 +579,17 @@ class DriftedMatchingEnv(gym.Env):
                 self.H, weights=self.current_weights
             )
             self.pearson_correlations = self.oracle_correlations.copy()
-            # Recompute the reported "initial" LER with the oracle-start matching
-            test_pred_edges_batch = self.current_matching.decode_batch(
-                self.test_syndrome_batch, enable_correlations=False
-            )
-            test_pred_obs_batch = (test_pred_edges_batch @ self.fault_array) % 2
-            self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
 
         # Calculate the initial weights mse error between adaptive (base initially) and oracle decoder
-        self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
+        #self.weights_mse_error = np.mean((self.current_weights - self.oracle_weights)**2)
 
         # Compute the MSE error between the Pearson correlations of our decoder and the oracle decoder
-        self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
+        #self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
 
         # Calculate the MSE error between the static decoder and the adaptive decoder (which starts as the 
         # base decoder with no drift knowledge)    
-        self.weights_mse_error_static = 0
-        self.corr_mse_error_static = 0
+        #self.weights_mse_error_static = 0
+        #self.corr_mse_error_static = 0
 
         if not self.train_mode:
             # Pre-generate the oracle predicted observable for each shot in the episode using the drifted matching
@@ -622,10 +616,10 @@ class DriftedMatchingEnv(gym.Env):
         info = {
             "n_decoding_edges": self.n_dec_edges,
             "n_line_edges": self.n_line_edges,
-            "weights_mse_error": self.weights_mse_error,
-            "corr_mse_error": self.corr_mse_error,
-            "initial_test_ler": self.test_ler,
-            "oracle_ler": self.oracle_ler,
+            #"weights_mse_error": self.weights_mse_error,
+            #"corr_mse_error": self.corr_mse_error,
+            #"initial_test_ler": self.test_ler,
+            #"oracle_ler": self.oracle_ler,
         }
         return obs, info
     
@@ -858,6 +852,7 @@ class DriftedMatchingEnv(gym.Env):
                 self._apply_cma_and_update_graph()
             self.shots_since_update = 0
 
+            '''
             # Compute the MSE error between the weights and correlations of our adaptive decoder
             # and the oracle decoder 
             self.corr_mse_error = np.mean((self.pearson_correlations - self.oracle_correlations)**2)
@@ -878,7 +873,7 @@ class DriftedMatchingEnv(gym.Env):
             
             # 3. Calculate LER
             self.test_ler = np.mean(test_pred_obs_batch != self.test_true_obs_batch)
-            
+            '''
                                             
         #########################
         # 4) Compute the reward #
@@ -916,11 +911,11 @@ class DriftedMatchingEnv(gym.Env):
             "selected_edges_first_pass_idx": self.current_first_pass_selected_idx.copy() if self.current_first_pass_selected_idx is not None else None,
             "selected_edges_second_pass_idx": selected_idx_2.copy(),
             "action_mask": self.current_action_mask.copy() if self.current_action_mask is not None else None,
-            "weights_mse_error": self.weights_mse_error,
-            "corr_mse_error": self.corr_mse_error,
-            "weights_mse_error_static": self.weights_mse_error_static,
-            "corr_mse_error_static": self.corr_mse_error_static,
-            "test_ler": self.test_ler
+            #"weights_mse_error": self.weights_mse_error,
+            #"corr_mse_error": self.corr_mse_error,
+            #"weights_mse_error_static": self.weights_mse_error_static,
+            #"corr_mse_error_static": self.corr_mse_error_static,
+            #"test_ler": self.test_ler
         }
 
         ############################################################
