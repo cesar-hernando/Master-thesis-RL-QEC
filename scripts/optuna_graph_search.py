@@ -12,7 +12,7 @@ import optuna
 import torch
 
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.engine import train, validate
+from adaptiveQRL.engine import evaluate_low_p_oracle, train, validate
 from adaptiveQRL.gnn_sac_agent import GraphReplayBuffer, SACAgent
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 from sandbox_optuna_graph_space import optuna_categorical_choices, preset_by_id, trial_presets
@@ -92,6 +92,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-episodes", type=int, default=500)
     parser.add_argument("--buffer-capacity", type=int, default=100_000)
 
+    # Optuna-target evaluation (post-training): LER at low p, no drift, oracle init.
+    # Defaults: 4M shots, all in a single episode.
+    parser.add_argument("--target-eval-p", type=float, default=0.001)
+    parser.add_argument("--target-eval-mismatch", type=float, default=1.0)
+    parser.add_argument("--target-eval-shots", type=int, default=4_000_000)
+    parser.add_argument("--target-eval-shots-per-episode", type=int, default=4_000_000)
+    parser.add_argument("--target-eval-seed", type=int, default=20001)
+
     return parser.parse_args()
 
 
@@ -158,18 +166,26 @@ def create_study_with_sqlite_race_retry(
 def suggest_run_config(trial: optuna.Trial) -> dict:
     choices = optuna_categorical_choices()
     return {
-        "hidden_dim":        trial.suggest_categorical("hidden_dim",        choices["hidden_dim"]),
-        "n_layers":          trial.suggest_categorical("n_layers",          choices["n_layers"]),
-        "lr":                trial.suggest_categorical("lr",                choices["lr"]),
-        "alpha":             trial.suggest_categorical("alpha",             choices["alpha"]),
-        "batch_size":        trial.suggest_categorical("batch_size",        choices["batch_size"]),
-        "update_frequency":  trial.suggest_categorical("update_frequency",  choices["update_frequency"]),
-        "local_action_hops": trial.suggest_categorical("local_action_hops", choices["local_action_hops"]),
-        "action_scale":      trial.suggest_categorical("action_scale",      choices["action_scale"]),
-        "target_entropy":    trial.suggest_categorical("target_entropy",    choices["target_entropy"]),
-        "tau":               trial.suggest_categorical("tau",               choices["tau"]),
-        "mlp_head":          trial.suggest_categorical("mlp_head",          choices["mlp_head"]),
-        "mismatch":          trial.suggest_categorical("mismatch",          choices["mismatch"]),
+        "hidden_dim":          trial.suggest_categorical("hidden_dim",          choices["hidden_dim"]),
+        "n_layers":            trial.suggest_categorical("n_layers",            choices["n_layers"]),
+        "lr":                  trial.suggest_categorical("lr",                  choices["lr"]),
+        "alpha_lr":            trial.suggest_categorical("alpha_lr",            choices["alpha_lr"]),
+        "alpha":               trial.suggest_categorical("alpha",               choices["alpha"]),
+        "batch_size":          trial.suggest_categorical("batch_size",          choices["batch_size"]),
+        "update_frequency":    trial.suggest_categorical("update_frequency",    choices["update_frequency"]),
+        "local_action_hops":   trial.suggest_categorical("local_action_hops",   choices["local_action_hops"]),
+        "action_scale":        trial.suggest_categorical("action_scale",        choices["action_scale"]),
+        "target_entropy":      trial.suggest_categorical("target_entropy",      choices["target_entropy"]),
+        "tau":                 trial.suggest_categorical("tau",                 choices["tau"]),
+        "mlp_head":            trial.suggest_categorical("mlp_head",            choices["mlp_head"]),
+        "mismatch":            trial.suggest_categorical("mismatch",            choices["mismatch"]),
+        "buffer_capacity":     trial.suggest_categorical("buffer_capacity",     choices["buffer_capacity"]),
+        "n_shots":             trial.suggest_categorical("n_shots",             choices["n_shots"]),
+        "burn_in_steps":       trial.suggest_categorical("burn_in_steps",       choices["burn_in_steps"]),
+        "train_episodes":      trial.suggest_categorical("train_episodes",      choices["train_episodes"]),
+        "start_from_oracle":   trial.suggest_categorical("start_from_oracle",   choices["start_from_oracle"]),
+        "use_endpoint_firing": trial.suggest_categorical("use_endpoint_firing", choices["use_endpoint_firing"]),
+        "p":                   trial.suggest_categorical("p",                   choices["p"]),
     }
 
 
@@ -193,12 +209,12 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             "training_metrics_filename": f"{args.study_name}_trial_{trial.number:04d}_training_metrics.png",
             "distance": args.distance,
             "n_rounds": args.n_rounds,
-            "p": args.p,
+            "p": run_cfg["p"],
             "p_gate_zz": args.p_gate_zz,
-            "mismatch": run_cfg["mismatch"],   # from preset / Optuna search space
-            "n_shots": args.n_shots,
+            "mismatch": run_cfg["mismatch"],
+            "n_shots": run_cfg["n_shots"],
             "n_test_shots": args.n_test_shots,
-            "burn_in_steps": args.burn_in_steps,
+            "burn_in_steps": run_cfg["burn_in_steps"],
             "bypass_threshold": args.bypass_threshold,
             "action_scale": run_cfg["action_scale"],
             "update_period": args.update_period,
@@ -208,15 +224,18 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             "n_layers": run_cfg["n_layers"],
             "hidden_dim": run_cfg["hidden_dim"],
             "lr": run_cfg["lr"],
+            "alpha_lr": run_cfg["alpha_lr"],
             "gamma": args.gamma,
             "tau": run_cfg["tau"],
             "alpha": run_cfg["alpha"],
             "batch_size": run_cfg["batch_size"],
-            "buffer_capacity": args.buffer_capacity,
-            "update_frequency": run_cfg["update_frequency"],   # was missing — now wired in
+            "buffer_capacity": run_cfg["buffer_capacity"],
+            "update_frequency": run_cfg["update_frequency"],
             "target_entropy": run_cfg["target_entropy"],
             "mlp_head": run_cfg["mlp_head"],
-            "train_episodes": args.train_episodes,
+            "train_episodes": run_cfg["train_episodes"],
+            "start_from_oracle": run_cfg["start_from_oracle"],
+            "use_endpoint_firing": run_cfg["use_endpoint_firing"],
             "test_episodes": 3,
         }
 
@@ -249,6 +268,8 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             n_test_shots=config["n_test_shots"],
             use_pearson_correlation=True,
             use_syndrome_features=False,
+            use_endpoint_firing=config["use_endpoint_firing"],
+            start_from_oracle=config["start_from_oracle"],
             update_with="DGR",
             train_mode=True,
         )
@@ -256,11 +277,14 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
         sample_obs, _ = env.reset(seed=args.seed)
         node_dim = sample_obs["node_features"].shape[1]
 
+        # Sentinel: alpha_lr == 0.0 means "reuse actor lr" (SACAgent treats None this way).
+        alpha_lr_value = None if config["alpha_lr"] == 0.0 else config["alpha_lr"]
         agent = SACAgent(
             node_dim=node_dim,
             hidden_dim=config["hidden_dim"],
             static_edge_index=env.line_edge_index,
             lr=config["lr"],
+            alpha_lr=alpha_lr_value,
             gamma=config["gamma"],
             tau=config["tau"],
             alpha=config["alpha"],
@@ -279,11 +303,39 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
         else:
             scored_model_path = str(model_path)
 
-        score = float(validate(env, agent, config))
+        # Optuna objective: LER on a fresh env with no drift (mismatch=1.0),
+        # oracle-initialised weights (alignment reweighting disabled), and
+        # low physical error rate (p=0.001 by default). Higher = better, so
+        # the returned value is the NEGATIVE neural LER.
+        eval_result = evaluate_low_p_oracle(
+            agent=agent,
+            config=config,
+            p_eval=args.target_eval_p,
+            mismatch_eval=args.target_eval_mismatch,
+            n_eval_shots=args.target_eval_shots,
+            shots_per_episode=args.target_eval_shots_per_episode,
+            seed=args.target_eval_seed,
+        )
+
+        # Also run the original isolated-validation metric on the training env
+        # for backwards comparability with prior runs; saved as user_attr only.
+        legacy_isolated_improvement = float(validate(env, agent, config))
+
+        score = -float(eval_result["neural_ler"])
 
         trial.set_user_attr("runtime_seconds", time.time() - start_s)
         trial.set_user_attr("model_path", scored_model_path)
         trial.set_user_attr("preset_id", args.trial_preset_id)
+        trial.set_user_attr("neural_ler", float(eval_result["neural_ler"]))
+        trial.set_user_attr("corr_ler", float(eval_result["corr_ler"]))
+        trial.set_user_attr("static_ler", float(eval_result["static_ler"]))
+        trial.set_user_attr("neural_errors", int(eval_result["neural_errors"]))
+        trial.set_user_attr("corr_errors", int(eval_result["corr_errors"]))
+        trial.set_user_attr("static_errors", int(eval_result["static_errors"]))
+        trial.set_user_attr("eval_total_shots", int(eval_result["total_shots"]))
+        trial.set_user_attr("eval_p", float(eval_result["p_eval"]))
+        trial.set_user_attr("eval_mismatch", float(eval_result["mismatch_eval"]))
+        trial.set_user_attr("legacy_isolated_improvement", legacy_isolated_improvement)
 
         return score
 
@@ -343,18 +395,26 @@ def main() -> None:
                 return
 
         queued_params = {
-            "hidden_dim":        preset["hidden_dim"],
-            "n_layers":          preset["n_layers"],
-            "lr":                preset["lr"],
-            "alpha":             preset["alpha"],
-            "batch_size":        preset["batch_size"],
-            "update_frequency":  preset["update_frequency"],
-            "local_action_hops": preset["local_action_hops"],
-            "action_scale":      preset["action_scale"],
-            "target_entropy":    preset["target_entropy"],
-            "tau":               preset["tau"],
-            "mlp_head":          preset["mlp_head"],
-            "mismatch":          preset["mismatch"],
+            "hidden_dim":          preset["hidden_dim"],
+            "n_layers":            preset["n_layers"],
+            "lr":                  preset["lr"],
+            "alpha_lr":            preset["alpha_lr"],
+            "alpha":               preset["alpha"],
+            "batch_size":          preset["batch_size"],
+            "update_frequency":    preset["update_frequency"],
+            "local_action_hops":   preset["local_action_hops"],
+            "action_scale":        preset["action_scale"],
+            "target_entropy":      preset["target_entropy"],
+            "tau":                 preset["tau"],
+            "mlp_head":            preset["mlp_head"],
+            "mismatch":            preset["mismatch"],
+            "buffer_capacity":     preset["buffer_capacity"],
+            "n_shots":             preset["n_shots"],
+            "burn_in_steps":       preset["burn_in_steps"],
+            "train_episodes":      preset["train_episodes"],
+            "start_from_oracle":   preset["start_from_oracle"],
+            "use_endpoint_firing": preset["use_endpoint_firing"],
+            "p":                   preset["p"],
         }
         study.enqueue_trial(queued_params)
         print(f"Queued fixed preset_id={args.trial_preset_id}: {json.dumps(queued_params)}")

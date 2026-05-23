@@ -4,160 +4,174 @@ from dataclasses import dataclass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# REFERENCE BASELINE
+# REFERENCE BASELINE (v2 study: qec_graph_optuna_run_d5_r5_v2)
 #
-# Matches the argparse defaults of scripts/main.py — the configuration that
-# every long training run uses unless an axis is explicitly overridden in
-# the .job script. Anchor model: model 64 (best fully-trained run as of May
-# 2026, 6.913% best val) which used these defaults plus bs=128 / hd=256 /
-# action_scale=5.0 carried over from the model 55-65 era.
+# Anchor model: run 65 (best M=30 long run to date, 7.545% best validation,
+# 6.817% final ep-500 validation, 22.5 h wall) — config: lr=5e-5, bs=256,
+# hd=256, n_layers=1, action_scale=5, burn_in=15k, n_shots=65k, train_eps=500,
+# buffer=100k, alpha_init=0.01, target_entropy=-1.0, mismatch=30, p=0.004.
 #
-# FIXED (not varied here):
-#   gamma=0.0, n_shots=65_000, burn_in=15_000, d=5,
-#   p=0.004, use_pearson_correlation=True, train_episodes=500,
-#   target_entropy=-1.0, tau=0.005, alpha=0.01,
-#   update_frequency=100   ← the actual value in every long run
+# The base config below mirrors the run 65 recipe so that every preset's diff
+# is small and causally interpretable.
 #
-# VARIED ENV AXIS:
-#   mismatch — baseline 30.0 (drift factor range, 30x). Group H sweeps it
-#              downward to test whether the policy is bottlenecked by env
-#              hardness rather than training hyperparameters.
-#
-# KEY LESSONS FROM PRIOR SWEEPS
-# ──────────────────────────────
+# KEY LESSONS FROM PRIOR SWEEPS (kept; do NOT re-test here)
+# ─────────────────────────────────────────────────────────
 #  • lr=1e-5  → complete failure (model 62)
-#  • lr=5e-5  → long dead zone (~350/500 eps near-zero reward) before a
-#               fragile critic-spike breakthrough; not reliable
-#  • lr=1e-4  → consistent, no dead zone; safe choice (model 64: 6.913%)
-#  • lr=2e-4  → UNTESTED; expected to escape dead-zone faster; gradient
-#               clipping (max_norm=1) already limits instability risk
-#  • bs=64    → dropped (consistently worse than bs=128)
-#  • bs=256   → model 65 (lr=5e-5) hit 7.545% but only after the dead zone;
-#               lr=1e-4 × bs=256 × 500ep is still the key missing test
-#  • target_entropy ≠ -1.0 → -2.0 catastrophic (model 58); -0.5 noisy
-#  • tau variations → not useful at gamma=0.0 (single critic, no target net)
-#  • update_frequency: 100 is the long-standing default and is the value
-#    used by every model whose results we trust. Raising it to 500 or 1000
-#    was tried and gave clearly worse results — those values are DELIBERATELY
-#    excluded from this search space and from the Optuna domain below.
+#  • lr=5e-5  → run 65: 7.55% best, still climbing at ep 500 → needs more eps
+#  • lr=1e-4  → run 64: 6.91% best (safe but lower ceiling than 5e-5+bs256)
+#  • bs=64    → consistently worse → dropped
+#  • bs=256   → unlocks lr=5e-5 → kept as default
+#  • n_layers=2 / depth=2  → collapsed to ~0 in prior Optuna → dropped
+#  • mlp_head deep / wide / narrow ≈ standard in prior Optuna → standard is default
+#  • target_entropy ≠ -1.0 → -2.0 catastrophic, -0.5 noisy → kept at -1.0
+#  • tau ≠ 0.005 (single critic at gamma=0) → not useful → kept
+#  • update_frequency ∈ {500, 1000} → worse than 100 → kept at 100
+#  • action_scale=3.0 (model 45 era) → worse than 5.0 → kept
+#  • use_endpoint_firing=True (run 66/68/70) → lower critic MSE but no LER win,
+#    sometimes catastrophic late collapse → probed sparingly here (2 slots)
+#  • start_from_oracle=True (run 67/68/69/70) → wash at M=30, untested at M=10
+#    → probed at M=10 (2 slots) + 1 at M=30 with new combo
+#  • buffer_capacity=1M helped the no-s-feat oracle setup (run 69 ≈ run 64)
+#    → adopted as the v2 DEFAULT (base config). 100k retained only as a
+#      control in group C to confirm the 1M default is actually load-bearing.
+#
+# NEW LEVERS FIRST TIME IN THE SEARCH SPACE
+# ─────────────────────────────────────────
+#  • alpha_lr (separate LR for the entropy temperature optimizer): default
+#    None means "reuse actor lr" (backward compatible). Values 1e-5 / 3e-5
+#    keep entropy bonus alive into late training — directly motivated by
+#    the alpha-collapse seen by ep ~100 in every prior training plot.
+#  • Higher initial alpha (0.05, 0.1) combined with small alpha_lr → "warm
+#    + slow-decay" entropy schedule.
+#  • Longer training (train_episodes=800, 1000) at lr=5e-5 → run 65 was
+#    still climbing at ep 500; the highest-confidence simple move.
+#  • Mid p=0.006 → headroom over MWPM is larger at higher physical rate
+#    (cf. ler_vs_p_mwpm_corr_neural_static figure: 4.08e-3 → 2.12e-3 = 48%
+#    gap at p=0.006 vs 49% at p=0.004 → similar gap, easier signal).
+#  • mismatch=10 is the strongest single lever from the previous Optuna
+#    (0.121 vs 0.05 at M=30) — most new presets sit at M=10.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def base_trial_config() -> dict:
     """
-    Reference configuration (preset 0 — argparse defaults equivalent to the
-    model 64 run).
-
-    All other presets override exactly one or two keys so causal attribution
-    is unambiguous. A small number of three-key overrides are reserved for
-    the "max-aggressive combo" presets and are clearly labelled.
+    Reference configuration (preset 0 — replicates run 65 with one change:
+    mismatch=10 instead of 30, since M=10 was the strongest lever found in
+    the previous Optuna study).
     """
     return {
         # Architecture
-        "hidden_dim":        256,
-        "n_layers":          1,
-        "mlp_head":          "standard",   # head variant: standard|narrow|deep|wide
-        # Policy search
-        "lr":                1e-4,
-        "batch_size":        128,
-        "update_frequency":  100,          # SAC gradient step every N env steps — FIXED
-        "target_entropy":    -1.0,         # fixed — auto-tunes alpha
-        # Agent dynamics (fixed)
-        "alpha":             0.01,         # initial entropy coefficient
-        "tau":               0.005,        # fixed — tau variations not useful at gamma=0
+        "hidden_dim":          256,
+        "n_layers":            1,
+        "mlp_head":            "standard",
+        # Policy / critic optimization
+        "lr":                  5e-5,
+        "alpha_lr":            0.0,         # 0.0 ⇒ reuse actor lr (Optuna-friendly sentinel)
+        "batch_size":          256,
+        "update_frequency":    100,
+        "target_entropy":      -1.0,
+        # SAC dynamics
+        "alpha":               0.01,
+        "tau":                 0.005,
         # Action
-        "action_scale":      5.0,
-        "local_action_hops": 1,
-        # Environment (only entries that the preset table actually sweeps)
-        "mismatch":          30.0,         # drift factor range (1.0 = no drift)
+        "action_scale":        5.0,
+        "local_action_hops":   1,
+        # Environment
+        "mismatch":            10.0,        # easy env (best lever from prior study)
+        "p":                   0.004,
+        # Replay
+        "buffer_capacity":     1_000_000,   # new v2 default (run 69 showed 1M >= 100k, more stable)
+        # Schedule
+        "n_shots":             65_000,
+        "burn_in_steps":       15_000,
+        "train_episodes":      500,
+        # Env feature toggles
+        "start_from_oracle":   False,
+        "use_endpoint_firing": False,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PRESET TABLE  (15 configs, IDs 0–14)
+# PRESET TABLE  (20 configs, IDs 0–19)
 #
-# update_frequency is held at the baseline value 100 in every preset:
-# 500 and 1000 were already tried and gave bad results, so we don't burn
-# compute on them again. The 15 slots therefore probe lr, batch size,
-# architecture, action scale, MLP head shape, and their interactions.
-#
-# One parameter changes at a time unless explicitly labelled as an
-# interaction test (group I).
+# Each preset lists ONLY the keys that differ from base. One axis per slot
+# unless tagged as a combo. Combos are kept to the few high-expected-value
+# crosses of axes that look promising independently.
 #
 # Design rationale per group
 # ──────────────────────────
-#  A   lr=2e-4   Avoid the dead-zone plateau caused by lr=5e-5; 2e-4 has
-#                not been tested and is the natural "try higher" candidate.
-#
-#  B   bs=256    lr=1e-4 + bs=256 + 500ep is the single most important
-#                missing data point: model 57b had it at 300ep (6.166%),
-#                model 65 had bs=256 but with lr=5e-5 (7.545% after dead zone).
-#
-#  D   arch      Architectural axis is "depth" — n_layers and
-#                local_action_hops are coupled and must always match (the
-#                action mask is meaningful only over the GCN's receptive
-#                field, so depth = n_layers = local_action_hops by
-#                construction). depth=2 is the only depth variant probed
-#                here; depth=3 was considered and dropped (cost vs. expected
-#                gain). hd=128 also checks whether the 256-dim capacity is
-#                actually needed.
-#
-#  E   scale     action_scale=3.0 isolates the 3→5 change made in model 45.
-#
-#  F   MLP head  Three head shape alternatives (narrow / deep / wide)
-#                to check if the current hourglass [H→2H→H→1] is a bottleneck.
-#
-#  H   env       mismatch=10.0 reduces the drift factor range from 30x to
-#                10x — same noise model, less time-varying severity. Tests
-#                whether the headroom in LER vs. baseline MWPM is bounded
-#                by training hyperparameters or by the underlying drift
-#                difficulty itself; if mismatch=10 lifts performance
-#                disproportionately, the bottleneck is the env, not the agent.
-#
-#  I   combos    Interactions among the "best candidate" axes (lr, bs, depth)
-#                plus one env × training cross (mismatch × lr) that asks
-#                whether training tweaks compound with an easier env or
-#                saturate. update_frequency is intentionally absent from
-#                every combo, and any combo that touches depth always sets
-#                both n_layers and local_action_hops to keep them coupled.
+#  A   anchor / minimal-Δ slots that move only mismatch, p, or training
+#      length — give us a clean control bar for everything else.
+#  B   alpha_lr slots (warm + slow-decay) at both M=10 and M=30.
+#  C   buffer=100k controls (since 1M is now the default, these isolate
+#      whether the 1M default actually helps vs the historical 100k value).
+#  D   start_from_oracle revisits at M=10 (untested) + a combo at M=30.
+#  E   use_endpoint_firing sparingly (2 slots) — only paired with other
+#      changes since previous runs (66/68/70) showed it doesn't win alone.
+#  F   "All-in" combinations: the cumulative best of axes B + schedule.
+#  G   one architectural variant: a "wide" MLP head paired with the higher
+#      lr — head shape was a near-wash last time but combos may differ.
+#  H   very-slow probe: lr=3e-5 + alpha_lr=1e-5 + eps=1000 + n_shots=80k.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _VARIANTS: list[tuple[str, str, dict]] = [
-    # id  group  description                                            override
-    # ── Baseline ─────────────────────────────────────────────────────────────
-    ("0",  "Baseline — argparse defaults (lr=1e-4, bs=128, uf=100)",   {}),
-    # ── Group A: Learning Rate ────────────────────────────────────────────────
-    ("A",  "lr=2e-4  (avoid dead-zone plateau; untested)",             {"lr": 2e-4}),
-    # ── Group H: Env hardness (drift factor range) ───────────────────────────
-    ("H",  "mismatch=10.0  (3x less drift; easier env, isolate hardness)",
-                                                                       {"mismatch": 10.0}),
-    # ── Group B: Batch Size ───────────────────────────────────────────────────
-    ("B",  "bs=256  (key missing: lr=1e-4 × bs=256 × 500ep)",          {"batch_size": 256}),
-    ("B",  "lr=2e-4 × bs=256  (LR–BS interaction)",                    {"lr": 2e-4, "batch_size": 256}),
-    # ── Group D: Architecture (depth = n_layers = local_action_hops) ─────────
-    ("D",  "depth=2  (n_layers=2 × hops=2; matched receptive field)",
-           {"n_layers": 2, "local_action_hops": 2}),
-    ("D",  "hidden_dim=128  (capacity-reduction check)",               {"hidden_dim": 128}),
-    # ── Group I: Env × Training interaction ──────────────────────────────────
-    ("I",  "mismatch=10 × lr=2e-4  (env × LR; do tweaks compound with easier env?)",
-           {"mismatch": 10.0, "lr": 2e-4}),
-    # ── Group E: Action Scale ─────────────────────────────────────────────────
-    ("E",  "action_scale=3.0  (isolate the 3→5 change in ep45)",       {"action_scale": 3.0}),
-    # ── Group F: MLP Head Alternatives ───────────────────────────────────────
-    ("F",  "head: narrow  [H→H→1]  (shallower, fewer params)",         {"mlp_head": "narrow"}),
-    ("F",  "head: deep    [H→H→H/2→H/4→1]  (pyramidal)",               {"mlp_head": "deep"}),
-    ("F",  "head: wide    [H→4H→1]  (single fat expansion layer)",     {"mlp_head": "wide"}),
-    # ── Group I: Interactions (depth axis is always coupled) ─────────────────
-    ("I",  "lr=2e-4 × depth=2  (fast lr + deeper GCN)",
-           {"lr": 2e-4, "n_layers": 2, "local_action_hops": 2}),
-    ("I",  "bs=256 × depth=2  (large batch + deeper GCN)",
-           {"batch_size": 256, "n_layers": 2, "local_action_hops": 2}),
-    ("I",  "lr=2e-4 × bs=256 × depth=2  (max-aggressive combo)",
-           {"lr": 2e-4, "batch_size": 256, "n_layers": 2, "local_action_hops": 2}),
+    # id  group  description                                                  override
+    # ── A: minimal-Delta anchors (buffer=1M from base) ──────────────────────
+    ("A", "Anchor: run 65 recipe at M=10 (lr=5e-5 x bs=256 x buffer=1M)",
+        {}),
+    ("A", "M=30 anchor (literal run 65 reproduction: buffer=100k)",
+        {"mismatch": 30.0, "buffer_capacity": 100_000}),
+    ("A", "M=10 x train_episodes=800 (run 65 still climbing at ep 500)",
+        {"train_episodes": 800}),
+    ("A", "M=10 x train_episodes=1000 x n_shots=80k (max single-axis push)",
+        {"train_episodes": 1000, "n_shots": 80_000}),
+    ("A", "M=30 x train_episodes=800 (the missing 'run 65 + more eps' point)",
+        {"mismatch": 30.0, "train_episodes": 800}),
+    # ── B: decoupled alpha_lr (slower entropy decay) ─────────────────────────
+    ("B", "M=10 x alpha_lr=3e-5 (slow entropy decay)",
+        {"alpha_lr": 3e-5}),
+    ("B", "M=10 x alpha_lr=1e-5 (very slow entropy decay)",
+        {"alpha_lr": 1e-5}),
+    ("B", "M=10 x alpha=0.1 x alpha_lr=1e-5 (warm + slow-decay)",
+        {"alpha": 0.1, "alpha_lr": 1e-5}),
+    ("B", "M=30 x alpha_lr=3e-5 x eps=800 (does slow-alpha help hard env?)",
+        {"mismatch": 30.0, "alpha_lr": 3e-5, "train_episodes": 800}),
+    # ── C: small-buffer controls (isolate buffer=1M vs 100k contribution) ───
+    ("C", "M=10 x buffer=100k x eps=800 (small-buffer control for easy env)",
+        {"buffer_capacity": 100_000, "train_episodes": 800}),
+    ("C", "M=30 x buffer=100k x eps=800 (small-buffer control for hard env)",
+        {"mismatch": 30.0, "buffer_capacity": 100_000, "train_episodes": 800}),
+    # ── D: start_from_oracle revisited (buffer=1M from base) ────────────────
+    ("D", "M=10 x start_from_oracle=True x burn_in=0 x n_shots=50k",
+        {"start_from_oracle": True, "burn_in_steps": 0, "n_shots": 50_000}),
+    ("D", "M=10 x start_from_oracle x alpha_lr=1e-5 x burn_in=0 x n_shots=50k",
+        {"start_from_oracle": True, "burn_in_steps": 0, "n_shots": 50_000,
+         "alpha_lr": 1e-5}),
+    # ── E: endpoint_firing paired with other changes ─────────────────────────
+    ("E", "M=10 x endpoint_firing=True x alpha_lr=1e-5 (sharper critic + warm alpha)",
+        {"use_endpoint_firing": True, "alpha_lr": 1e-5}),
+    ("E", "M=30 x endpoint_firing=True x eps=800 (buffer=1M from base)",
+        {"mismatch": 30.0, "use_endpoint_firing": True, "train_episodes": 800}),
+    # ── F: all-in combos (highest expected value) ────────────────────────────
+    ("F", "M=10 ALL-IN: alpha_lr=1e-5 x alpha=0.05 x eps=1000 x n_shots=80k",
+        {"alpha": 0.05, "alpha_lr": 1e-5,
+         "train_episodes": 1000, "n_shots": 80_000}),
+    ("F", "M=30 ALL-IN: alpha_lr=3e-5 x eps=1000 x n_shots=80k",
+        {"mismatch": 30.0, "alpha_lr": 3e-5,
+         "train_episodes": 1000, "n_shots": 80_000}),
+    # ── G: physical p shift + MLP head tweak ─────────────────────────────────
+    ("G", "M=10 x p=0.006 x alpha_lr=1e-5 x eps=800 (more LER headroom)",
+        {"p": 0.006, "alpha_lr": 1e-5, "train_episodes": 800}),
+    ("G", "M=10 x wide head x lr=1e-4 (wide hourglass + safer lr)",
+        {"mlp_head": "wide", "lr": 1e-4}),
+    # ── H: high-volatility safety probe (slow everything) ────────────────────
+    ("H", "M=10 x lr=3e-5 x alpha_lr=1e-5 x eps=1000 x n_shots=80k (very slow)",
+        {"lr": 3e-5, "alpha_lr": 1e-5,
+         "train_episodes": 1000, "n_shots": 80_000}),
 ]
 
 
 def trial_presets() -> list[dict]:
-    """Return all 15 preset configurations as a list of dicts."""
+    """Return all preset configurations as a list of dicts."""
     base = base_trial_config()
     presets: list[dict] = []
     for preset_id, (group, description, override) in enumerate(_VARIANTS):
@@ -183,58 +197,79 @@ def preset_summary() -> None:
     """Print a human-readable table showing each preset and its diff from base."""
     presets = trial_presets()
     base = base_trial_config()
-    print(f"{'ID':>3}  {'Grp':>3}  {'Description':<55}  Changed vs baseline")
-    print("-" * 105)
+    print(f"{'ID':>3}  {'Grp':>3}  {'Description':<70}  Changed vs baseline")
+    print("-" * 130)
     for p in presets:
         changed = {k: p[k] for k in base if p[k] != base[k]}
         print(
-            f"{p['preset_id']:>3}  {p['group']:>3}  {p['description']:<55}  "
+            f"{p['preset_id']:>3}  {p['group']:>3}  {p['description']:<70}  "
             f"{changed if changed else '—'}"
         )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OPTUNA INTERFACE
+#
+# Every key the objective reads from suggest_run_config must appear here. New
+# categorical axes added in v2: alpha_lr, buffer_capacity, n_shots,
+# burn_in_steps, train_episodes, start_from_oracle, use_endpoint_firing, p.
+#
+# Constraint: n_layers and local_action_hops must always equal each other
+# (the depth axis). Kept at 1 in v2 since depth=2 was decisively worse last
+# time; both tuples are length-1 here.
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class OptunaSearchSpace:
-    """
-    Categorical search space derived from the manual grid (for Optuna).
-
-    Constraint: n_layers and local_action_hops must always be set to the
-    same value (the depth axis). Their tuples carry the same options here
-    so the Optuna sampler can be wired to suggest a single 'depth' index
-    and apply it to both keys.
-    """
-    hidden_dim:        tuple[int,   ...] = (128, 256)
-    n_layers:          tuple[int,   ...] = (1, 2)         # coupled with local_action_hops
-    lr:                tuple[float, ...] = (1e-4, 2e-4)
-    alpha:             tuple[float, ...] = (0.01,)
-    batch_size:        tuple[int,   ...] = (128, 256)
-    update_frequency:  tuple[int,   ...] = (100,)         # fixed — 500/1000 confirmed worse
-    local_action_hops: tuple[int,   ...] = (1, 2)         # coupled with n_layers
-    action_scale:      tuple[float, ...] = (3.0, 5.0)
-    target_entropy:    tuple[float, ...] = (-1.0,)
-    tau:               tuple[float, ...] = (0.005,)
-    mlp_head:          tuple[str,   ...] = ("standard", "narrow", "deep", "wide")
-    mismatch:          tuple[float, ...] = (10.0, 30.0)   # env drift factor range
+    # Architecture
+    hidden_dim:          tuple[int,   ...] = (256,)
+    n_layers:            tuple[int,   ...] = (1,)
+    local_action_hops:   tuple[int,   ...] = (1,)
+    mlp_head:            tuple[str,   ...] = ("standard", "wide")
+    # Optimization
+    lr:                  tuple[float, ...] = (3e-5, 5e-5, 1e-4)
+    alpha_lr:            tuple[float, ...] = (0.0, 1e-5, 3e-5)     # 0.0 ⇒ reuse actor lr
+    alpha:               tuple[float, ...] = (0.01, 0.05, 0.1)
+    batch_size:          tuple[int,   ...] = (256,)
+    update_frequency:    tuple[int,   ...] = (100,)
+    target_entropy:      tuple[float, ...] = (-1.0,)
+    tau:                 tuple[float, ...] = (0.005,)
+    # Action / env
+    action_scale:        tuple[float, ...] = (5.0,)
+    mismatch:            tuple[float, ...] = (10.0, 30.0)
+    p:                   tuple[float, ...] = (0.004, 0.006)
+    # Replay + schedule
+    buffer_capacity:     tuple[int,   ...] = (100_000, 1_000_000)
+    n_shots:             tuple[int,   ...] = (50_000, 65_000, 80_000)
+    burn_in_steps:       tuple[int,   ...] = (0, 15_000)
+    train_episodes:      tuple[int,   ...] = (500, 800, 1000)
+    # Env feature toggles
+    start_from_oracle:   tuple[bool,  ...] = (False, True)
+    use_endpoint_firing: tuple[bool,  ...] = (False, True)
 
 
 def optuna_categorical_choices() -> dict[str, list]:
     """Valid categorical domains for Optuna suggest_categorical calls."""
     space = OptunaSearchSpace()
     return {
-        "hidden_dim":        list(space.hidden_dim),
-        "n_layers":          list(space.n_layers),
-        "lr":                list(space.lr),
-        "alpha":             list(space.alpha),
-        "batch_size":        list(space.batch_size),
-        "update_frequency":  list(space.update_frequency),
-        "local_action_hops": list(space.local_action_hops),
-        "action_scale":      list(space.action_scale),
-        "target_entropy":    list(space.target_entropy),
-        "tau":               list(space.tau),
-        "mlp_head":          list(space.mlp_head),
-        "mismatch":          list(space.mismatch),
+        "hidden_dim":          list(space.hidden_dim),
+        "n_layers":            list(space.n_layers),
+        "local_action_hops":   list(space.local_action_hops),
+        "mlp_head":            list(space.mlp_head),
+        "lr":                  list(space.lr),
+        "alpha_lr":            list(space.alpha_lr),
+        "alpha":               list(space.alpha),
+        "batch_size":          list(space.batch_size),
+        "update_frequency":    list(space.update_frequency),
+        "target_entropy":      list(space.target_entropy),
+        "tau":                 list(space.tau),
+        "action_scale":        list(space.action_scale),
+        "mismatch":            list(space.mismatch),
+        "p":                   list(space.p),
+        "buffer_capacity":     list(space.buffer_capacity),
+        "n_shots":             list(space.n_shots),
+        "burn_in_steps":       list(space.burn_in_steps),
+        "train_episodes":      list(space.train_episodes),
+        "start_from_oracle":   list(space.start_from_oracle),
+        "use_endpoint_firing": list(space.use_endpoint_firing),
     }

@@ -18,7 +18,7 @@ if __name__ == "__main__":
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
         'MODE': 'train',  
-        'model_path': 'models/test.pth',
+        'model_path': 'models/qec_graph_optuna_run_d5_trial_0000_best.pth',
         
         # Environment Settings
         'distance': 5,
@@ -44,6 +44,7 @@ if __name__ == "__main__":
         # Agent / NN Settings
         'hidden_dim': 256,
         'lr': 1e-4,
+        'alpha_lr': None,       # If None, alpha optimizer reuses lr; set smaller (e.g. 1e-5) to slow entropy decay
         'gamma': 0.0,          # 0.0 for Contextual Bandit (Crucial for QEC!)
         'tau': 0.005,
         'alpha': 0.01,          # Entropy tuning
@@ -102,10 +103,11 @@ if __name__ == "__main__":
     
     # Init Agent
     agent = SACAgent(
-        node_dim=NODE_DIM, 
+        node_dim=NODE_DIM,
         hidden_dim=CONFIG['hidden_dim'],
         static_edge_index=env.line_edge_index,  # Pass the static edge index to the agent
         lr=CONFIG['lr'],
+        alpha_lr=CONFIG.get('alpha_lr', None),
         gamma=CONFIG['gamma'],
         tau=CONFIG['tau'],
         alpha=CONFIG['alpha'],

@@ -293,13 +293,13 @@ def main():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="models/sac_gnn_67_best.pth",
+        default="models/sac_gnn_69_best.pth",
         help="Path to fixed learned SAC-GNN policy.",
     )
     parser.add_argument(
         "--p-values",
         type=str,
-        default="0.001, 0.0008, 0.0006, 0.0004",
+        default="0.01, 0.008, 0.006, 0.004, 0.002, 0.001, 0.0008, 0.0006, 0.0004, 0.0002",
         help="Comma-separated physical error rates.",
     )
     
@@ -327,7 +327,7 @@ def main():
     parser.add_argument(
         "--start-from-oracle",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Seed each episode at drifted-oracle weights and disable CMA tracer alignment. Use --no-start-from-oracle to disable.",
     )
 

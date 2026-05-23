@@ -6,16 +6,19 @@ It handles hyperparameters, execution modes, and performance visualization.
 import time
 import numpy as np
 
+from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import *
+from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 
 
 def validate(env, agent, config):
     """Rigorous isolated validation loop (Pure CMA vs. GNN) with fixed seeds."""
     print(f"  [!] Running Isolated Validation (Pure CMA vs GNN)...")
-    
-    val_episodes = 3
-    # Use a fixed set of seeds so both policies face the exact same circuits
-    val_seeds = [10001, 10002, 10003] 
+
+    val_episodes = config.get('val_episodes', 10)
+    # Fixed deterministic seeds so both policies face identical circuits, and so
+    # the metric is comparable across training episodes and across Optuna trials.
+    val_seeds = [10001 + i for i in range(val_episodes)]
     
     val_burn_in = config.get('burn_in_steps', 15000)
     val_eval_shots = config.get('n_shots', 65000) - val_burn_in 
@@ -87,6 +90,126 @@ def validate(env, agent, config):
     print(f"  -> Relative Improvement: {relative_improvement * 100:.3f}%")
     
     return relative_improvement
+
+
+def evaluate_low_p_oracle(
+    agent,
+    config,
+    p_eval: float = 0.001,
+    mismatch_eval: float = 1.0,
+    n_eval_shots: int = 4_000_000,
+    shots_per_episode: int = 4_000_000,
+    seed: int = 20001,
+):
+    """Optuna-objective evaluation on a fresh env: low-p, no drift, oracle init.
+
+    Builds a brand-new DriftedMatchingEnv with `mismatch=mismatch_eval`,
+    `start_from_oracle=True` (which also disables the CMA tracer alignment),
+    `update_period` larger than the episode length (no in-episode updates), and
+    `train_mode=False`. Runs the trained `agent` together with the env's
+    built-in MWPM and correlated-matching baselines and reports per-policy LERs.
+
+    Returns a dict with `neural_ler`, `corr_ler`, `static_ler`, plus error
+    counts and the total number of shots evaluated.
+    """
+    print(
+        f"  [!] Running Optuna-target LER eval (p={p_eval}, "
+        f"mismatch={mismatch_eval}, oracle init, no alignment reweighting)..."
+    )
+
+    bypass_threshold = config.get("bypass_threshold", 2)
+    distance = config.get("distance", 5)
+    n_rounds = config.get("n_rounds", 5)
+    p_gate_zz = config.get("p_gate_zz", 0.0)
+    local_action_hops = config.get("local_action_hops", 1)
+    action_scale = config.get("action_scale", 5.0)
+    prior_shots = config.get("prior_shots", 1_000)
+    use_endpoint_firing = config.get("use_endpoint_firing", False)
+
+    n_episodes = max(1, (n_eval_shots + shots_per_episode - 1) // shots_per_episode)
+    frozen_update_period = shots_per_episode + 1  # ensure no in-episode tracker update
+
+    generator = SyndromeDataGenerator(
+        distance=distance,
+        n_rounds=n_rounds,
+        mismatch=mismatch_eval,
+        noise_model={
+            "version": "built-in",
+            "after_clifford_depolarization": p_eval,
+            "before_measure_flip_probability": p_eval,
+            "after_reset_flip_probability": p_eval,
+            "before_round_data_depolarization": p_eval,
+            "p_gate_zz": p_gate_zz,
+        },
+        memory_type="z",
+        n_shots=shots_per_episode,
+        qec_code="surface_code",
+    )
+
+    env = DriftedMatchingEnv(
+        syndrome_data_generator=generator,
+        local_action_only=True,
+        local_action_hops=local_action_hops,
+        action_scale=action_scale,
+        update_period=frozen_update_period,
+        prior_shots=prior_shots,
+        n_test_shots=0,
+        use_pearson_correlation=True,
+        use_syndrome_features=False,
+        use_endpoint_firing=use_endpoint_firing,
+        start_from_oracle=True,
+        update_with="DGR",
+        train_mode=False,
+    )
+
+    total_shots = 0
+    total_neural_errs = 0
+    total_corr_errs = 0
+    total_static_errs = 0
+
+    for ep_idx in range(n_episodes):
+        obs, _ = env.reset(seed=seed + ep_idx)
+        done = False
+        while not done:
+            n_flashes = int(np.sum(env.current_syndrome != 0))
+            if n_flashes <= bypass_threshold:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+            else:
+                action = agent.select_action(obs, evaluate=True)
+
+            next_obs, _, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+
+            true_obs = info["true_obs"]
+            total_neural_errs += int(info["pred_obs"] != true_obs)
+            total_static_errs += int(info["static_pred_obs"] != true_obs)
+            total_corr_errs += int(info["oracle_pred_obs"] != true_obs)
+
+            obs = next_obs
+            total_shots += 1
+
+    neural_ler = total_neural_errs / total_shots if total_shots else float("nan")
+    corr_ler = total_corr_errs / total_shots if total_shots else float("nan")
+    static_ler = total_static_errs / total_shots if total_shots else float("nan")
+
+    print(
+        f"  -> Eval shots: {total_shots:,} | "
+        f"Static {total_static_errs} ({static_ler:.3e}) | "
+        f"Corr {total_corr_errs} ({corr_ler:.3e}) | "
+        f"Neural {total_neural_errs} ({neural_ler:.3e})"
+    )
+
+    return {
+        "neural_ler": neural_ler,
+        "corr_ler": corr_ler,
+        "static_ler": static_ler,
+        "total_shots": total_shots,
+        "neural_errors": total_neural_errs,
+        "corr_errors": total_corr_errs,
+        "static_errors": total_static_errs,
+        "p_eval": p_eval,
+        "mismatch_eval": mismatch_eval,
+    }
 
 
 def train(env, agent, buffer, config):

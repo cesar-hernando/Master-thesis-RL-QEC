@@ -197,7 +197,8 @@ class GNNCritic(nn.Module):
 
 class SACAgent:
     def __init__(self, node_dim, hidden_dim, static_edge_index, n_layers=1, lr=1e-4,
-                 gamma=0.99, tau=0.005, alpha=0.2, target_entropy=-1.0, mlp_head="standard"):
+                 gamma=0.99, tau=0.005, alpha=0.2, target_entropy=-1.0, mlp_head="standard",
+                 alpha_lr=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.tau = tau
@@ -216,8 +217,11 @@ class SACAgent:
         else:
             self.critic_optimizer = Adam(self.critic1.parameters(), lr=lr)
 
+        # If alpha_lr is None, fall back to the actor lr (preserves prior behaviour).
+        effective_alpha_lr = lr if alpha_lr is None else alpha_lr
+        self.alpha_lr = effective_alpha_lr
         self.log_alpha = torch.tensor([np.log(alpha)], dtype=torch.float32, requires_grad=True, device=self.device)
-        self.alpha_optimizer = Adam([self.log_alpha], lr=lr)
+        self.alpha_optimizer = Adam([self.log_alpha], lr=effective_alpha_lr)
 
         if self.gamma > 0.0:
             self.target_critic1 = GNNCritic(node_dim, hidden_dim, n_layers=n_layers, mlp_head=mlp_head).to(self.device)
