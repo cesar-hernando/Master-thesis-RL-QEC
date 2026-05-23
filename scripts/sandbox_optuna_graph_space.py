@@ -115,17 +115,19 @@ def base_trial_config() -> dict:
 
 _VARIANTS: list[tuple[str, str, dict]] = [
     # id  group  description                                                  override
+    # NOTE: every preset trains for the same 500 episodes (base default).
+    # The only remaining "training compute" axis is n_shots per episode.
     # ── A: minimal-Delta anchors (buffer=1M from base) ──────────────────────
     ("A", "Anchor: run 65 recipe at M=10 (lr=5e-5 x bs=256 x buffer=1M)",
         {}),
     ("A", "M=30 anchor (literal run 65 reproduction: buffer=100k)",
         {"mismatch": 30.0, "buffer_capacity": 100_000}),
-    ("A", "M=10 x train_episodes=800 (run 65 still climbing at ep 500)",
-        {"train_episodes": 800}),
-    ("A", "M=10 x train_episodes=1000 x n_shots=80k (max single-axis push)",
-        {"train_episodes": 1000, "n_shots": 80_000}),
-    ("A", "M=30 x train_episodes=800 (the missing 'run 65 + more eps' point)",
-        {"mismatch": 30.0, "train_episodes": 800}),
+    ("A", "M=10 x alpha=0.1 (warm init only, default alpha decay)",
+        {"alpha": 0.1}),
+    ("A", "M=10 x n_shots=80k (more shots/episode at default lr)",
+        {"n_shots": 80_000}),
+    ("A", "M=30 (buffer=1M, 500 eps) — hard-env comparison to preset 0",
+        {"mismatch": 30.0}),
     # ── B: decoupled alpha_lr (slower entropy decay) ─────────────────────────
     ("B", "M=10 x alpha_lr=3e-5 (slow entropy decay)",
         {"alpha_lr": 3e-5}),
@@ -133,13 +135,13 @@ _VARIANTS: list[tuple[str, str, dict]] = [
         {"alpha_lr": 1e-5}),
     ("B", "M=10 x alpha=0.1 x alpha_lr=1e-5 (warm + slow-decay)",
         {"alpha": 0.1, "alpha_lr": 1e-5}),
-    ("B", "M=30 x alpha_lr=3e-5 x eps=800 (does slow-alpha help hard env?)",
-        {"mismatch": 30.0, "alpha_lr": 3e-5, "train_episodes": 800}),
-    # ── C: small-buffer controls (isolate buffer=1M vs 100k contribution) ───
-    ("C", "M=10 x buffer=100k x eps=800 (small-buffer control for easy env)",
-        {"buffer_capacity": 100_000, "train_episodes": 800}),
-    ("C", "M=30 x buffer=100k x eps=800 (small-buffer control for hard env)",
-        {"mismatch": 30.0, "buffer_capacity": 100_000, "train_episodes": 800}),
+    ("B", "M=30 x alpha_lr=3e-5 (does slow-alpha help hard env?)",
+        {"mismatch": 30.0, "alpha_lr": 3e-5}),
+    # ── C: small-buffer control (M=30 small-buffer is preset 1) ─────────────
+    ("C", "M=10 x buffer=100k (small-buffer control for easy env)",
+        {"buffer_capacity": 100_000}),
+    ("A", "M=30 x alpha=0.1 (warm init only at hard env; pairs with preset 2)",
+        {"mismatch": 30.0, "alpha": 0.1}),
     # ── D: start_from_oracle revisited (buffer=1M from base) ────────────────
     ("D", "M=10 x start_from_oracle=True x burn_in=0 x n_shots=50k",
         {"start_from_oracle": True, "burn_in_steps": 0, "n_shots": 50_000}),
@@ -149,24 +151,21 @@ _VARIANTS: list[tuple[str, str, dict]] = [
     # ── E: endpoint_firing paired with other changes ─────────────────────────
     ("E", "M=10 x endpoint_firing=True x alpha_lr=1e-5 (sharper critic + warm alpha)",
         {"use_endpoint_firing": True, "alpha_lr": 1e-5}),
-    ("E", "M=30 x endpoint_firing=True x eps=800 (buffer=1M from base)",
-        {"mismatch": 30.0, "use_endpoint_firing": True, "train_episodes": 800}),
+    ("E", "M=30 x endpoint_firing=True (buffer=1M from base)",
+        {"mismatch": 30.0, "use_endpoint_firing": True}),
     # ── F: all-in combos (highest expected value) ────────────────────────────
-    ("F", "M=10 ALL-IN: alpha_lr=1e-5 x alpha=0.05 x eps=1000 x n_shots=80k",
-        {"alpha": 0.05, "alpha_lr": 1e-5,
-         "train_episodes": 1000, "n_shots": 80_000}),
-    ("F", "M=30 ALL-IN: alpha_lr=3e-5 x eps=1000 x n_shots=80k",
-        {"mismatch": 30.0, "alpha_lr": 3e-5,
-         "train_episodes": 1000, "n_shots": 80_000}),
+    ("F", "M=10 ALL-IN: alpha_lr=1e-5 x alpha=0.05 x n_shots=80k",
+        {"alpha": 0.05, "alpha_lr": 1e-5, "n_shots": 80_000}),
+    ("F", "M=30 ALL-IN: alpha_lr=3e-5 x n_shots=80k",
+        {"mismatch": 30.0, "alpha_lr": 3e-5, "n_shots": 80_000}),
     # ── G: physical p shift + MLP head tweak ─────────────────────────────────
-    ("G", "M=10 x p=0.006 x alpha_lr=1e-5 x eps=800 (more LER headroom)",
-        {"p": 0.006, "alpha_lr": 1e-5, "train_episodes": 800}),
+    ("G", "M=10 x p=0.006 x alpha_lr=1e-5 (more LER headroom at higher p)",
+        {"p": 0.006, "alpha_lr": 1e-5}),
     ("G", "M=10 x wide head x lr=1e-4 (wide hourglass + safer lr)",
         {"mlp_head": "wide", "lr": 1e-4}),
     # ── H: high-volatility safety probe (slow everything) ────────────────────
-    ("H", "M=10 x lr=3e-5 x alpha_lr=1e-5 x eps=1000 x n_shots=80k (very slow)",
-        {"lr": 3e-5, "alpha_lr": 1e-5,
-         "train_episodes": 1000, "n_shots": 80_000}),
+    ("H", "M=10 x lr=3e-5 x alpha_lr=1e-5 x n_shots=80k (very slow learner)",
+        {"lr": 3e-5, "alpha_lr": 1e-5, "n_shots": 80_000}),
 ]
 
 
@@ -242,7 +241,7 @@ class OptunaSearchSpace:
     buffer_capacity:     tuple[int,   ...] = (100_000, 1_000_000)
     n_shots:             tuple[int,   ...] = (50_000, 65_000, 80_000)
     burn_in_steps:       tuple[int,   ...] = (0, 15_000)
-    train_episodes:      tuple[int,   ...] = (500, 800, 1000)
+    train_episodes:      tuple[int,   ...] = (500,)
     # Env feature toggles
     start_from_oracle:   tuple[bool,  ...] = (False, True)
     use_endpoint_firing: tuple[bool,  ...] = (False, True)
