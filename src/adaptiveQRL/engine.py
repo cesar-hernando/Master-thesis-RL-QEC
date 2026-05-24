@@ -274,15 +274,16 @@ def train(env, agent, buffer, config):
         avg_c_loss = np.mean(ep_c_loss) if ep_c_loss else 0.0
         avg_a_loss = np.mean(ep_a_loss) if ep_a_loss else 0.0
         
+        mse = info.get('weights_mse_error', float('nan'))
         metrics['rewards'].append(episode_reward)
         metrics['c_losses'].append(avg_c_loss)
         metrics['a_losses'].append(avg_a_loss)
-        metrics['mses'].append(info['weights_mse_error'])
+        metrics['mses'].append(mse)
         metrics['alphas'].append(agent.log_alpha.exp().item())
-            
+
         print(f"Train Ep: {episode+1:03d}/{config['train_episodes']} | "
               f"Reward: {episode_reward:6.1f} | "
-              f"MSE: {info['weights_mse_error']:.4f} | "
+              f"MSE: {mse:.4f} | "
               f"C_Loss: {avg_c_loss:.3f} | "
               f"A_Loss: {avg_a_loss:.3f} | "
               f"Alpha: {agent.log_alpha.exp().item():.4f}")
@@ -437,10 +438,10 @@ def test(env, agent, config):
                         ep_eval_static_errs += err_static # ADDED
 
                 if step_count >= burn_in_steps:
-                    ep_weights_mse_oracle.append(info["weights_mse_error"])
-                    ep_weights_mse_static.append(info["weights_mse_error_static"])
-                    ep_corr_mse_oracle.append(info["corr_mse_error"])
-                    ep_corr_mse_static.append(info["corr_mse_error_static"])
+                    ep_weights_mse_oracle.append(info.get("weights_mse_error", float('nan')))
+                    ep_weights_mse_static.append(info.get("weights_mse_error_static", float('nan')))
+                    ep_corr_mse_oracle.append(info.get("corr_mse_error", float('nan')))
+                    ep_corr_mse_static.append(info.get("corr_mse_error_static", float('nan')))
 
                 obs = next_obs
                 step_count += 1
