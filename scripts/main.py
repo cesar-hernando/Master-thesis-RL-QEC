@@ -17,7 +17,7 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'train',  
+        'MODE': 'test',  
         'model_path': 'models/qec_graph_optuna_run_d5_trial_0000_best.pth',
         
         # Environment Settings
@@ -25,10 +25,10 @@ if __name__ == "__main__":
         'n_rounds': 5,
         'p': 0.004,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
-        'mismatch': 30.0,
-        'n_shots': 65_000,       # Shots per episode
+        'mismatch': 10.0,
+        'n_shots': 100_000,       # Shots per episode
         'n_test_shots': 0,   # Shots for LER evaluation
-        'burn_in_steps': 15_000,
+        'burn_in_steps': 25_000,
         'bypass_threshold': 2,
         'action_scale': 5.0,
         'update_period': 1_000,  # CMA update frequency
@@ -36,7 +36,7 @@ if __name__ == "__main__":
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
         'use_pearson_correlation': True,
-        'use_endpoint_firing': True,  # Add [d1_fired, d2_fired, is_boundary] to node features
+        'use_endpoint_firing': False,  # Add [d1_fired, d2_fired, is_boundary] to node features
         'start_from_oracle': False,   # If True: seed each episode at oracle weights and disable CMA reweighting
         'use_log_joint_prob': False,  # Whether to use joint probabilities for CMA updates
         'n_layers': 1, # Number of GNN layers (affects receptive field size)

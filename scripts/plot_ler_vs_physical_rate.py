@@ -60,16 +60,25 @@ def make_env(
     local_action_hops: int,
     start_from_oracle: bool,
     use_endpoint_firing: bool,
+    burn_in_steps: int = 0,
+    mismatch: float = 1.0,
 ):
-    # Force "no updates" inside an episode chunk.
-    frozen_update_period = n_shots + 1
+    # Under drift (mismatch>1) with a burn-in phase AND CMA tracer enabled
+    # (start_from_oracle=False), let the env's update mechanism fire every 1000
+    # shots so the decoder can re-align during burn-in. If start_from_oracle is
+    # True the CMA path is disabled inside the env anyway, so keep the graph
+    # frozen and skip the meaningless periodic ticks.
+    if burn_in_steps > 0 and mismatch > 1.0 and not start_from_oracle:
+        update_period = 1000
+    else:
+        update_period = n_shots + 1
 
     return DriftedMatchingEnv(
         syndrome_data_generator=generator,
         local_action_only=True,
         local_action_hops=local_action_hops,
         action_scale=action_scale,
-        update_period=frozen_update_period,
+        update_period=update_period,
         prior_shots=1_000,
         n_test_shots=0,
         use_pearson_correlation=True,
@@ -77,38 +86,49 @@ def make_env(
         use_log_joint_prob=False,
         start_from_oracle=start_from_oracle,
         use_endpoint_firing=use_endpoint_firing,
-        update_with="DGR",
+        update_with="Spitz",
         train_mode=False,
     )
 
 
-def evaluate_one_episode(env: DriftedMatchingEnv, agent: SACAgent, seed: int, bypass_threshold: int):
+def evaluate_one_episode(env: DriftedMatchingEnv, agent: SACAgent, seed: int,
+                         bypass_threshold: int, burn_in_steps: int = 0):
     obs, _ = env.reset(seed=seed)
 
     done = False
     neural_errors = 0
     static_errors = 0
     corr_errors = 0
-    steps = 0
+    steps = 0          # counts only LER-evaluated shots (post burn-in)
+    burn_in_taken = 0
 
     while not done:
-        n_flashes = int(np.sum(env.current_syndrome != 0))
+        in_burn_in = burn_in_taken < burn_in_steps
 
-        if n_flashes <= bypass_threshold:
+        if in_burn_in:
+            # Pure observation phase: action is zero (lets the env's CMA/graph
+            # update mechanism calibrate without the agent perturbing).
             action = np.zeros(env.n_dec_edges, dtype=np.float32)
         else:
-            action = agent.select_action(obs, evaluate=True)
+            n_flashes = int(np.sum(env.current_syndrome != 0))
+            if n_flashes <= bypass_threshold:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+            else:
+                action = agent.select_action(obs, evaluate=True)
 
         next_obs, _, terminated, truncated, info = env.step(action)
         done = terminated or truncated
 
-        true_obs = info["true_obs"]
-        neural_errors += int(info["pred_obs"] != true_obs)
-        static_errors += int(info["static_pred_obs"] != true_obs)
-        corr_errors += int(info["oracle_pred_obs"] != true_obs)
+        if in_burn_in:
+            burn_in_taken += 1
+        else:
+            true_obs = info["true_obs"]
+            neural_errors += int(info["pred_obs"] != true_obs)
+            static_errors += int(info["static_pred_obs"] != true_obs)
+            corr_errors += int(info["oracle_pred_obs"] != true_obs)
+            steps += 1
 
         obs = next_obs
-        steps += 1
 
     return {
         "n_steps": steps,
@@ -143,7 +163,7 @@ def run_sweep(args):
             n_shots=args.chunk_shots,
             distance=args.distance,
             n_rounds=args.n_rounds,
-            mismatch=1.0,
+            mismatch=args.mismatch,
             p_gate_zz=args.p_gate_zz,
         )
         env = make_env(
@@ -153,6 +173,8 @@ def run_sweep(args):
             local_action_hops=args.local_action_hops,
             start_from_oracle=args.start_from_oracle,
             use_endpoint_firing=args.use_endpoint_firing,
+            burn_in_steps=args.burn_in_steps,
+            mismatch=args.mismatch,
         )
 
         sample_obs, _ = env.reset(seed=args.seed)
@@ -186,6 +208,7 @@ def run_sweep(args):
                 agent=agent,
                 seed=seed,
                 bypass_threshold=args.bypass_threshold,
+                burn_in_steps=args.burn_in_steps,
             )
             
             total_static_errs += out["static_errors"]
@@ -293,13 +316,13 @@ def main():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="models/sac_gnn_69_best.pth",
+        default="models/hyperparam_tun_v2/slowgpu_v2_qec_graph_optuna_run_d5_trial_0040_best.pth",
         help="Path to fixed learned SAC-GNN policy.",
     )
     parser.add_argument(
         "--p-values",
         type=str,
-        default="0.01, 0.008, 0.006, 0.004, 0.002, 0.001, 0.0008, 0.0006, 0.0004, 0.0002",
+        default="0.001, 0.0008, 0.0006",
         help="Comma-separated physical error rates.",
     )
     
@@ -316,6 +339,19 @@ def main():
     parser.add_argument("--action-scale", type=float, default=5.0)
     parser.add_argument("--bypass-threshold", type=int, default=2)
     parser.add_argument("--local-action-hops", type=int, default=1)
+
+    # Drift + burn-in
+    parser.add_argument(
+        "--mismatch", type=float, default=10.0,
+        help="Log-uniform drift factor M (per-edge noise prob scaled in [1/M, M]). "
+             "1.0 disables drift.",
+    )
+    parser.add_argument(
+        "--burn-in-steps", type=int, default=0,
+        help="Pre-evaluation shots run with zero action; not counted in LER. "
+             "If >0 AND --mismatch>1, the env's update_period switches from frozen "
+             "to 1000 so CMA-driven graph alignment fires during burn-in.",
+    )
 
     # Env feature toggles (must match how the loaded model was trained)
     parser.add_argument(
@@ -336,8 +372,8 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--alpha", type=float, default=0.01)
 
-    parser.add_argument("--out-png", type=str, default="plots/ler_vs_p_mwpm_corr_neural.png")
-    parser.add_argument("--out-csv", type=str, default="data/ler_vs_p_mwpm_corr_neural.csv")
+    parser.add_argument("--out-png", type=str, default="plots/ler_vs_p_slowgpu_v2_qec_graph_optuna_run_d7_trial_0040_best.png")
+    parser.add_argument("--out-csv", type=str, default="data/ler_vs_p_slowgpu_v2_qec_graph_optuna_run_d7_trial_0040_best.csv")
 
     args = parser.parse_args()
 

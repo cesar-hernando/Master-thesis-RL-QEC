@@ -12,7 +12,7 @@ from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
 
 
-n_shots = 65_000
+n_shots = 200_000
 verbose = False
 
 # Setup the physical simulation
@@ -42,11 +42,11 @@ env = DriftedMatchingEnv(
     local_action_hops=1,
     action_scale = 3.0,
     update_period=update_period,
-    prior_shots=1,
+    prior_shots=1000,
     n_test_shots=100_000,
     use_pearson_correlation=True,
-    use_syndrome_features=True,
-    update_with='Spitz',
+    use_syndrome_features=False,
+    update_with='DGR',
     train_mode=False
 )
 end_env_time = time.time()
@@ -171,7 +171,7 @@ plt.grid(True, which="both", ls="--") # Added dashed grid for semilogy readabili
 plt.legend()
 plt.show()
 
-#env.render()
+env.render()
 
 # 1. Reward evolution
 plt.figure()
