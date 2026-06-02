@@ -60,7 +60,7 @@ class _DemBackedGenerator(SyndromeDataGenerator):
 
 
 class NeuralCorrelatedMatching:
-    """SAC-GNN policy on top of two-pass MWPM. BeliefMatching-style API."""
+    """SAC-GNN policy on top of two-pass MWPM."""
 
     def __init__(self, dem, model_path, hidden_dim=256, n_layers=1, alpha=0.01,
                  action_scale=5.0, bypass_threshold=2, local_action_hops=1,
