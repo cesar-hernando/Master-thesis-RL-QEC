@@ -49,13 +49,13 @@ from dataclasses import dataclass
 #  n_shots           = 50_000      (fixed; the oracle-precedent episode length)
 #  batch_size        = 256         (unlocks lr=5e-5, the run65 champion recipe)
 #  hidden_dim=256, mlp_head="standard", n_layers=1, local_action_hops=1
-#  alpha=0.01 (usual init), alpha_lr=0.0 (reuse actor lr — decoupling is broken)
+#  alpha=0.01 (usual init)         ; alpha_lr is now a varied axis (below)
 #  use_endpoint_firing = False     (always hurt)
 #  burn_in_steps = 0               (oracle init ⇒ no random burn-in needed)
 #  target_entropy=-1.0, tau=0.005, action_scale=5.0, update_frequency=100
 #  train_episodes = 700            (run65 still climbing at 500)
 #
-#  VARIED AXES (2 × 2 × 2 = 8 presets):
+#  VARIED AXES (2 × 2 × 2 × 2 = 16 presets):
 #    lr              ∈ {5e-5, 1e-4}
 #    edge_feature    ∈ {"pearson", "joint_prob"}   ← NEW: correlation-graph edge
 #                      encoding. "pearson"   = use_pearson_correlation=True,
@@ -70,6 +70,14 @@ from dataclasses import dataclass
 #    buffer_capacity ∈ {500_000, 1_000_000}   ← oracle needed >100k (run69 6.78%
 #                      vs run67 5.35%); 1M was the prior default. Probe whether
 #                      500k already captures the gain (cheaper / less stale).
+#    alpha_lr        ∈ {0.0, 3e-5}   0.0 = reuse actor lr (fast entropy decay,
+#                      the round-2 winner); 3e-5 = decoupled slow entropy decay,
+#                      as in v2 run8. Caveat from prior analysis: at 500 eps
+#                      slow-alpha was worse AND slower (v2 run8 6.21% < run4
+#                      6.83% at M=30; every M=10 alpha_lr>0 preset failed to
+#                      cross the reward gate). BUT run8 was still climbing at
+#                      ep 500 → retested fairly here at 700 eps + oracle init,
+#                      where the late-bloomer has room to catch up.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def base_trial_config() -> dict:
@@ -112,31 +120,53 @@ def base_trial_config() -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PRESET TABLE  (8 configs, IDs 0–7)
+# PRESET TABLE  (16 configs, IDs 0–15)
 #
 # Each preset lists ONLY the keys that differ from base. Full
-# lr × edge_feature × buffer_capacity factorial at the fixed hard-env / low-p /
-# 50k-shot operating point. Base = lr=5e-5, Pearson, buffer=1M.
+# lr × edge_feature × buffer_capacity × alpha_lr factorial at the fixed
+# hard-env / p=0.004 / 50k-shot operating point. Base = lr=5e-5, Pearson,
+# buffer=1M, alpha_lr=0.0.
+#
+# Layout: IDs 0-7 = alpha_lr=0.0 (fast decay); IDs 8-15 = alpha_lr=3e-5 mirror
+# of the same 8 combos (slow decay, v2 run8 style).
 # ─────────────────────────────────────────────────────────────────────────────
 
 _VARIANTS: list[tuple[str, str, dict]] = [
     # id  group  description                                                  override
-    ("A", "lr=5e-5 x Pearson    x buf=1M   (base; M=30, p=0.004, ns=50k, oracle, bs256, 700 eps)",
+    # ── IDs 0-7: alpha_lr=0.0 (fast entropy decay) ─────────────────────────
+    ("A", "lr=5e-5 x Pearson    x buf=1M   x alpha_lr=0   (base; M=30, p=0.004, ns=50k, oracle, bs256, 700 eps)",
         {}),
-    ("A", "lr=5e-5 x Pearson    x buf=500k",
+    ("A", "lr=5e-5 x Pearson    x buf=500k x alpha_lr=0",
         {"buffer_capacity": 500_000}),
-    ("A", "lr=5e-5 x joint_prob x buf=1M",
+    ("A", "lr=5e-5 x joint_prob x buf=1M   x alpha_lr=0",
         {"edge_feature": "joint_prob"}),
-    ("A", "lr=5e-5 x joint_prob x buf=500k",
+    ("A", "lr=5e-5 x joint_prob x buf=500k x alpha_lr=0",
         {"edge_feature": "joint_prob", "buffer_capacity": 500_000}),
-    ("A", "lr=1e-4 x Pearson    x buf=1M",
+    ("A", "lr=1e-4 x Pearson    x buf=1M   x alpha_lr=0",
         {"lr": 1e-4}),
-    ("A", "lr=1e-4 x Pearson    x buf=500k",
+    ("A", "lr=1e-4 x Pearson    x buf=500k x alpha_lr=0",
         {"lr": 1e-4, "buffer_capacity": 500_000}),
-    ("A", "lr=1e-4 x joint_prob x buf=1M",
+    ("A", "lr=1e-4 x joint_prob x buf=1M   x alpha_lr=0",
         {"lr": 1e-4, "edge_feature": "joint_prob"}),
-    ("A", "lr=1e-4 x joint_prob x buf=500k",
+    ("A", "lr=1e-4 x joint_prob x buf=500k x alpha_lr=0",
         {"lr": 1e-4, "edge_feature": "joint_prob", "buffer_capacity": 500_000}),
+    # ── IDs 8-15: alpha_lr=3e-5 (slow entropy decay, v2 run8 style) ─────────
+    ("B", "lr=5e-5 x Pearson    x buf=1M   x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5}),
+    ("B", "lr=5e-5 x Pearson    x buf=500k x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "buffer_capacity": 500_000}),
+    ("B", "lr=5e-5 x joint_prob x buf=1M   x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "edge_feature": "joint_prob"}),
+    ("B", "lr=5e-5 x joint_prob x buf=500k x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "edge_feature": "joint_prob", "buffer_capacity": 500_000}),
+    ("B", "lr=1e-4 x Pearson    x buf=1M   x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "lr": 1e-4}),
+    ("B", "lr=1e-4 x Pearson    x buf=500k x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "lr": 1e-4, "buffer_capacity": 500_000}),
+    ("B", "lr=1e-4 x joint_prob x buf=1M   x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "lr": 1e-4, "edge_feature": "joint_prob"}),
+    ("B", "lr=1e-4 x joint_prob x buf=500k x alpha_lr=3e-5",
+        {"alpha_lr": 3e-5, "lr": 1e-4, "edge_feature": "joint_prob", "buffer_capacity": 500_000}),
 ]
 
 
@@ -200,7 +230,7 @@ class OptunaSearchSpace:
     mlp_head:            tuple[str,   ...] = ("standard",)
     # Optimization
     lr:                  tuple[float, ...] = (5e-5, 1e-4)
-    alpha_lr:            tuple[float, ...] = (0.0,)              # 0.0 ⇒ reuse actor lr
+    alpha_lr:            tuple[float, ...] = (0.0, 3e-5)         # 0.0 ⇒ reuse actor lr
     alpha:               tuple[float, ...] = (0.01,)
     batch_size:          tuple[int,   ...] = (256,)
     update_frequency:    tuple[int,   ...] = (100,)
