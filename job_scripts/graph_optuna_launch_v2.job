@@ -1,0 +1,78 @@
+#!/bin/bash
+#SBATCH --job-name=optuna_array
+#SBATCH --partition=gpu-l4-24g
+#SBATCH --time=1-12:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --gres=gpu:1
+#SBATCH --array=0-15
+#SBATCH --output=slurm_logs/run_optuna_%A_%a.out
+#SBATCH --error=slurm_logs/run_optuna_%A_%a.err
+
+set -euo pipefail
+
+echo "Job started at: $(date)"
+
+# Load your specific environment modules
+module load Python/3.11.5-GCCcore-13.2.0
+
+# Activate your virtual environment
+source cluster_venv/bin/activate
+
+# Threading optimizations for your CPU allocation
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Ensure the slurm_logs directory exists
+mkdir -p slurm_logs
+
+# --- Search configuration -----------------------------------------------------
+# Per-preset axes (mismatch, p, n_shots, burn_in_steps, train_episodes,
+# buffer_capacity, alpha_lr, start_from_oracle, use_endpoint_firing, …)
+# are now driven by sandbox_optuna_graph_space.py — NOT by CLI flags here.
+# The remaining CLI flags below are settings that are constant for the
+# whole v2 study (env geometry, decoder config, contextual-bandit gamma).
+SEED=0
+STUDY_NAME="qec_graph_optuna_run_d5_r5_v3"
+RESULTS_DIR="$PWD/models/optuna_results"
+MODELS_ROOT="$PWD/models/optuna"
+STUDY_DB="$RESULTS_DIR/${STUDY_NAME}.sqlite3"
+STORAGE_URI="sqlite:///$STUDY_DB"
+TRIAL_PRESET_ID="${SLURM_ARRAY_TASK_ID}"
+SAMPLER_SEED=$((SEED + TRIAL_PRESET_ID))
+
+mkdir -p "$RESULTS_DIR" "$MODELS_ROOT"
+
+ARGS=(
+  --study-name "$STUDY_NAME"
+  --storage "$STORAGE_URI"
+  --results-dir "$RESULTS_DIR"
+  --model-dir "$MODELS_ROOT"
+  --seed "$SEED"
+  --sampler-seed "$SAMPLER_SEED"
+  --trial-preset-id "$TRIAL_PRESET_ID"
+  --n-trials 1
+  --sampler random
+  --skip-if-completed
+  --distance 5
+  --n-rounds 5
+  --p-gate-zz 0.0
+  --n-test-shots 0
+  --bypass-threshold 2
+  --update-period 1000
+  --prior-shots 1000
+  --local-action-only
+  --gamma 0.0
+  --tau 0.005
+)
+
+echo "Running Optuna graph search array task ${SLURM_ARRAY_TASK_ID}"
+echo "Study=${STUDY_NAME}, preset_id=${TRIAL_PRESET_ID}, sampler_seed=${SAMPLER_SEED}"
+echo "Storage=${STORAGE_URI}"
+echo "Command: python -u scripts/optuna_graph_search.py ${ARGS[*]}"
+
+python -u scripts/optuna_graph_search.py "${ARGS[@]}"
+
+echo "Job finished at: $(date)"
