@@ -4,59 +4,79 @@ from dataclasses import dataclass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# REFERENCE BASELINE (v2 study: qec_graph_optuna_run_d5_r5_v2)
+# ROUND 3 SEARCH SPACE  (study: qec_graph_optuna_run_d5_r5_v3)
 #
-# Anchor model: run 65 (best M=30 long run to date, 7.545% best validation,
-# 6.817% final ep-500 validation, 22.5 h wall) — config: lr=5e-5, bs=256,
-# hd=256, n_layers=1, action_scale=5, burn_in=15k, n_shots=65k, train_eps=500,
-# buffer=100k, alpha_init=0.01, target_entropy=-1.0, mismatch=30, p=0.004.
+# Goal of this round: pin down the best (lr × edge-feature) recipe for the
+# ORACLE-INITIALISED setup, run long enough (700 eps) to let the slow lr=5e-5
+# learner finish its climb, and — for the first time — compare the two
+# correlation-graph edge-feature encodings (Pearson vs log-joint-prob).
 #
-# The base config below mirrors the run 65 recipe so that every preset's diff
-# is small and causally interpretable.
+# ── EVIDENCE THIS ROUND IS BUILT ON ─────────────────────────────────────────
+# (validation = best "Relative Improvement vs pure CMA"; M=10 is the easy env,
+#  M=30 the hard benchmark)
 #
-# KEY LESSONS FROM PRIOR SWEEPS (kept; do NOT re-test here)
-# ─────────────────────────────────────────────────────────
-#  • lr=1e-5  → complete failure (model 62)
-#  • lr=5e-5  → run 65: 7.55% best, still climbing at ep 500 → needs more eps
-#  • lr=1e-4  → run 64: 6.91% best (safe but lower ceiling than 5e-5+bs256)
-#  • bs=64    → consistently worse → dropped
-#  • bs=256   → unlocks lr=5e-5 → kept as default
-#  • n_layers=2 / depth=2  → collapsed to ~0 in prior Optuna → dropped
-#  • mlp_head deep / wide / narrow ≈ standard in prior Optuna → standard is default
-#  • target_entropy ≠ -1.0 → -2.0 catastrophic, -0.5 noisy → kept at -1.0
-#  • tau ≠ 0.005 (single critic at gamma=0) → not useful → kept
-#  • update_frequency ∈ {500, 1000} → worse than 100 → kept at 100
-#  • action_scale=3.0 (model 45 era) → worse than 5.0 → kept
-#  • use_endpoint_firing=True (run 66/68/70) → lower critic MSE but no LER win,
-#    sometimes catastrophic late collapse → probed sparingly here (2 slots)
-#  • start_from_oracle=True (run 67/68/69/70) → wash at M=30, untested at M=10
-#    → probed at M=10 (2 slots) + 1 at M=30 with new combo
-#  • buffer_capacity=1M helped the no-s-feat oracle setup (run 69 ≈ run 64)
-#    → adopted as the v2 DEFAULT (base config). 100k retained only as a
-#      control in group C to confirm the 1M default is actually load-bearing.
+#  Round-1 Optuna (qec_graph_optuna_run_d5, 500 eps, bs=128, buffer=100k):
+#    • M=30: lr=1e-4 best (T00 6.74%); lr=2e-4 worse (5.82%); bs=256 worse at
+#      1e-4 (T03 5.92%); action_scale=3≈5; mlp_head standard ≥ narrow/deep/wide;
+#      hidden_dim=128 worse; n_layers=2 / hops=2 COLLAPSE (~0).
+#    • M=10: ~12% (T02 12.14% at lr=1e-4) — easy env gives ~2× the signal.
 #
-# NEW LEVERS FIRST TIME IN THE SEARCH SPACE
-# ─────────────────────────────────────────
-#  • alpha_lr (separate LR for the entropy temperature optimizer): default
-#    None means "reuse actor lr" (backward compatible). Values 1e-5 / 3e-5
-#    keep entropy bonus alive into late training — directly motivated by
-#    the alpha-collapse seen by ep ~100 in every prior training plot.
-#  • Higher initial alpha (0.05, 0.1) combined with small alpha_lr → "warm
-#    + slow-decay" entropy schedule.
-#  • Longer training (train_episodes=800, 1000) at lr=5e-5 → run 65 was
-#    still climbing at ep 500; the highest-confidence simple move.
-#  • Mid p=0.006 → headroom over MWPM is larger at higher physical rate
-#    (cf. ler_vs_p_mwpm_corr_neural_static figure: 4.08e-3 → 2.12e-3 = 48%
-#    gap at p=0.006 vs 49% at p=0.004 → similar gap, easier signal).
-#  • mismatch=10 is the strongest single lever from the previous Optuna
-#    (0.121 vs 0.05 at M=30) — most new presets sit at M=10.
+#  60-70 standalone long runs (M=30, 500 eps, Pearson features):
+#    • run65  lr=5e-5 bs=256 te=-1 buffer=100k → 7.55% (BEST M=30, still
+#      climbing at ep 500 → motivates 700 eps).
+#    • run64  lr=1e-4 bs=128 → 6.91%.   run63 lr=5e-5 bs=128 → 5.50%.
+#    • run62  lr=1e-5 → total failure.   te=-0.5 (run60/61) worse than -1.
+#    • ORACLE: run69 (oracle, buffer=1M, no s-feat) → 6.78% ≈ run64, BUT
+#      run67 (oracle, buffer=100k) → 5.35%. ⇒ with oracle, buffer=1M >> 100k.
+#    • endpoint_firing=True ALWAYS hurt (run66/68/70 < their no-endpoint twins).
+#
+#  Round-2 Optuna (qec_graph_optuna_run_d5_vv2, 500 eps, bs=256, buffer=1M):
+#    • Best M=30: preset 4 (lr=5e-5, alpha_lr=0) → 6.83%.  Best M=10: preset
+#      18 (lr=1e-4) → 11.93%, preset 9 → 11.66%, preset 11 (oracle) → 11.42%.
+#    • alpha_lr ≠ 0 (decoupled slow-entropy) → BROKEN: every M=10 alpha_lr>0
+#      preset (5,6,7,12,15,17,19) failed to even cross the reward gate, and at
+#      M=30 it was slower + lower (preset 8 6.21% < preset 4 6.83%). ⇒ DROPPED.
+#    • alpha=0.1 warm-init → worse (preset 10 5.47% < 4; preset 2 failed).
+#    • use_endpoint_firing=True → worst M=30 (preset 14 3.78%). ⇒ DROPPED.
+#
+# ── DECISIONS FOR ROUND 3 (all fixed unless listed as a varied axis) ────────
+#  start_from_oracle = True   (user requirement; also makes reward cross the
+#                              ep-gate early → avoids the round-2 "never
+#                              validated" failures, since oracle init starts
+#                              the policy near a high-reward regime)
+#  mismatch          = 30.0        (hard benchmark; fixed for the whole round)
+#  p                 = 4e-3        (0.004 — the standard rate used in rounds 1-2)
+#  n_shots           = 50_000      (fixed; the oracle-precedent episode length)
+#  batch_size        = 256         (unlocks lr=5e-5, the run65 champion recipe)
+#  hidden_dim=256, mlp_head="standard", n_layers=1, local_action_hops=1
+#  alpha=0.01 (usual init), alpha_lr=0.0 (reuse actor lr — decoupling is broken)
+#  use_endpoint_firing = False     (always hurt)
+#  burn_in_steps = 0               (oracle init ⇒ no random burn-in needed)
+#  target_entropy=-1.0, tau=0.005, action_scale=5.0, update_frequency=100
+#  train_episodes = 700            (run65 still climbing at 500)
+#
+#  VARIED AXES (2 × 2 × 2 = 8 presets):
+#    lr              ∈ {5e-5, 1e-4}
+#    edge_feature    ∈ {"pearson", "joint_prob"}   ← NEW: correlation-graph edge
+#                      encoding. "pearson"   = use_pearson_correlation=True,
+#                      use_log_joint_prob=False (everything so far); "joint_prob"
+#                      = use_pearson_correlation=False, use_log_joint_prob=True
+#                      (UNTESTED — first look at the log-joint-prob encoding).
+#                      NB: a fair pearson-vs-joint_prob comparison under
+#                      start_from_oracle requires the env to seed the co-occurrence
+#                      tracer at the drifted-oracle joint probs (fixed in
+#                      drifted_matching_env.reset()); otherwise the joint_prob arm
+#                      silently sees stale, non-drifted base-DEM values.
+#    buffer_capacity ∈ {500_000, 1_000_000}   ← oracle needed >100k (run69 6.78%
+#                      vs run67 5.35%); 1M was the prior default. Probe whether
+#                      500k already captures the gain (cheaper / less stale).
 # ─────────────────────────────────────────────────────────────────────────────
 
 def base_trial_config() -> dict:
     """
-    Reference configuration (preset 0 — replicates run 65 with one change:
-    mismatch=10 instead of 30, since M=10 was the strongest lever found in
-    the previous Optuna study).
+    Reference configuration for round 3 (preset 0): the oracle-initialised,
+    buffer=1M, bs=256, lr=5e-5 recipe at the hard env (M=30), p=0.004,
+    Pearson edge features, n_shots=50k, trained for 700 episodes.
     """
     return {
         # Architecture
@@ -65,107 +85,58 @@ def base_trial_config() -> dict:
         "mlp_head":            "standard",
         # Policy / critic optimization
         "lr":                  5e-5,
-        "alpha_lr":            0.0,         # 0.0 ⇒ reuse actor lr (Optuna-friendly sentinel)
+        "alpha_lr":            0.0,         # 0.0 ⇒ reuse actor lr (decoupling broken)
         "batch_size":          256,
         "update_frequency":    100,
         "target_entropy":      -1.0,
         # SAC dynamics
-        "alpha":               0.01,
+        "alpha":               0.01,        # usual initial entropy temperature
         "tau":                 0.005,
         # Action
         "action_scale":        5.0,
         "local_action_hops":   1,
-        # Environment
-        "mismatch":            10.0,        # easy env (best lever from prior study)
+        # Environment  (mismatch / p / n_shots fixed for the whole round)
+        "mismatch":            30.0,
         "p":                   0.004,
+        "edge_feature":        "pearson",   # "pearson" | "joint_prob"
         # Replay
-        "buffer_capacity":     1_000_000,   # new v2 default (run 69 showed 1M >= 100k, more stable)
+        "buffer_capacity":     1_000_000,
         # Schedule
-        "n_shots":             65_000,
-        "burn_in_steps":       15_000,
-        "train_episodes":      500,
+        "n_shots":             50_000,
+        "burn_in_steps":       0,           # oracle init ⇒ no burn-in
+        "train_episodes":      700,
         # Env feature toggles
-        "start_from_oracle":   False,
+        "start_from_oracle":   True,
         "use_endpoint_firing": False,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PRESET TABLE  (20 configs, IDs 0–19)
+# PRESET TABLE  (8 configs, IDs 0–7)
 #
-# Each preset lists ONLY the keys that differ from base. One axis per slot
-# unless tagged as a combo. Combos are kept to the few high-expected-value
-# crosses of axes that look promising independently.
-#
-# Design rationale per group
-# ──────────────────────────
-#  A   anchor / minimal-Δ slots that move only mismatch, p, or training
-#      length — give us a clean control bar for everything else.
-#  B   alpha_lr slots (warm + slow-decay) at both M=10 and M=30.
-#  C   buffer=100k controls (since 1M is now the default, these isolate
-#      whether the 1M default actually helps vs the historical 100k value).
-#  D   start_from_oracle revisits at M=10 (untested) + a combo at M=30.
-#  E   use_endpoint_firing sparingly (2 slots) — only paired with other
-#      changes since previous runs (66/68/70) showed it doesn't win alone.
-#  F   "All-in" combinations: the cumulative best of axes B + schedule.
-#  G   one architectural variant: a "wide" MLP head paired with the higher
-#      lr — head shape was a near-wash last time but combos may differ.
-#  H   very-slow probe: lr=3e-5 + alpha_lr=1e-5 + eps=1000 + n_shots=80k.
+# Each preset lists ONLY the keys that differ from base. Full
+# lr × edge_feature × buffer_capacity factorial at the fixed hard-env / low-p /
+# 50k-shot operating point. Base = lr=5e-5, Pearson, buffer=1M.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _VARIANTS: list[tuple[str, str, dict]] = [
     # id  group  description                                                  override
-    # NOTE: every preset trains for the same 500 episodes (base default).
-    # The only remaining "training compute" axis is n_shots per episode.
-    # ── A: minimal-Delta anchors (buffer=1M from base) ──────────────────────
-    ("A", "Anchor: run 65 recipe at M=10 (lr=5e-5 x bs=256 x buffer=1M)",
+    ("A", "lr=5e-5 x Pearson    x buf=1M   (base; M=30, p=0.004, ns=50k, oracle, bs256, 700 eps)",
         {}),
-    ("A", "M=30 anchor (literal run 65 reproduction: buffer=100k)",
-        {"mismatch": 30.0, "buffer_capacity": 100_000}),
-    ("A", "M=10 x alpha=0.1 (warm init only, default alpha decay)",
-        {"alpha": 0.1}),
-    ("A", "M=10 x n_shots=80k (more shots/episode at default lr)",
-        {"n_shots": 80_000}),
-    ("A", "M=30 (buffer=1M, 500 eps) — hard-env comparison to preset 0",
-        {"mismatch": 30.0}),
-    # ── B: decoupled alpha_lr (slower entropy decay) ─────────────────────────
-    ("B", "M=10 x alpha_lr=3e-5 (slow entropy decay)",
-        {"alpha_lr": 3e-5}),
-    ("B", "M=10 x alpha_lr=1e-5 (very slow entropy decay)",
-        {"alpha_lr": 1e-5}),
-    ("B", "M=10 x alpha=0.1 x alpha_lr=1e-5 (warm + slow-decay)",
-        {"alpha": 0.1, "alpha_lr": 1e-5}),
-    ("B", "M=30 x alpha_lr=3e-5 (does slow-alpha help hard env?)",
-        {"mismatch": 30.0, "alpha_lr": 3e-5}),
-    # ── C: small-buffer control (M=30 small-buffer is preset 1) ─────────────
-    ("C", "M=10 x buffer=100k (small-buffer control for easy env)",
-        {"buffer_capacity": 100_000}),
-    ("A", "M=30 x alpha=0.1 (warm init only at hard env; pairs with preset 2)",
-        {"mismatch": 30.0, "alpha": 0.1}),
-    # ── D: start_from_oracle revisited (buffer=1M from base) ────────────────
-    ("D", "M=10 x start_from_oracle=True x burn_in=0 x n_shots=50k",
-        {"start_from_oracle": True, "burn_in_steps": 0, "n_shots": 50_000}),
-    ("D", "M=10 x start_from_oracle x alpha_lr=1e-5 x burn_in=0 x n_shots=50k",
-        {"start_from_oracle": True, "burn_in_steps": 0, "n_shots": 50_000,
-         "alpha_lr": 1e-5}),
-    # ── E: endpoint_firing paired with other changes ─────────────────────────
-    ("E", "M=10 x endpoint_firing=True x alpha_lr=1e-5 (sharper critic + warm alpha)",
-        {"use_endpoint_firing": True, "alpha_lr": 1e-5}),
-    ("E", "M=30 x endpoint_firing=True (buffer=1M from base)",
-        {"mismatch": 30.0, "use_endpoint_firing": True}),
-    # ── F: all-in combos (highest expected value) ────────────────────────────
-    ("F", "M=10 ALL-IN: alpha_lr=1e-5 x alpha=0.05 x n_shots=80k",
-        {"alpha": 0.05, "alpha_lr": 1e-5, "n_shots": 80_000}),
-    ("F", "M=30 ALL-IN: alpha_lr=3e-5 x n_shots=80k",
-        {"mismatch": 30.0, "alpha_lr": 3e-5, "n_shots": 80_000}),
-    # ── G: physical p shift + MLP head tweak ─────────────────────────────────
-    ("G", "M=10 x p=0.006 x alpha_lr=1e-5 (more LER headroom at higher p)",
-        {"p": 0.006, "alpha_lr": 1e-5}),
-    ("G", "M=10 x wide head x lr=1e-4 (wide hourglass + safer lr)",
-        {"mlp_head": "wide", "lr": 1e-4}),
-    # ── H: high-volatility safety probe (slow everything) ────────────────────
-    ("H", "M=10 x lr=3e-5 x alpha_lr=1e-5 x n_shots=80k (very slow learner)",
-        {"lr": 3e-5, "alpha_lr": 1e-5, "n_shots": 80_000}),
+    ("A", "lr=5e-5 x Pearson    x buf=500k",
+        {"buffer_capacity": 500_000}),
+    ("A", "lr=5e-5 x joint_prob x buf=1M",
+        {"edge_feature": "joint_prob"}),
+    ("A", "lr=5e-5 x joint_prob x buf=500k",
+        {"edge_feature": "joint_prob", "buffer_capacity": 500_000}),
+    ("A", "lr=1e-4 x Pearson    x buf=1M",
+        {"lr": 1e-4}),
+    ("A", "lr=1e-4 x Pearson    x buf=500k",
+        {"lr": 1e-4, "buffer_capacity": 500_000}),
+    ("A", "lr=1e-4 x joint_prob x buf=1M",
+        {"lr": 1e-4, "edge_feature": "joint_prob"}),
+    ("A", "lr=1e-4 x joint_prob x buf=500k",
+        {"lr": 1e-4, "edge_feature": "joint_prob", "buffer_capacity": 500_000}),
 ]
 
 
@@ -209,13 +180,15 @@ def preset_summary() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # OPTUNA INTERFACE
 #
-# Every key the objective reads from suggest_run_config must appear here. New
-# categorical axes added in v2: alpha_lr, buffer_capacity, n_shots,
-# burn_in_steps, train_episodes, start_from_oracle, use_endpoint_firing, p.
+# Every key the objective reads from suggest_run_config must appear here.
 #
 # Constraint: n_layers and local_action_hops must always equal each other
-# (the depth axis). Kept at 1 in v2 since depth=2 was decisively worse last
-# time; both tuples are length-1 here.
+# (the depth axis), kept at 1 (depth=2 collapses).
+#
+# edge_feature is a single categorical that the objective translates into the
+# two mutually-exclusive env flags (use_pearson_correlation / use_log_joint_prob)
+# — encoding it as one choice prevents the random sampler from ever picking the
+# illegal "both True" combination.
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -224,27 +197,28 @@ class OptunaSearchSpace:
     hidden_dim:          tuple[int,   ...] = (256,)
     n_layers:            tuple[int,   ...] = (1,)
     local_action_hops:   tuple[int,   ...] = (1,)
-    mlp_head:            tuple[str,   ...] = ("standard", "wide")
+    mlp_head:            tuple[str,   ...] = ("standard",)
     # Optimization
-    lr:                  tuple[float, ...] = (3e-5, 5e-5, 1e-4)
-    alpha_lr:            tuple[float, ...] = (0.0, 1e-5, 3e-5)     # 0.0 ⇒ reuse actor lr
-    alpha:               tuple[float, ...] = (0.01, 0.05, 0.1)
+    lr:                  tuple[float, ...] = (5e-5, 1e-4)
+    alpha_lr:            tuple[float, ...] = (0.0,)              # 0.0 ⇒ reuse actor lr
+    alpha:               tuple[float, ...] = (0.01,)
     batch_size:          tuple[int,   ...] = (256,)
     update_frequency:    tuple[int,   ...] = (100,)
     target_entropy:      tuple[float, ...] = (-1.0,)
     tau:                 tuple[float, ...] = (0.005,)
     # Action / env
     action_scale:        tuple[float, ...] = (5.0,)
-    mismatch:            tuple[float, ...] = (10.0, 30.0)
-    p:                   tuple[float, ...] = (0.004, 0.006)
+    mismatch:            tuple[float, ...] = (30.0,)
+    p:                   tuple[float, ...] = (0.004,)
+    edge_feature:        tuple[str,   ...] = ("pearson", "joint_prob")
     # Replay + schedule
-    buffer_capacity:     tuple[int,   ...] = (100_000, 1_000_000)
-    n_shots:             tuple[int,   ...] = (50_000, 65_000, 80_000)
-    burn_in_steps:       tuple[int,   ...] = (0, 15_000)
-    train_episodes:      tuple[int,   ...] = (500,)
+    buffer_capacity:     tuple[int,   ...] = (500_000, 1_000_000)
+    n_shots:             tuple[int,   ...] = (50_000,)
+    burn_in_steps:       tuple[int,   ...] = (0,)
+    train_episodes:      tuple[int,   ...] = (700,)
     # Env feature toggles
-    start_from_oracle:   tuple[bool,  ...] = (False, True)
-    use_endpoint_firing: tuple[bool,  ...] = (False, True)
+    start_from_oracle:   tuple[bool,  ...] = (True,)
+    use_endpoint_firing: tuple[bool,  ...] = (False,)
 
 
 def optuna_categorical_choices() -> dict[str, list]:
@@ -265,6 +239,7 @@ def optuna_categorical_choices() -> dict[str, list]:
         "action_scale":        list(space.action_scale),
         "mismatch":            list(space.mismatch),
         "p":                   list(space.p),
+        "edge_feature":        list(space.edge_feature),
         "buffer_capacity":     list(space.buffer_capacity),
         "n_shots":             list(space.n_shots),
         "burn_in_steps":       list(space.burn_in_steps),

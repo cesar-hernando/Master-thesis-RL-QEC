@@ -585,6 +585,13 @@ class DriftedMatchingEnv(gym.Env):
                 self.H, weights=self.current_weights
             )
             self.pearson_correlations = self.oracle_correlations.copy()
+            # Keep the joint-prob edge feature consistent with the Pearson one under
+            # oracle init. With start_from_oracle=True the co-occurrence tracer is
+            # never CMA-updated, so left untouched it would stay at the (non-drifted)
+            # base-DEM joint probs while the Pearson feature reflects the drifted
+            # oracle — an unfair handicap for the joint_prob arm. Seed it at the
+            # drifted-oracle joint probs so both encodings see the same information.
+            self.corr_tracer = oracle_joint_probs.copy()
 
         # Weight / correlation MSE tracking is only meaningful when we're running a
         # test set against the drifted oracle. Skip it when n_test_shots == 0.

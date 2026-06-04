@@ -179,6 +179,7 @@ def suggest_run_config(trial: optuna.Trial) -> dict:
         "tau":                 trial.suggest_categorical("tau",                 choices["tau"]),
         "mlp_head":            trial.suggest_categorical("mlp_head",            choices["mlp_head"]),
         "mismatch":            trial.suggest_categorical("mismatch",            choices["mismatch"]),
+        "edge_feature":        trial.suggest_categorical("edge_feature",        choices["edge_feature"]),
         "buffer_capacity":     trial.suggest_categorical("buffer_capacity",     choices["buffer_capacity"]),
         "n_shots":             trial.suggest_categorical("n_shots",             choices["n_shots"]),
         "burn_in_steps":       trial.suggest_categorical("burn_in_steps",       choices["burn_in_steps"]),
@@ -212,6 +213,7 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             "p": run_cfg["p"],
             "p_gate_zz": args.p_gate_zz,
             "mismatch": run_cfg["mismatch"],
+            "edge_feature": run_cfg["edge_feature"],
             "n_shots": run_cfg["n_shots"],
             "n_test_shots": args.n_test_shots,
             "burn_in_steps": run_cfg["burn_in_steps"],
@@ -258,6 +260,13 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             qec_code="surface_code",
         )
 
+        # Translate the single edge_feature categorical into the two mutually
+        # exclusive env flags. "pearson" → Pearson correlation; "joint_prob" →
+        # log-joint-probability encoding. (Both-True is illegal in the env.)
+        edge_feature = config["edge_feature"]
+        use_pearson_correlation = (edge_feature == "pearson")
+        use_log_joint_prob = (edge_feature == "joint_prob")
+
         env = DriftedMatchingEnv(
             syndrome_data_generator=generator,
             local_action_only=config["local_action_only"],
@@ -266,7 +275,8 @@ def objective_factory(args: argparse.Namespace, trial_root: Path):
             update_period=config["update_period"],
             prior_shots=config["prior_shots"],
             n_test_shots=config["n_test_shots"],
-            use_pearson_correlation=True,
+            use_pearson_correlation=use_pearson_correlation,
+            use_log_joint_prob=use_log_joint_prob,
             use_syndrome_features=False,
             use_endpoint_firing=config["use_endpoint_firing"],
             start_from_oracle=config["start_from_oracle"],
@@ -408,6 +418,7 @@ def main() -> None:
             "tau":                 preset["tau"],
             "mlp_head":            preset["mlp_head"],
             "mismatch":            preset["mismatch"],
+            "edge_feature":        preset["edge_feature"],
             "buffer_capacity":     preset["buffer_capacity"],
             "n_shots":             preset["n_shots"],
             "burn_in_steps":       preset["burn_in_steps"],

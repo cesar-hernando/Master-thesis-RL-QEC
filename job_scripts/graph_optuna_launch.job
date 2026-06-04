@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=optuna_array
 #SBATCH --partition=gpu-l4-24g
-#SBATCH --time=1-00:00:00
+#SBATCH --time=1-12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-14
+#SBATCH --array=0-7
 #SBATCH --output=slurm_logs/run_optuna_%A_%a.out
 #SBATCH --error=slurm_logs/run_optuna_%A_%a.err
 
@@ -29,12 +29,13 @@ export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 mkdir -p slurm_logs
 
 # --- Search configuration -----------------------------------------------------
-# Environment/training settings mirror train_run.job where this launcher
-# exposes equivalent options. Graph hyperparameters are selected from the
-# Optuna presets in scripts/sandbox_optuna_graph_space.py.
+# Per-preset axes (mismatch, p, n_shots, burn_in_steps, train_episodes,
+# buffer_capacity, alpha_lr, start_from_oracle, use_endpoint_firing, …)
+# are now driven by sandbox_optuna_graph_space.py — NOT by CLI flags here.
+# The remaining CLI flags below are settings that are constant for the
+# whole v2 study (env geometry, decoder config, contextual-bandit gamma).
 SEED=0
-TRAIN_EPISODES=500
-STUDY_NAME="qec_graph_optuna_run_d5_r5"
+STUDY_NAME="qec_graph_optuna_run_d5_r5_v3"
 RESULTS_DIR="$PWD/models/optuna_results"
 MODELS_ROOT="$PWD/models/optuna"
 STUDY_DB="$RESULTS_DIR/${STUDY_NAME}.sqlite3"
@@ -57,25 +58,18 @@ ARGS=(
   --skip-if-completed
   --distance 5
   --n-rounds 5
-  --p 0.004
-  --mismatch 30.0
   --p-gate-zz 0.0
-  --n-shots 65000
   --n-test-shots 0
-  --burn-in-steps 15000
   --bypass-threshold 2
   --update-period 1000
   --prior-shots 1000
   --local-action-only
   --gamma 0.0
   --tau 0.005
-  --train-episodes "$TRAIN_EPISODES"
-  --buffer-capacity 100000
 )
 
 echo "Running Optuna graph search array task ${SLURM_ARRAY_TASK_ID}"
-echo "Run Optuna sweep: Burn-in | Gamma=0.0 | M=30.0 | Using P.C."
-echo "Study=${STUDY_NAME}, preset_id=${TRIAL_PRESET_ID}, sampler_seed=${SAMPLER_SEED}, train_episodes=${TRAIN_EPISODES}"
+echo "Study=${STUDY_NAME}, preset_id=${TRIAL_PRESET_ID}, sampler_seed=${SAMPLER_SEED}"
 echo "Storage=${STORAGE_URI}"
 echo "Command: python -u scripts/optuna_graph_search.py ${ARGS[*]}"
 
