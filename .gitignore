@@ -1,6 +1,30 @@
-.venv
-.gitignore
-#plots/
-#models/
-.github
-__pycache__
+# Virtual environments
+.venv/
+venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Downloaded public datasets (regenerable from Zenodo / Google releases)
+google_105Q_surface_code_d3_d5_d7/
+google_qec3v5_experiment_data/
+sycamore_surface_code_d3_d5/
+
+# Large GNN action dumps (d7 runs are ~200MB-1GB; exceed GitHub's 100MB limit)
+data/gnn_actions_*_d7.csv
+
+# Cluster job stdout/err
+slurm_logs/
+
+# Optuna study databases and result dumps
+*.sqlite3
+hyperp_results/
+
+# IDE / OS noise
+.github/
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db

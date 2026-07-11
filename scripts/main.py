@@ -7,7 +7,7 @@ import time
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
 from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
 from adaptiveQRL.gnn_sac_agent import SACAgent, GraphReplayBuffer
-from adaptiveQRL.engine import train, test, analyze_policy
+from adaptiveQRL.engine import train, train_policy_gradient, test, analyze_policy
 
 
 if __name__ == "__main__":
@@ -17,31 +17,57 @@ if __name__ == "__main__":
     ######################################
     CONFIG = {
         # Execution Mode: 'train','test' or 'analyze_policy'
-        'MODE': 'test',  
-        'model_path': 'models/qec_graph_optuna_run_d5_trial_0000_best.pth',
+        'MODE': 'train',  
+        'model_path': 'models/linear/linear_model_1_start_from_CM.pth',  # Path to save/load model
         
         # Environment Settings
         'distance': 5,
         'n_rounds': 5,
         'p': 0.004,
         'p_gate_zz': 0.0,  # Crosstalk ZZ error probability
-        'mismatch': 10.0,
-        'n_shots': 100_000,       # Shots per episode
+        'mismatch': 30.0,
+        'n_shots': 50_000,       # Shots per episode
         'n_test_shots': 0,   # Shots for LER evaluation
-        'burn_in_steps': 25_000,
+        'burn_in_steps': 0,
         'bypass_threshold': 2,
-        'action_scale': 5.0,
+        'action_scale': 1.0,
         'update_period': 1_000,  # CMA update frequency
         'prior_shots': 1_000,  # Shots for initial CMA prior
         'local_action_only': True,
         'local_action_hops': 1, # if local_action_only = False, this parameter is ignored
-        'use_pearson_correlation': True,
+        'use_pearson_correlation': False,
         'use_endpoint_firing': False,  # Add [d1_fired, d2_fired, is_boundary] to node features
-        'start_from_oracle': False,   # If True: seed each episode at oracle weights and disable CMA reweighting
-        'use_log_joint_prob': False,  # Whether to use joint probabilities for CMA updates
+        'start_from_oracle': True,   # If True: seed each episode at oracle weights and disable CMA reweighting
+        'use_log_joint_prob': True,  # Whether to use joint probabilities for CMA updates
         'n_layers': 1, # Number of GNN layers (affects receptive field size)
-        
+
         # Agent / NN Settings
+        # actor_type: 'gnn' = expressive GNN+MLP policy (default);
+        #             'linear_cm' = interpretable linear policy hard-wired to the
+        #             correlated-matching form (learns coefficients toward 1, -1, -1).
+        #             'linear_cm' REQUIRES use_log_joint_prob=True (edge feature = -log p(e_mu,e_nu)).
+        'actor_type': 'linear_cm',
+        'linear_cm_squash': False,         # If False, action is unsquashed (clean linear coefficients)
+        'linear_cm_init_identity': True,  # If True, init coefficients at the CM solution (1,-1,-1)
+
+        # Training algorithm: 'sac' (actor-critic), 'reinforce' (actor-only vanilla policy
+        # gradient), or 'ppo' (actor-only clipped surrogate with importance-weighted reuse).
+        # 'reinforce'/'ppo' suit the contextual-bandit setting and the tiny linear_cm actor;
+        # both use a zero baseline (the env reward is differential) and never touch the critic.
+        'algo': 'ppo',
+        'reinforce_batch': 512,            # on-policy transitions per gradient step (reinforce & ppo)
+        'reinforce_std': 1.5,              # FIXED exploration std at the START of training (weight units)
+        'reinforce_std_final': 0.01,        # anneal the fixed std linearly to this by the last episode (None = constant)
+        'reinforce_lr': 1e-3,              # actor lr for the policy-gradient step (reinforce & ppo; None reuses 'lr')
+        'ppo_clip_eps': 0.2,               # PPO trust-region clip eps (paper uses 0.4 for surface codes)
+        'ppo_epochs': 4,                   # PPO gradient epochs per batch (gentle reuse; 10 diverged here)
+        # Trainable exploration std (the payoff of PPO's clip). If True, std is learned,
+        # initialised at reinforce_std and clamped to [reinforce_std_min, reinforce_std_max]
+        # (the floor guards against collapse). NOTE: with the weak differential reward it
+        # collapsed to the floor and the coefficients ran away -> keep False (fixed std=1.5).
+        'reinforce_trainable_std': False,
+        'reinforce_std_min': 0.3,
+        'reinforce_std_max': 3.0,
         'hidden_dim': 256,
         'lr': 1e-4,
         'alpha_lr': None,       # If None, alpha optimizer reuses lr; set smaller (e.g. 1e-5) to slow entropy decay
@@ -54,8 +80,13 @@ if __name__ == "__main__":
         'update_frequency': 100,
         
         # Episode Settings
-        'train_episodes': 270,
-        'test_episodes': 20
+        'train_episodes': 1000,
+        'test_episodes': 20,
+
+        # Validation (REINFORCE): every `val_every` episodes, run the greedy policy on
+        # `val_episodes` fixed-seed circuits and log/plot the mean reward (low-variance).
+        'val_every': 10,
+        'val_episodes': 3,
     }
 
 
@@ -80,6 +111,22 @@ if __name__ == "__main__":
         qec_code='surface_code'
     )
 
+    # The linear CM actor only matches the analytical rule when the line-graph edge
+    # feature is w_{mu,nu} = -log p(e_mu, e_nu), i.e. use_log_joint_prob must be True.
+    if CONFIG['actor_type'] == 'linear_cm' and not CONFIG['use_log_joint_prob']:
+        raise ValueError(
+            "actor_type='linear_cm' requires use_log_joint_prob=True so that the edge "
+            "feature is the -log joint probability w_{mu,nu} expected by correlated matching."
+        )
+
+    # The linear CM actor is cleanest with action_scale = 1: the coefficients then map
+    # DIRECTLY to weight deltas (no /action_scale rescaling) and the exploration std is
+    # already in weight units. Force it regardless of the configured value.
+    if CONFIG['actor_type'] == 'linear_cm' and CONFIG['action_scale'] != 1.0:
+        print(f"[i] actor_type='linear_cm': overriding action_scale "
+              f"{CONFIG['action_scale']} -> 1.0 (coefficients map directly to weight deltas).")
+        CONFIG['action_scale'] = 1.0
+
     env = DriftedMatchingEnv(
         syndrome_data_generator=generator,
         local_action_only=CONFIG['local_action_only'],
@@ -100,7 +147,18 @@ if __name__ == "__main__":
     # Determine dynamic dimensions from environment
     sample_obs, _ = env.reset()
     NODE_DIM = sample_obs["node_features"].shape[1]
-    
+
+    # Exploration-std setup for the actor-only policy-gradient algos.
+    #   * trainable std (PPO payoff): std learned, init reinforce_std, clamped [min, max].
+    #   * fixed std (default REINFORCE): std held constant at reinforce_std.
+    #   * SAC: learnable std with wide default bounds (managed by the alpha tuner).
+    _is_pg = CONFIG['algo'] in ('reinforce', 'ppo')
+    _trainable_std = _is_pg and CONFIG.get('reinforce_trainable_std', False)
+    _fixed_std = CONFIG['reinforce_std'] if (_is_pg and not _trainable_std) else None
+    _init_std = CONFIG['reinforce_std'] if _trainable_std else None
+    _std_min = CONFIG['reinforce_std_min'] if _trainable_std else None
+    _std_max = CONFIG['reinforce_std_max'] if _trainable_std else None
+
     # Init Agent
     agent = SACAgent(
         node_dim=NODE_DIM,
@@ -112,7 +170,16 @@ if __name__ == "__main__":
         tau=CONFIG['tau'],
         alpha=CONFIG['alpha'],
         target_entropy=CONFIG['target_entropy'],
-        n_layers=CONFIG['n_layers']
+        n_layers=CONFIG['n_layers'],
+        actor_type=CONFIG['actor_type'],
+        action_scale=CONFIG['action_scale'],
+        linear_cm_squash=CONFIG['linear_cm_squash'],
+        linear_cm_init_identity=CONFIG['linear_cm_init_identity'],
+        # Exploration std: fixed (default REINFORCE) or trainable with floor/ceiling (PPO).
+        linear_cm_fixed_std=_fixed_std,
+        linear_cm_init_std=_init_std,
+        linear_cm_std_min=_std_min,
+        linear_cm_std_max=_std_max,
     )
 
     #total_params = sum(p.numel() for p in agent.actor.parameters())
@@ -123,8 +190,11 @@ if __name__ == "__main__":
     ############################
     if CONFIG['MODE'] == 'train':
         start_train = time.time()
-        buffer = GraphReplayBuffer(capacity=CONFIG['buffer_capacity'])
-        train(env, agent, buffer, CONFIG)
+        if CONFIG.get('algo', 'sac') in ('reinforce', 'ppo'):
+            train_policy_gradient(env, agent, CONFIG)
+        else:
+            buffer = GraphReplayBuffer(capacity=CONFIG['buffer_capacity'])
+            train(env, agent, buffer, CONFIG)
         end_train = time.time()
         train_runtime = end_train - start_train
         print(f"Training run time = {train_runtime:.2f} s")

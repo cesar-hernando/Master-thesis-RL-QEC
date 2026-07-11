@@ -145,7 +145,9 @@ class NeuralCorrelatedMatching:
         edges_first = np.asarray(
             self._matching.decode_batch(shots, enable_correlations=False), dtype=bool
         )
-        first_obs = (edges_first.astype(np.int64) @ self.env.fault_array) % 2
+        # Observable parity = sum of selected fault edges (mod 2). Index the fault
+        # columns directly instead of casting the whole (n_shots, n_edges) array to int64.
+        first_obs = edges_first[:, self.env.fault_array].sum(axis=1) % 2
         first_obs = np.atleast_2d(first_obs).reshape(n_shots, -1).astype(np.uint8)
 
         # 2. Bypass split.

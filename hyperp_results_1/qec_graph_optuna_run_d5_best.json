@@ -1,0 +1,25 @@
+{
+  "study_name": "qec_graph_optuna_run_d5",
+  "best_trial_number": 2,
+  "best_value": 0.12136161815490873,
+  "best_params": {
+    "hidden_dim": 256,
+    "n_layers": 1,
+    "lr": 0.0001,
+    "alpha": 0.01,
+    "batch_size": 128,
+    "update_frequency": 100,
+    "local_action_hops": 1,
+    "action_scale": 5.0,
+    "target_entropy": -1.0,
+    "tau": 0.005,
+    "mlp_head": "standard",
+    "mismatch": 10.0
+  },
+  "best_user_attrs": {
+    "model_path": "/zfsstore/user/s4568389/projects/Master-thesis-RL-QEC/models/optuna/qec_graph_optuna_run_d5/qec_graph_optuna_run_d5_trial_0002_best.pth",
+    "preset_id": 2,
+    "runtime_seconds": 56378.25226998329
+  },
+  "n_trials_total": 14
+}

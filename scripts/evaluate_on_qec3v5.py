@@ -187,12 +187,22 @@ def dgr_calibrate_probabilities(
     n_iterations: int = 1,
     min_p: float = 1e-6,
     max_p: float = 0.499,
+    val_dets: Optional[np.ndarray] = None,
+    val_obs: Optional[np.ndarray] = None,
+    fault_array: Optional[np.ndarray] = None,
 ):
-    """DGR (Wang et al. 2023). Returns (p_single, p_joint, trace)."""
+    """DGR (Wang et al. 2023). Returns (p_single, p_joint, trace).
+
+    Optional `val_dets` / `val_obs` / `fault_array`: if provided, after every
+    iteration we decode the validation slice with the freshly-calibrated weights
+    and record the held-out LER in the trace row. The calibration itself never
+    sees the validation observables, so there's no leakage.
+    """
     n_shots = det_events.shape[0]
     weights = initial_weights.astype(np.float32).copy()
     edges_batch = None
     trace = []
+    do_val = (val_dets is not None and val_obs is not None and fault_array is not None)
 
     for it in range(n_iterations):
         matching = pymatching.Matching.from_check_matrix(check_matrix, weights=weights)
@@ -203,20 +213,43 @@ def dgr_calibrate_probabilities(
         p = occurrence_counts / float(n_shots)
         p = np.clip(p, min_p, max_p).astype(np.float32)
         weights = probs_to_weights(p)
+
+        # Joint probabilities at THIS iteration (cheap; needed for convergence plot).
+        p_joint_iter = _compute_p_joint_from_decodes(edges_batch, line_edge_index)
+
         row = {
-            "iteration": it + 1,
-            "mean_p": float(p.mean()),
-            "max_p": float(p.max()),
+            "iteration":      it + 1,
+            "mean_p":         float(p.mean()),
+            "max_p":          float(p.max()),
             "n_active_edges": int((occurrence_counts > 0).sum()),
-            "n_edges": int(len(p)),
+            "n_edges":        int(len(p)),
+            "mean_weight":    float(weights.mean()),
+            "std_weight":     float(weights.std()),
+            "max_weight":     float(weights.max()),
+            "mean_p_joint":   float(p_joint_iter.mean()) if p_joint_iter.size else 0.0,
+            "max_p_joint":    float(p_joint_iter.max())  if p_joint_iter.size else 0.0,
         }
+        if do_val:
+            row["val_ler"] = _quick_val_ler(check_matrix, weights, val_dets, val_obs, fault_array)
         trace.append(row)
-        print(f"  DGR iter {it + 1}/{n_iterations}: "
-              f"mean p={row['mean_p']:.4e}  max p={row['max_p']:.4e}  "
-              f"n_active_edges={row['n_active_edges']}/{row['n_edges']}")
+        msg = (f"  DGR iter {it + 1}/{n_iterations}: "
+               f"mean p={row['mean_p']:.4e}  max p={row['max_p']:.4e}  "
+               f"n_active={row['n_active_edges']}/{row['n_edges']}")
+        if do_val:
+            msg += f"  val_ler={row['val_ler']:.4e}"
+        print(msg)
 
     p_joint = _compute_p_joint_from_decodes(edges_batch, line_edge_index)
     return p, p_joint, trace
+
+
+def _quick_val_ler(check_matrix, weights, val_dets, val_obs, fault_array):
+    """Tiny helper: decode the validation slice with Standard MWPM under `weights`
+    and return logical error rate. Used by calibration-tracing only."""
+    m = pymatching.Matching.from_check_matrix(check_matrix, weights=weights)
+    edges = np.asarray(m.decode_batch(val_dets, enable_correlations=False), dtype=np.int64)
+    pred  = (edges @ fault_array) % 2
+    return float(np.mean(pred != val_obs))
 
 
 def spitz_calibrate_probabilities(
@@ -227,6 +260,9 @@ def spitz_calibrate_probabilities(
     line_edge_index: Optional[np.ndarray] = None,
     min_p: float = 1e-6,
     max_p: float = 0.499,
+    val_dets: Optional[np.ndarray] = None,
+    val_obs: Optional[np.ndarray] = None,
+    fault_array: Optional[np.ndarray] = None,
 ):
     """Spitz (2018). Mirrors env._compute_raw_syndrome_statistics.
 
@@ -286,13 +322,22 @@ def spitz_calibrate_probabilities(
     else:
         p_joint = np.zeros(0, dtype=np.float32)
 
-    trace = [{
-        "iteration": 1,
-        "mean_p": float(p_single.mean()),
-        "max_p": float(p_single.max()),
+    weights = probs_to_weights(p_single)
+    row = {
+        "iteration":      1,
+        "mean_p":         float(p_single.mean()),
+        "max_p":          float(p_single.max()),
         "n_active_edges": int((p_single > min_p).sum()),
-        "n_edges": int(len(p_single)),
-    }]
+        "n_edges":        int(len(p_single)),
+        "mean_weight":    float(weights.mean()),
+        "std_weight":     float(weights.std()),
+        "max_weight":     float(weights.max()),
+        "mean_p_joint":   float(p_joint.mean()) if p_joint.size else 0.0,
+        "max_p_joint":    float(p_joint.max())  if p_joint.size else 0.0,
+    }
+    if val_dets is not None and val_obs is not None and fault_array is not None and check_matrix is not None:
+        row["val_ler"] = _quick_val_ler(check_matrix, weights, val_dets, val_obs, fault_array)
+    trace = [row]
     return p_single, p_joint, trace
 
 

@@ -12,6 +12,7 @@ import pymatching
 import scipy.sparse as sp
 
 from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from adaptiveQRL.decoding_graph import DecodingGraph
 
 class DriftedMatchingEnv(gym.Env):
     """
@@ -124,50 +125,37 @@ class DriftedMatchingEnv(gym.Env):
         # Store the number of detectors
         self.n_detectors = self.base_circuit.num_detectors
 
-        # Extract the decoding edge weights, fault ids array, and fast lookup matrix natively
-        (
-            self.dec_edge_list, 
-            self.pair_to_idx_matrix, 
-            self.current_weights, 
-            self.base_p,  
-            self.fault_array,
-            self.H
-        ) = self._index_decoding_graph_edges(self.base_matching)
-        self.n_dec_edges = len(self.dec_edge_list)
-        self.dec_edge_arr = np.array(self.dec_edge_list, dtype=np.float64)
+        # The static decoding-graph structure (edge indexing, H, fault map, line graph,
+        # k-hop adjacency, endpoint maps, and the structural ops) lives in DecodingGraph.
+        # The env composes it and aliases its arrays so the rest of the env -- and external
+        # callers using env.H / env.line_edge_index / env._compute_action_mask / ... -- are
+        # unchanged. Dynamic per-episode state (current_weights, tracers) stays on the env.
+        self.graph = DecodingGraph(
+            self.base_matching, self.base_dem, self.n_detectors,
+            local_action_hops=self.local_action_hops,
+        )
+        g = self.graph
+        self.dec_edge_list = g.dec_edge_list
+        self.pair_to_idx_matrix = g.pair_to_idx_matrix
+        self.base_p = g.base_p
+        self.fault_array = g.fault_array
+        self.H = g.H
+        self.n_dec_edges = g.n_dec_edges
+        self.dec_edge_arr = g.dec_edge_arr
+        self.line_edge_index = g.line_edge_index
+        self.initial_corr_tracer = g.initial_corr_tracer
+        self.k_hop_adj_mat = g.k_hop_adj_mat
+        self.n_line_edges = g.n_line_edges
+        self.edge_d1_idx = g.edge_d1_idx
+        self.edge_d2_idx_safe = g.edge_d2_idx_safe
+        self.edge_is_boundary = g.edge_is_boundary
 
-        # Store the original weights obtained from the DEM
+        # Dynamic per-episode weights start at the DEM (base) weights.
+        self.current_weights = g.initial_weights.copy()
         self.initial_base_weights = self.current_weights.copy()
-
-        # Make a copy of the base matching that will be updated every step
         self.current_matching = pymatching.Matching.from_check_matrix(self.H, weights=self.current_weights)
 
-        # Build the line graph adding edges based on the DEM
-        self.line_edge_index, self.initial_corr_tracer, self.k_hop_adj_mat = self._build_line_graph_edges(self.base_dem)
-        self.n_line_edges = self.line_edge_index.shape[1]
         self.initial_pearson_corr = self._compute_pearson_correlations(self.base_p, self.initial_corr_tracer)
-
-        # Precompute per-edge endpoint detector indices for the endpoint-firing features.
-        # Canonical layout for boundary edges: d1 = real detector, d2 slot is a dummy index 0
-        # whose contribution is zeroed out at fill-time via the is_boundary mask.
-        edge_d1_idx = np.zeros(self.n_dec_edges, dtype=np.int64)
-        edge_d2_idx_safe = np.zeros(self.n_dec_edges, dtype=np.int64)
-        edge_is_boundary = np.zeros(self.n_dec_edges, dtype=np.float32)
-        for i, (u, v) in enumerate(self.dec_edge_list):
-            if u == -1 and v == -1:
-                edge_is_boundary[i] = 1.0
-            elif u == -1:
-                edge_d1_idx[i] = v
-                edge_is_boundary[i] = 1.0
-            elif v == -1:
-                edge_d1_idx[i] = u
-                edge_is_boundary[i] = 1.0
-            else:
-                edge_d1_idx[i] = u
-                edge_d2_idx_safe[i] = v
-        self.edge_d1_idx = edge_d1_idx
-        self.edge_d2_idx_safe = edge_d2_idx_safe
-        self.edge_is_boundary = edge_is_boundary
 
         # Compute node-feature layout. Order: [weight, selected, (spitz), (d1, d2, is_boundary)]
         node_feat_dim = 2
@@ -227,209 +215,6 @@ class DriftedMatchingEnv(gym.Env):
         )       
     
 
-    def _index_decoding_graph_edges(self, matching: pymatching.Matching):
-        """
-        Indexes the decoding graph and constructs the Sparse Parity Check Matrix (H).
-        Maps physical detectors to graph edges to define the lattice topology and 
-        identify logical fault mechanisms. The H matrix uses h_rows (detector IDs) 
-        and h_cols (edge indices) to define the syndrome-to-error relationship.
-
-        Args:
-            matching: PyMatching graph object derived from the Stim noise model.
-
-        Returns:
-            - dec_edge_list: List of (u, v) pairs for each decoding graph edge 
-                (u and v are detector IDs or -1 for boundary)
-            - pair_to_idx: 2D array mapping (u, v) pairs to edge indices in C-memory 
-                (shape: [num_detectors+1, num_detectors+1])
-            - weights: Array of edge weights corresponding to the decoding graph edges
-            - error_probs: Array of error probabilities corresponding to the decoding graph edges
-            - fault_array: Boolean array indicating whether each edge corresponds to a logical fault 
-                (derived from fault_ids)
-            - H: Sparse parity check matrix in CSC format (shape: [num_detectors, num_edges])
-        """
-
-        dec_edge_list = []
-        weights = []
-        error_probs = []
-        fault_ids = []
-
-        matrix_size = self.n_detectors + 1
-        pair_to_idx_matrix = np.full((matrix_size, matrix_size), -1, dtype=np.int32)
-
-        # Arrays to hold the Sparse Check Matrix (H) coordinates
-        # h_rows correspond to detector IDs
-        # h_cols correspond to edge indices in the decoding graph
-        h_rows = []
-        h_cols = []
-
-        idx = 0
-        for u, v, data in matching.edges():
-            u = -1 if u is None else u
-            v = -1 if v is None else v
-            key = (u, v) if u <= v else (v, u)
-            
-            dec_edge_list.append(key)
-            weights.append(data["weight"])
-            error_probs.append(data["error_probability"])
-
-            pair_to_idx_matrix[u, v] = idx
-            pair_to_idx_matrix[v, u] = idx
-
-            # Map the edges to the Check Matrix (ignoring the -1 boundary)
-            if u != -1:
-                h_rows.append(u)
-                h_cols.append(idx)
-            if v != -1:
-                h_rows.append(v)
-                h_cols.append(idx)
-
-            f_ids = data.get("fault_ids", set())
-            if isinstance(f_ids, (int, float)):
-                f_ids = {int(f_ids)}
-            else:
-                f_ids = set(int(f) for f in f_ids)
-            fault_ids.append(f_ids)
-            idx += 1
-
-        # Build the ultra-fast array
-        fault_array = np.array([len(f) > 0 for f in fault_ids], dtype=bool)
-    
-        # Build the actual sparse C-matrix
-        h_data = np.ones(len(h_rows), dtype=np.int8)
-        H = sp.csc_matrix((h_data, (h_rows, h_cols)), shape=(self.n_detectors, idx))
-
-        return (
-            dec_edge_list, 
-            pair_to_idx_matrix, 
-            np.asarray(weights, dtype=np.float32), 
-            np.asarray(error_probs, dtype=np.float32), 
-            fault_array,
-            H
-        )
-    
-
-    def _build_line_graph_edges(self, dem, return_k_hop_adj_mat=True):
-        """
-        Build line-graph connectivity exclusively from correlated hyperedges 
-        in the Stim Detector Error Model (DEM).
-        
-        Args:
-            dem: Stim Detector Error Model object containing the error mechanisms and 
-                their correlations.
-            return_k_hop_adj_mat: If True, also compute and return the K-hop adjacency 
-                matrix for action masking.
-
-        Returns:
-            line_edge_index: [2, M_line] array of edges
-            initial_correlations: [M_line] array of baseline raw joint probabilities 
-                from the DEM
-            k_hop_adj_mat: [N_edges, N_edges] boolean adjacency mask
-        """
-
-        ##########################################################
-        # 1. Parse the DEM to define the line graph connectivity #
-        # and extract the joint probabilities                    #
-        ##########################################################
-
-        correlation_dict = {}
-        
-        for inst in dem.flattened():
-            if inst.type != "error":
-                continue
-                
-            p = inst.args_copy()[0]
-            targets = inst.targets_copy()
-            
-            # Parse targets separated by '^' (Stim's correlation separator)
-            components = []
-            current_component = []
-            
-            for t in targets:
-                if t.is_separator(): # Found a '^'
-                    if current_component:
-                        components.append(current_component)
-                        current_component = []
-                elif t.is_relative_detector_id():
-                    current_component.append(t.val)
-            
-            if current_component:
-                components.append(current_component)
-                
-            # If there is only 1 component, it's an independent error (no correlation)
-            if len(components) < 2:
-                continue
-                
-            # Map components to our decoding graph edges (GNN nodes)
-            node_indices = []
-            for comp in components:
-                # Resolve the endpoints. If 1 detector, the other is the boundary
-                u = comp[0] if len(comp) > 0 else -1
-                v = comp[1] if len(comp) > 1 else -1
-                
-                # Fetch the canonical GNN node ID for this physical edge
-                idx = self.pair_to_idx_matrix[u, v]
-                node_indices.append(idx)
-                    
-            # Create pairwise connections in the line graph for this hyperedge
-            for a in range(len(node_indices)):
-                for b in range(a + 1, len(node_indices)):
-                    na, nb = node_indices[a], node_indices[b]
-                    if na == nb:
-                        continue
-                        
-                    edge_key = (na, nb) if na <= nb else (nb, na)
-                    
-                    # Combine probabilities using logical XOR: P(A ∪ B) = P(A) + P(B) - 2*P(A)*P(B)
-                    if edge_key in correlation_dict:
-                        existing_p = correlation_dict[edge_key]
-                        correlation_dict[edge_key] = existing_p * (1 - p) + p * (1 - existing_p)
-                    else:
-                        correlation_dict[edge_key] = p
-        
-        # Ensure we return all 3 expected items if there are no correlations
-        if not correlation_dict:
-            dummy_adj = np.eye(self.n_dec_edges, dtype=bool)
-            return np.zeros((2, 0), dtype=np.int64), np.zeros(0, dtype=np.float32), dummy_adj
-            
-        # Format into PyTorch Geometric expected arrays
-        sorted_edges = sorted(correlation_dict.keys())
-        line_edges = np.array(sorted_edges, dtype=np.int64).T
-        src, dst = line_edges[0], line_edges[1]
-
-        # Extract joint probabilities into a flat array
-        initial_correlations = np.array([correlation_dict[e] for e in sorted_edges], dtype=np.float32)
-
-        #########################################################
-        # 2. Construct a k-hops adjacency matrix to compute the #
-        # action mask fast                                      #
-        #########################################################
-
-        if not(return_k_hop_adj_mat):
-            return line_edges, initial_correlations
-        
-        # Efficiently build the sparse matrix using coordinate arrays (avoids SparseEfficiencyWarning)
-        # We concatenate the forward edges, backward edges, and the self-loops (diagonal)
-        diag_idx = np.arange(self.n_dec_edges)
-        rows = np.concatenate([src, dst, diag_idx])
-        cols = np.concatenate([dst, src, diag_idx])
-        data = np.ones(len(rows), dtype=np.int8)
-        
-        # Create the CSR matrix instantly in one shot
-        adj_mat = sp.csr_matrix((data, (rows, cols)), shape=(self.n_dec_edges, self.n_dec_edges))
-            
-        # Compute K-hops instantly using sparse matrix power
-        k_hop_sparse = adj_mat ** self.local_action_hops
-        
-        # Safely convert to a dense boolean mask
-        # (Checks if SciPy kept it sparse or secretly converted it to a dense array)
-        if sp.issparse(k_hop_sparse):
-            k_hop_adj_mat = k_hop_sparse.toarray() > 0
-        else:
-            k_hop_adj_mat = k_hop_sparse > 0
-        
-        return line_edges, initial_correlations, k_hop_adj_mat
-    
     
     def _calculate_rendering_geometry(self):
         """
@@ -574,7 +359,7 @@ class DriftedMatchingEnv(gym.Env):
             oracle_probs[idx] = data["error_probability"]
 
         # Calculate the joint probabilities and Pearson correlations between the oracle edge weights
-        _, oracle_joint_probs = self._build_line_graph_edges(drifted_dem, return_k_hop_adj_mat=False)
+        _, oracle_joint_probs = self.graph.build_line_graph(drifted_dem, return_k_hop_adj_mat=False)
         self.oracle_correlations = self._compute_pearson_correlations(oracle_probs, oracle_joint_probs)
 
         # Seed the decoder at the drifted oracle: bypass alignment reweighting entirely.
@@ -721,68 +506,13 @@ class DriftedMatchingEnv(gym.Env):
 
 
     def _build_edge_reweights(self, second_pass_weights: np.ndarray) -> np.ndarray:
-        changed = np.flatnonzero(np.abs(second_pass_weights - self.current_weights) > 0.0)
-        if changed.size == 0:
-            return np.empty((0, 3), dtype=np.float64)
-
-        # Pull all changed edges at once
-        edges = self.dec_edge_arr[changed]
-        u = edges[:, 0]
-        v = edges[:, 1]
-
-        # Fast boolean masking for the boundary edge rule
-        boundary_mask = (u == -1) & (v != -1)
-        u[boundary_mask] = v[boundary_mask]
-        v[boundary_mask] = -1
-
-        # Stack them together instantly
-        return np.column_stack((u, v, second_pass_weights[changed]))
-
+        # Delegates to the decoding-graph structure; reference is the current weights.
+        return self.graph.build_edge_reweights(second_pass_weights, self.current_weights)
 
     def _compute_action_mask(self, selected_idx: np.ndarray):
-        """
-        Instant vectorized mask using pre-computed K-hop matrix.
-        Optimized to use single-pass memory extraction and pure boolean logic.
+        # Delegates to the decoding-graph structure (honours local_action_only).
+        return self.graph.compute_action_mask(selected_idx, self.local_action_only)
 
-        Args:
-            selected_idx: An array of shape [S,] containing the indices of the first-pass selected edges.
-
-        Returns:
-            action_mask: A boolean array of shape [N_edges,] where True indicates that the action can be 
-                applied to that edge (within K hops of any selected edge and not isolated), and False 
-                indicates that the action is masked out for that edge.
-        """
-        if not self.local_action_only:
-            # Return pure boolean array, no float cast!
-            return np.ones(self.n_dec_edges, dtype=np.bool_)
-
-        if selected_idx.size == 0:
-            return np.zeros(self.n_dec_edges, dtype=np.bool_)
-
-        # Extract the S x N slice exactly ONCE.
-        # This saves a massive redundant memory allocation.
-        selected_rows = self.k_hop_adj_mat[selected_idx]
-        
-        # Base mask: Stay in pure boolean space
-        mask = selected_rows.any(axis=0)
-        
-        # Extract the S x S subgraph from the CACHED rows
-        selected_subgraph = selected_rows[:, selected_idx]
-        
-        # Sum the connections (fast integer sum in C)
-        selected_neighbor_counts = selected_subgraph.sum(axis=1)
-        
-        # Identify the isolated selected edges
-        isolated_selected_idx = selected_idx[selected_neighbor_counts == 1]
-        
-        # Mask them out
-        if isolated_selected_idx.size > 0:
-            mask[isolated_selected_idx] = False
-            
-        # Return the pure boolean mask.
-        # The CPU will handle the float conversion during action multiplication.
-        return mask
-    
 
     def step(self, action: np.ndarray):
         """
@@ -1128,30 +858,10 @@ class DriftedMatchingEnv(gym.Env):
             pearson_corrs: An array of shape [n_line_edges] containing the Pearson correlation values for each line graph edge, clipped to the range [0, 1].
         """
 
+        # The flag gate stays here (env config); the Pearson math lives in DecodingGraph.
         if not self.use_pearson_correlation:
             return corr_array.copy()
-
-        if self.n_line_edges == 0:
-            return np.zeros(0, dtype=np.float32)
-
-        src = self.line_edge_index[0]
-        dst = self.line_edge_index[1]
-        
-        p_src = occ_array[src]
-        p_dst = occ_array[dst]
-        
-        # Raw covariance
-        covariance = corr_array - (p_src * p_dst)
-        
-        # Normalize (Pearson Correlation)
-        std_src = np.sqrt(p_src * (1.0 - p_src))
-        std_dst = np.sqrt(p_dst * (1.0 - p_dst))
-        denom = std_src * std_dst
-        
-        safe_denom = np.where(denom > 1e-9, denom, 1.0)
-
-        # Clip the Pearson correlation to [-1, 1] 
-        return np.clip(covariance / safe_denom, -1.0, 1.0)
+        return self.graph.pearson_correlations(occ_array, corr_array)
 
 
     def _apply_cma_and_update_graph(self):
@@ -1205,15 +915,25 @@ class DriftedMatchingEnv(gym.Env):
         self.pearson_correlations = self._compute_pearson_correlations(self.occ_tracer, self.corr_tracer)
 
 
-    def compute_analytical_correlated_matching_action(self):
+    def compute_analytical_correlated_matching_action(self, alpha=1.0):
         """
         Computes the analytical Correlated Matching weights using conditional probability
         P(A|B) = P(A ∩ B) / P(B). If an unselected edge neighbors multiple selected edges,
         the maximum conditional probability (which yields the lowest MWPM weight) is applied.
-        
+
+        With `alpha` < 1 the HARD-evidence conditional P(mu | nu) is replaced by PEARL'S
+        RULE OF SOFT (virtual) EVIDENCE, treating "MWPM selected nu" as only soft evidence
+        that nu actually fired:
+
+            P(mu | MWPM selected nu) = alpha * P(mu | nu) + (1 - alpha) * P(mu | not nu),
+
+        with P(mu | nu) = P(mu,nu)/P(nu) and P(mu | not nu) = (P(mu)-P(mu,nu))/(1-P(nu)),
+        and alpha = P(nu fired | MWPM selected nu). alpha=1.0 (default) reproduces ordinary
+        correlated matching exactly.
+
         Args:
-            selected_idx: Array of indices of the edges selected by the first-pass MWPM.
-            
+            alpha: Pearl soft-evidence weight in [0, 1] (1.0 = ordinary hard-evidence CM).
+
         Returns:
             action: A numpy array of shape [N_edges] containing the edge weights variation
             according to the analytical correlated matching formulas.
@@ -1223,45 +943,18 @@ class DriftedMatchingEnv(gym.Env):
         if self.n_line_edges == 0 or self.current_first_pass_selected_idx is None or self.current_first_pass_selected_idx.size == 0:
             return np.zeros(self.n_dec_edges, dtype=np.float32)
 
-        active_nodes = np.where(self.current_action_mask)[0]
-        second_pass_weights_corr = np.zeros(self.n_dec_edges, dtype=np.float32)
-        adj = self._build_bidirectional_adjacency()
+        # The reweighting math lives in DecodingGraph; the env supplies the dynamic state
+        # (current weights, selection, action mask, drifted tracers).
+        selected_mask = self.node_feats[:, 1] == 1.0
+        second_pass_weights_corr = self.graph.analytical_cm_second_pass_weights(
+            self.current_weights, selected_mask, self.current_action_mask,
+            self.occ_tracer, self.corr_tracer, alpha=alpha,
+        )
+        return (second_pass_weights_corr - self.current_weights) / self.action_scale
 
-        for node in active_nodes:                
-            # Fetch 1-hop neighbor data
-            new_weight = self.current_weights[node] 
-            for nbr, e_idx in adj.get(node, []):
-                if self.node_feats[nbr, 1] == 1.0: # If neighbour node is selected in first pass      
-                    # Calculate the analytical math action (unbounded negative)
-                    implied_p = self.corr_tracer[e_idx] / self.occ_tracer[nbr]
-                    implied_p = np.clip(implied_p, 1e-6, 0.499999) # Avoid extreme probabilities
-                    corr_mat_weight = np.log((1.0 - implied_p) / (implied_p))
-                    # We take the minimum (largest discount) across all selected neighbors
-                    new_weight = min(new_weight, corr_mat_weight)
-            
-            second_pass_weights_corr[node] = new_weight
-
-        return (second_pass_weights_corr - self.current_weights)/ self.action_scale
-
-    
     def _build_bidirectional_adjacency(self):
-        """
-        Creates a fast lookup dictionary for neighbors and edge attributes.
-        Because line_edge_index is [2, M], we make it bidirectional for easy graph traversal.
-        """
-        adj = {}
-        src = self.line_edge_index[0]
-        dst = self.line_edge_index[1]
-        
-        for e_idx in range(len(src)):
-            u, v = src[e_idx], dst[e_idx]
-            if u not in adj: adj[u] = []
-            if v not in adj: adj[v] = []
-            adj[u].append((v, e_idx))
-            adj[v].append((u, e_idx))
-            
-        return adj
-
+        # Delegates to the decoding-graph structure (cached).
+        return self.graph.bidirectional_adjacency
 
     def get_base_graph_info(self):
         """

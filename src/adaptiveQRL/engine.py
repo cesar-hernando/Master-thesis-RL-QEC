@@ -269,7 +269,7 @@ def train(env, agent, buffer, config):
             obs = next_obs
             episode_reward += reward
             step_count += 1
-            
+
         # Record end-of-episode metrics
         avg_c_loss = np.mean(ep_c_loss) if ep_c_loss else 0.0
         avg_a_loss = np.mean(ep_a_loss) if ep_a_loss else 0.0
@@ -287,6 +287,15 @@ def train(env, agent, buffer, config):
               f"C_Loss: {avg_c_loss:.3f} | "
               f"A_Loss: {avg_a_loss:.3f} | "
               f"Alpha: {agent.log_alpha.exp().item():.4f}")
+
+        # For the interpretable linear correlated-matching actor, track how the learned
+        # coefficients drift toward the analytical targets (c_joint, c_self, c_nbr) = (1, -1, -1).
+        cm_coefs = agent.cm_coefficients()
+        if cm_coefs is not None:
+            print(f"           CM coeffs -> joint(w_mu_nu): {cm_coefs['coef_joint']:+.4f} (1) | "
+                  f"self(w_mu): {cm_coefs['coef_self']:+.4f} (-1) | "
+                  f"nbr(w_nu): {cm_coefs['coef_nbr']:+.4f} (-1) | "
+                  f"bias: {cm_coefs['bias']:+.4f} (0)")
 
         # --- SMART VALIDATION LOGIC ---
         
@@ -313,6 +322,190 @@ def train(env, agent, buffer, config):
     plot_training_metrics(metrics, config)
     
     print(f"[*] The best performing model during validation was saved to: {best_model_path}")
+
+
+def evaluate_reward(env, agent, config, n_episodes, base_seed=50001):
+    """
+    Deterministic, fixed-seed validation: mean episode reward of the greedy policy.
+
+    Runs the policy with evaluate=True (no exploration noise) on the SAME circuits every
+    call (fixed seeds), so the result is far lower-variance than the raw training reward
+    (which draws a new drifted circuit each episode). Reward accounting matches the training
+    loop: the differential reward summed over the non-burn-in steps of each episode.
+    """
+    bypass_threshold = config.get('bypass_threshold', 2)
+    burn_in_steps = config.get('burn_in_steps', 0)
+    total = 0.0
+    for i in range(n_episodes):
+        obs, _ = env.reset(seed=base_seed + i)
+        done = False
+        step = 0
+        ep_r = 0.0
+        while not done:
+            if step < burn_in_steps:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                obs, _, terminated, truncated, _ = env.step(action)
+                done = terminated or truncated
+                step += 1
+                continue
+            n_flashes = np.sum(env.current_syndrome != 0)
+            if n_flashes <= bypass_threshold:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+            else:
+                action = agent.select_action(obs, evaluate=True)   # greedy, no noise
+            obs, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            ep_r += reward
+            step += 1
+        total += ep_r
+    return total / n_episodes
+
+
+def train_policy_gradient(env, agent, config):
+    """
+    On-policy policy-gradient trainer (no critic) for the contextual-bandit (gamma=0)
+    setting. The algorithm is selected by config['algo']:
+
+      - 'reinforce' : vanilla REINFORCE -- one gradient step per fresh batch.
+      - 'ppo'       : clipped surrogate with importance-weighted reuse over `ppo_epochs`
+                      epochs per batch.
+
+    Both use a zero baseline (the env reward is already differential) and a FIXED
+    exploration std on the actor; neither constructs or touches the critic / SAC path.
+    Mirrors `train()`'s episode/burn-in/bypass structure, collecting a fresh batch of
+    on-policy transitions every `reinforce_batch` non-trivial shots.
+    """
+    from adaptiveQRL.gnn_sac_agent import GraphReplayBuffer  # local import avoids cycle
+
+    algo = config.get('algo', 'reinforce')
+    print(f"\n{'='*40}")
+    print(f"STARTING {algo.upper()} TRAINING (Episodes: {config['train_episodes']})")
+    print(f"{'='*40}")
+
+    batch_size = config.get('reinforce_batch', 256)
+    bypass_threshold = config.get('bypass_threshold', 2)
+    burn_in_steps = config.get('burn_in_steps', 0)
+    ppo_clip_eps = config.get('ppo_clip_eps', 0.2)
+    ppo_epochs = config.get('ppo_epochs', 10)
+
+    # Deterministic exploration-std anneal: linearly decay the FIXED std from
+    # reinforce_std -> reinforce_std_final across training (sharpens the mean late without
+    # the collapse risk of a learnable std). Only applied when the std is fixed (a buffer),
+    # never when it is trainable.
+    std_start = float(config.get('reinforce_std', 1.5))
+    std_final = config.get('reinforce_std_final', None)
+    anneal_std = (std_final is not None
+                  and not config.get('reinforce_trainable_std', False)
+                  and hasattr(agent.actor, 'log_std'))
+    if anneal_std:
+        print(f"[i] Annealing exploration std {std_start} -> {std_final} over "
+              f"{config['train_episodes']} episodes.")
+
+    # Optional dedicated learning rate for the policy-gradient step.
+    if config.get('reinforce_lr') is not None:
+        for g in agent.actor_optimizer.param_groups:
+            g['lr'] = config['reinforce_lr']
+
+    metrics = {'rewards': [], 'c_losses': [], 'a_losses': [], 'mses': [], 'alphas': [],
+               'val_x': [], 'val_rewards': []}
+    val_every = config.get('val_every', 10)
+    val_episodes = config.get('val_episodes', 3)
+    best_val_reward = -float('inf')
+    best_model_path = config['model_path'].replace('.pth', '_best.pth')
+    start_time = time.time()
+
+    # Transient on-policy batch container (cleared after every gradient step).
+    batch_buf = GraphReplayBuffer(capacity=batch_size + 8)
+
+    for episode in range(config['train_episodes']):
+        # Update the fixed exploration std on the annealing schedule.
+        if anneal_std and config['train_episodes'] > 1:
+            frac = episode / (config['train_episodes'] - 1)
+            cur_std = std_start + (float(std_final) - std_start) * frac
+            agent.actor.log_std.fill_(float(np.log(cur_std)))
+
+        obs, info = env.reset(seed=None)
+        done = False
+        step_count = 0
+        episode_reward = 0
+        ep_pg_loss = []
+
+        while not done:
+            if step_count < burn_in_steps:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                obs = next_obs
+                step_count += 1
+                done = terminated or truncated
+                continue
+
+            n_flashes = np.sum(env.current_syndrome != 0)
+
+            if n_flashes <= bypass_threshold:
+                action = np.zeros(env.n_dec_edges, dtype=np.float32)
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+            else:
+                action = agent.select_action(obs, evaluate=False)
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+                # Store this on-policy transition (next_obs is irrelevant for REINFORCE).
+                batch_buf.push(obs, action, reward, None, done)
+
+            # On-policy gradient step once a full batch is collected, then discard it.
+            if len(batch_buf) >= batch_size:
+                if algo == 'ppo':
+                    pg = agent.ppo_update(list(batch_buf.buffer),
+                                          clip_eps=ppo_clip_eps, n_epochs=ppo_epochs)
+                else:
+                    pg = agent.reinforce_update(list(batch_buf.buffer))
+                ep_pg_loss.append(pg)
+                batch_buf.buffer.clear()
+
+            obs = next_obs
+            episode_reward += reward
+            step_count += 1
+
+        avg_pg = float(np.mean(ep_pg_loss)) if ep_pg_loss else 0.0
+        explore_std = float(np.exp(agent.actor.log_std.item())) if hasattr(agent.actor, 'log_std') else 0.0
+        mse = info.get('weights_mse_error', float('nan'))
+
+        metrics['rewards'].append(episode_reward)
+        metrics['c_losses'].append(0.0)          # no critic
+        metrics['a_losses'].append(avg_pg)
+        metrics['mses'].append(mse)
+        metrics['alphas'].append(explore_std)    # exploration std stands in for alpha
+
+        print(f"{algo.upper()} Ep: {episode+1:03d}/{config['train_episodes']} | "
+              f"Reward: {episode_reward:6.1f} | PG_Loss: {avg_pg:.4f} | "
+              f"ExploreStd: {explore_std:.4f}")
+        cm = agent.cm_coefficients()
+        if cm is not None:
+            print(f"           CM coeffs -> joint(w_mu_nu): {cm['coef_joint']:+.4f} (1) | "
+                  f"self(w_mu): {cm['coef_self']:+.4f} (-1) | "
+                  f"nbr(w_nu): {cm['coef_nbr']:+.4f} (-1) | "
+                  f"bias: {cm['bias']:+.4f} (0)")
+
+        # Deterministic, fixed-seed validation every `val_every` episodes. Lower variance
+        # than the raw training reward (same circuits, greedy policy, no exploration noise);
+        # used to pick the best model and shown on the training plot.
+        if (episode + 1) % val_every == 0:
+            val_reward = evaluate_reward(env, agent, config, n_episodes=val_episodes)
+            metrics['val_x'].append(episode + 1)
+            metrics['val_rewards'].append(val_reward)
+            print(f"  [validation] deterministic fixed-seed reward "
+                  f"(mean of {val_episodes} eps): {val_reward:6.1f}")
+            if val_reward > best_val_reward:
+                best_val_reward = val_reward
+                agent.save_models(best_model_path)
+
+    run_time = time.time() - start_time
+    print(f"\n{algo.upper()} training complete in {run_time:.2f} seconds.")
+    agent.save_models(config['model_path'])
+    try:
+        plot_training_metrics(metrics, config)
+    except Exception as e:
+        print(f"[!] Skipped metrics plot: {e}")
 
 
 def test(env, agent, config):

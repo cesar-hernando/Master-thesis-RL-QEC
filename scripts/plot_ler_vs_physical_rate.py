@@ -316,13 +316,13 @@ def main():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="models/hyperparam_tun_v2/slowgpu_v2_qec_graph_optuna_run_d5_trial_0040_best.pth",
+        default="models/hyperparam_tun_v2/qec_graph_optuna_run_d5_vv2_trial_0004_best.pth",
         help="Path to fixed learned SAC-GNN policy.",
     )
     parser.add_argument(
         "--p-values",
         type=str,
-        default="0.001, 0.0008, 0.0006",
+        default="0.01, 0.008, 0.006, 0.004, 0.002, 0.001, 0.0008, 0.0006, 0.0004, 0.0002",
         help="Comma-separated physical error rates.",
     )
     
@@ -342,7 +342,7 @@ def main():
 
     # Drift + burn-in
     parser.add_argument(
-        "--mismatch", type=float, default=10.0,
+        "--mismatch", type=float, default=1.0,
         help="Log-uniform drift factor M (per-edge noise prob scaled in [1/M, M]). "
              "1.0 disables drift.",
     )
@@ -372,8 +372,8 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--alpha", type=float, default=0.01)
 
-    parser.add_argument("--out-png", type=str, default="plots/ler_vs_p_slowgpu_v2_qec_graph_optuna_run_d7_trial_0040_best.png")
-    parser.add_argument("--out-csv", type=str, default="data/ler_vs_p_slowgpu_v2_qec_graph_optuna_run_d7_trial_0040_best.csv")
+    parser.add_argument("--out-png", type=str, default="plots/ler_vs_p_d5_vv2_trial_0004_best.png")
+    parser.add_argument("--out-csv", type=str, default="data/ler_vs_p_d5_vv2_trial_0004_best.csv")
 
     args = parser.parse_args()
 

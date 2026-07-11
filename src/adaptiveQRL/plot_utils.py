@@ -228,55 +228,68 @@ import os
 import matplotlib.pyplot as plt
 
 def plot_training_metrics(metrics, config):
-    """Generates a 4-panel plot showing training health over episodes."""
+    """
+    Training-health plot with a 10-episode moving average overlaid on the raw (faint)
+    curves. For REINFORCE (config['algo'] == 'reinforce') only the reward and the
+    policy-gradient loss are shown, since there is no critic loss or alpha to plot.
+    """
     os.makedirs('plots', exist_ok=True)
     metrics_filename = config.get("training_metrics_filename", "training_metrics.png")
-    
-    episodes = range(1, len(metrics['rewards']) + 1)
-    
-    # Create a 2x2 grid of subplots
-    fig, axs = plt.subplots(2, 2, figsize=(16, 10))
-    axs = axs.flatten()  # Flattens the 2x2 array into 1D for easier indexing
-    
-    fig.suptitle(f"SAC-GNN Training Metrics ({config['train_episodes']} Episodes)", fontsize=16, fontweight='bold', y=0.98)
-    
-    # Plot 1 (Top-Left): Total Reward
-    axs[0].plot(episodes, metrics['rewards'], color='blue', linewidth=2)
-    axs[0].set_title('Episode Reward')
-    axs[0].set_xlabel('Episode')
-    axs[0].set_ylabel('Total Reward')
-    axs[0].grid(True, linestyle='--', alpha=0.7)
-    
-    # Plot 2 (Top-Right): Alpha Evolution
-    # (Assuming you are storing alpha values in metrics['alphas'])
-    if 'alphas' in metrics:
-        axs[1].plot(episodes, metrics['alphas'], color='purple', linewidth=2)
-        axs[1].set_title('Alpha (Entropy Temperature)')
-        axs[1].set_xlabel('Episode')
-        axs[1].set_ylabel('Alpha Value')
-        axs[1].grid(True, linestyle='--', alpha=0.7)
-    else:
-        axs[1].text(0.5, 0.5, "Alpha metrics not found in dictionary", ha='center', va='center')
-        axs[1].set_title('Alpha (Entropy Temperature)')
-    
-    # Plot 3 (Bottom-Left): Critic Loss
-    axs[2].plot(episodes, metrics['c_losses'], label='Critic Loss', color='red', linewidth=2)
-    axs[2].set_title('Critic Loss (MSE)')
-    axs[2].set_xlabel('Episode')
-    axs[2].set_ylabel('Loss')
-    axs[2].grid(True, linestyle='--', alpha=0.7)
+    algo = config.get('algo', 'sac')
+    n = len(metrics['rewards'])
+    episodes = np.arange(1, n + 1)
 
-    # Plot 4 (Bottom-Right): Actor Loss
-    axs[3].plot(episodes, metrics['a_losses'], label='Actor Loss', color='green', linewidth=2)
-    axs[3].set_title('Actor Loss')
-    axs[3].set_xlabel('Episode')
-    axs[3].set_ylabel('Loss')
-    axs[3].grid(True, linestyle='--', alpha=0.7)
-    
-    # Adjust layout to prevent overlapping
+    def _moving_avg(y, w=10):
+        """Trailing moving average; returns (x, y_ma) aligned to the episode it ends on."""
+        y = np.asarray(y, dtype=float)
+        if n == 0:
+            return np.array([]), np.array([])
+        w = min(w, n)
+        kernel = np.ones(w) / w
+        return np.arange(w, n + 1), np.convolve(y, kernel, mode='valid')
+
+    val_x = metrics.get('val_x', [])
+    val_y = metrics.get('val_rewards', [])
+
+    def _panel(ax, y, title, ylabel, color, show_val=False):
+        ax.plot(episodes, y, color=color, alpha=0.25, linewidth=1)          # raw (faint)
+        mx, my = _moving_avg(y, w=10)
+        if len(mx):
+            ax.plot(mx, my, color=color, linewidth=2.2, label='10-ep moving avg')
+        if show_val and len(val_x):
+            ax.plot(val_x, val_y, 'o-', color='black', linewidth=1.8, markersize=5,
+                    label='validation (det., fixed seeds)')
+        ax.set_title(title)
+        ax.set_xlabel('Episode')
+        ax.set_ylabel(ylabel)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(loc='best', fontsize=8)
+
+    if algo in ('reinforce', 'ppo'):
+        # No critic / no alpha for the actor-only policy-gradient algos: only reward + loss.
+        fig, axs = plt.subplots(1, 2, figsize=(16, 5))
+        fig.suptitle(f"{algo.upper()} Training Metrics ({config['train_episodes']} Episodes)",
+                     fontsize=16, fontweight='bold', y=0.99)
+        _panel(axs[0], metrics['rewards'], 'Episode Reward', 'Total Reward', 'blue', show_val=True)
+        _panel(axs[1], metrics['a_losses'], 'Policy-Gradient Loss', 'PG Loss', 'green')
+    else:
+        fig, axs = plt.subplots(2, 2, figsize=(16, 10))
+        axs = axs.flatten()
+        fig.suptitle(f"SAC-GNN Training Metrics ({config['train_episodes']} Episodes)",
+                     fontsize=16, fontweight='bold', y=0.98)
+        _panel(axs[0], metrics['rewards'], 'Episode Reward', 'Total Reward', 'blue', show_val=True)
+        if 'alphas' in metrics:
+            _panel(axs[1], metrics['alphas'], 'Alpha (Entropy Temperature)', 'Alpha Value', 'purple')
+        else:
+            axs[1].text(0.5, 0.5, "Alpha metrics not found in dictionary", ha='center', va='center')
+            axs[1].set_title('Alpha (Entropy Temperature)')
+        _panel(axs[2], metrics['c_losses'], 'Critic Loss (MSE)', 'Loss', 'red')
+        _panel(axs[3], metrics['a_losses'], 'Actor Loss', 'Loss', 'green')
+
     plt.tight_layout()
-    plt.subplots_adjust(top=0.92) # Give the suptitle a bit of breathing room
-    
+    plt.subplots_adjust(top=0.90)  # breathing room for the suptitle
+
     plt.savefig(f"plots/{metrics_filename}", dpi=300)
     print(f"Training plots saved to 'plots/{metrics_filename}'")
     plt.close()

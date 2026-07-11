@@ -1,0 +1,43 @@
+{
+  "study_name": "qec_graph_optuna_run_d5_vv2",
+  "best_trial_number": 4,
+  "best_value": -9.55e-05,
+  "best_params": {
+    "hidden_dim": 256,
+    "n_layers": 1,
+    "lr": 5e-05,
+    "alpha_lr": 0.0,
+    "alpha": 0.01,
+    "batch_size": 256,
+    "update_frequency": 100,
+    "local_action_hops": 1,
+    "action_scale": 5.0,
+    "target_entropy": -1.0,
+    "tau": 0.005,
+    "mlp_head": "standard",
+    "mismatch": 30.0,
+    "buffer_capacity": 1000000,
+    "n_shots": 65000,
+    "burn_in_steps": 15000,
+    "train_episodes": 500,
+    "start_from_oracle": false,
+    "use_endpoint_firing": false,
+    "p": 0.004
+  },
+  "best_user_attrs": {
+    "corr_errors": 331,
+    "corr_ler": 8.275e-05,
+    "eval_mismatch": 1.0,
+    "eval_p": 0.001,
+    "eval_total_shots": 4000000,
+    "legacy_isolated_improvement": 0.06827116275006552,
+    "model_path": "/zfsstore/user/s4568389/projects/Master-thesis-RL-QEC/models/optuna/qec_graph_optuna_run_d5_vv2/qec_graph_optuna_run_d5_vv2_trial_0004_best.pth",
+    "neural_errors": 382,
+    "neural_ler": 9.55e-05,
+    "preset_id": 4,
+    "runtime_seconds": 104174.546667099,
+    "static_errors": 563,
+    "static_ler": 0.00014075
+  },
+  "n_trials_total": 20
+}
