@@ -1,30 +1,29 @@
 #!/bin/bash
 #SBATCH --job-name=reg_cm_scan
-#SBATCH --partition=gpu-l4-24g
-#SBATCH --time=1-00:00:00
+#SBATCH --partition=cpu-zen4
+#SBATCH --time=3-00:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
-#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
 #SBATCH --array=0-17
 #SBATCH --output=slurm_logs/reg_cm_scan_%A_%a.out
 #SBATCH --error=slurm_logs/reg_cm_scan_%A_%a.err
 
-# Regularized-CM LER-vs-alpha SCAN (fixed alpha grid 0.1..0.9), ONE array task per
-# (distance, p) pair so the slow low-p points run in parallel. For analysing the
+# Regularized-CM LER-vs-alpha SCAN (fixed alpha grid 0.1..0.9). CPU-ONLY (PyMatching);
+# no GPU. ONE array task per (distance, p) pair, 1 CPU each (decoding is single-
+# threaded), so all points run in parallel and pack densely. For analysing the
 # LER(alpha) dependence, NOT for locating the optimum. Each task writes its OWN CSV;
 # concatenate afterwards (they share a header):
 #   awk 'FNR==1 && NR!=1{next} {print}' data/reg_cm_alpha_scan/reg_cm_scan_*.csv > data/reg_cm_alpha_scan_all.csv
-#
-# NOTE: CPU-only (PyMatching). GPU partition/--gres kept only to match the other jobs
-# here; drop --gres and use a CPU partition if you have one.
+# For the very slowest points (d=7, p<=2e-4) split across seeds instead -- see the
+# seed-splitting note in the chat / README.
 
 set -euo pipefail
 echo "Job started at: $(date)"
 
 module load Python/3.11.5-GCCcore-13.2.0
-source cluster_venv/bin/activate
+source new_cluster_venv/bin/activate         # <- adjust if your venv has a different name/path
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
@@ -41,9 +40,10 @@ P=${P_VALUES[$(( SLURM_ARRAY_TASK_ID % NP ))]}
 
 OUT_CSV="data/reg_cm_alpha_scan/reg_cm_scan_d${D}_p${P}_${SLURM_ARRAY_JOB_ID}.csv"
 
-# Stop ~40 min before the 24h walltime so the incremental CSV is flushed and the
-# task exits gracefully instead of being killed mid-write.
-MAX_SECONDS=84000
+# Stop ~1h before the 3-day (259200s) walltime so the incremental CSV is flushed and
+# the task exits gracefully instead of being killed mid-write. Bump #SBATCH --time
+# (cpu-zen4 allows up to 7 days) and this value together for the slowest low-p points.
+MAX_SECONDS=255000
 
 ARGS=(
   --distances "$D"
