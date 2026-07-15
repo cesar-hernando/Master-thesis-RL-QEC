@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Sweep MWPM vs Regularized Correlated Matching over distance, p, and alpha.
+"""Sweep MWPM vs Pearl's Correlated Matching over distance, p, and alpha.
 
 Rotated surface code Z-memory, circuit-level depolarizing noise, Tesseract
 (coordinate-aware) error decomposition. For each (distance, p) it streams shots
@@ -13,7 +13,7 @@ with COMMON random numbers across all decoders until CM (alpha=1.0) reaches
 
 Results are written incrementally to CSV and plotted:
   * LER vs p (one panel per distance: MWPM, CM, each alpha)
-  * LER / LER(alpha=1.0) vs alpha (one panel per distance, one line per p)
+  * LER / LER(MWPM) vs alpha (one panel per distance, one line per p)
 
 Usage:
   python scripts/test_alpha_decode.py

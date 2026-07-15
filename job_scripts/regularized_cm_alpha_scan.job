@@ -1,0 +1,67 @@
+#!/bin/bash
+#SBATCH --job-name=reg_cm_scan
+#SBATCH --partition=gpu-l4-24g
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+#SBATCH --gres=gpu:1
+#SBATCH --array=0-17
+#SBATCH --output=slurm_logs/reg_cm_scan_%A_%a.out
+#SBATCH --error=slurm_logs/reg_cm_scan_%A_%a.err
+
+# Regularized-CM LER-vs-alpha SCAN (fixed alpha grid 0.1..0.9), ONE array task per
+# (distance, p) pair so the slow low-p points run in parallel. For analysing the
+# LER(alpha) dependence, NOT for locating the optimum. Each task writes its OWN CSV;
+# concatenate afterwards (they share a header):
+#   awk 'FNR==1 && NR!=1{next} {print}' data/reg_cm_alpha_scan/reg_cm_scan_*.csv > data/reg_cm_alpha_scan_all.csv
+#
+# NOTE: CPU-only (PyMatching). GPU partition/--gres kept only to match the other jobs
+# here; drop --gres and use a CPU partition if you have one.
+
+set -euo pipefail
+echo "Job started at: $(date)"
+
+module load Python/3.11.5-GCCcore-13.2.0
+source cluster_venv/bin/activate
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+mkdir -p slurm_logs data/reg_cm_alpha_scan
+
+# --- axes: the array index selects one (distance, p) pair ----------------------
+DISTANCES=(5 7)
+P_VALUES=(1e-2 7e-3 4e-3 2e-3 1e-3 7e-4 4e-4 2e-4 1e-4)
+NP=${#P_VALUES[@]}                                   # keep --array=0-(len(D)*NP-1)
+
+D=${DISTANCES[$(( SLURM_ARRAY_TASK_ID / NP ))]}
+P=${P_VALUES[$(( SLURM_ARRAY_TASK_ID % NP ))]}
+
+OUT_CSV="data/reg_cm_alpha_scan/reg_cm_scan_d${D}_p${P}_${SLURM_ARRAY_JOB_ID}.csv"
+
+# Stop ~40 min before the 24h walltime so the incremental CSV is flushed and the
+# task exits gracefully instead of being killed mid-write.
+MAX_SECONDS=84000
+
+ARGS=(
+  --distances "$D"
+  --p-values "$P"
+  --rounds 0                 # 0 -> rounds = distance
+  --alphas 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9   # fixed grid, same at every p
+  --target-errors 500        # every alpha on the grid reaches >= this many errors
+  --chunk 1000000
+  --max-shots 20000000000
+  --max-seconds "$MAX_SECONDS"
+  --seed 12345
+  --out-csv "$OUT_CSV"
+)
+
+echo "Array task ${SLURM_ARRAY_TASK_ID}: distance=${D}, p=${P}"
+echo "Output CSV: ${OUT_CSV}"
+echo "Command: python -u scripts/regularized_cm_alpha_scan.py ${ARGS[*]}"
+
+python -u scripts/regularized_cm_alpha_scan.py "${ARGS[@]}"
+
+echo "Job finished at: $(date)"
