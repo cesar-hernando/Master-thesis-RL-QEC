@@ -10,7 +10,7 @@ until every BP setting has >= MIN_ERRORS logical errors (or MAX_SHOTS is hit);
 the MWPM baseline (always worse) is emitted as a row with bp_iters="mwpm".
 
 Deps:  pip install beliefmatching stim numpy   (beliefmatching pulls in pymatching + ldpc)
-       + this repo's package on PATH:  pip install -e .   (for adaptiveQRL.decompose_errors)
+       + this repo's package on PATH:  pip install -e .   (for NeuralCM.decompose_errors)
 Run:   python ler_vs_p_beliefmatching.py
 Out:   data/ler_vs_p_beliefmatching_d5.csv   (long format: one row per (p, bp_iters))
 
@@ -25,7 +25,7 @@ import stim
 import pymatching
 from beliefmatching import BeliefMatching
 
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 # ── Config ──────────────────────────────────────────────────────────────────
 D          = 7

@@ -25,7 +25,7 @@ import stim
 import pymatching
 from tesseract_decoder import tesseract
 
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 # ── Config ──────────────────────────────────────────────────────────────────
 D          = 5

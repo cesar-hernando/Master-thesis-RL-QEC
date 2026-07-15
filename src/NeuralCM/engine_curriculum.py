@@ -6,7 +6,7 @@ It handles hyperparameters, execution modes, and performance visualization.
 import time
 import numpy as np
 
-from adaptiveQRL.plot_utils import *
+from NeuralCM.plot_utils import *
 
 
 def validate(create_env, agent, config):

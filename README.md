@@ -52,19 +52,39 @@ source .venv/bin/activate
 
 ### 3. Install Custom PyMatching Backend
 
+This project depends on a **custom fork** of PyMatching that adds correlated matching
+(`enable_correlations=True`) and a regularized reweight strength `alpha`:
+
+- Fork: `https://github.com/cesar-hernando/PyMatching.git`
+- Branch: `feature/decode-to-edges-edge-reweights`, pinned to commit `69d7c049`
+  ("Transform Pearl's CM to Regularized CM").
+
+> **This is not a wheel from PyPI — it is a C++ extension built from source with CMake.**
+> You need a C++ toolchain: on Linux/macOS a recent gcc/clang + CMake; on Windows the
+> **Visual Studio Build Tools** (Desktop development with C++) + **CMake**.
+
 **For Mac and Linux Users**
 ```bash
 pip install --upgrade pip setuptools wheel
-pip install git+https://github.com/cesar-hernando/PyMatching.git@feature/decode-to-edges-edge-reweights
+pip install "pymatching @ git+https://github.com/cesar-hernando/PyMatching.git@69d7c049"
 ```
 
 **For Windows Users**
-Due to compiler path-length limitations on Windows, a pre-compiled wheel is provided.
+The direct `git+` build can fail on Windows due to compiler path-length limits (the deep
+temporary build directory overflows `MAX_PATH`). Build from a **short-path local clone**
+instead:
 ```bash
-pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl
+# Clone the fork somewhere with a short path (e.g. C:\pm), then:
+git clone --branch feature/decode-to-edges-edge-reweights https://github.com/cesar-hernando/PyMatching.git C:\pm
+git -C C:\pm checkout 69d7c049
+pip install --upgrade pip setuptools wheel
+pip wheel C:\pm --no-deps -w C:\pm\dist
+pip install --force-reinstall --no-deps C:\pm\dist\PyMatching-2.3.1-cp311-cp311-win_amd64.whl
 ```
+(Enable long paths — `git config --system core.longpaths true` and the Windows
+`LongPathsEnabled` registry key — if cloning/building still hits path-length errors.)
 
-### 4. Install adaptiveQRL
+### 4. Install NeuralCM
 ```bash
 pip install -e .
 ```
@@ -140,11 +160,11 @@ Generates visualizations of learned weight distributions and edge importance.
 
 | Module | Purpose |
 |--------|---------|
-| [`surface_code_stim.py`](src/adaptiveQRL/surface_code_stim.py) | Rotated surface-code circuit builder; extracts DEM & decoding graph |
-| [`syndrome_data_generation.py`](src/adaptiveQRL/syndrome_data_generation.py) | Simulates drift, generates syndrome data & MWPM predictions |
-| [`drifted_matching_env.py`](src/adaptiveQRL/drifted_matching_env.py) | Gymnasium-compatible environment; applies local reweighting actions |
-| [`gnn_sac_agent.py`](src/adaptiveQRL/gnn_sac_agent.py) | GNN encoder + SAC agent + replay buffer |
-| [`engine.py`](src/adaptiveQRL/engine.py) | Training, testing, and analysis pipelines |
+| [`surface_code_stim.py`](src/NeuralCM/surface_code_stim.py) | Rotated surface-code circuit builder; extracts DEM & decoding graph |
+| [`syndrome_data_generation.py`](src/NeuralCM/syndrome_data_generation.py) | Simulates drift, generates syndrome data & MWPM predictions |
+| [`drifted_matching_env.py`](src/NeuralCM/drifted_matching_env.py) | Gymnasium-compatible environment; applies local reweighting actions |
+| [`gnn_sac_agent.py`](src/NeuralCM/gnn_sac_agent.py) | GNN encoder + SAC agent + replay buffer |
+| [`engine.py`](src/NeuralCM/engine.py) | Training, testing, and analysis pipelines |
 
 ### Project Pipeline
 
@@ -168,7 +188,7 @@ Generates visualizations of learned weight distributions and edge importance.
 
 ```
 .
-├── src/adaptiveQRL/              # Main package
+├── src/NeuralCM/              # Main package
 │   ├── surface_code_stim.py       # Surface code simulator
 │   ├── syndrome_data_generation.py # Data generation
 │   ├── drifted_matching_env.py    # RL environment

@@ -12,6 +12,11 @@ install_requires = [
     "numpy",
     "matplotlib",
     "stim",
+    # Custom fork (correlated matching: enable_correlations=True + regularized
+    # reweight strength `alpha`, @69d7c049). NOT stock PyPI — install it first
+    # from the fork per README section 3. Left UNPINNED here on purpose so
+    # `pip install -e .` accepts the pre-installed fork wheel instead of forcing
+    # a from-git source rebuild (which fails on Windows due to path length).
     "pymatching",
     "gymnasium",
     "plotly",
@@ -30,7 +35,7 @@ extras_require = {
 
 
 info = {
-    "name": "adaptiveQRL",
+    "name": "NeuralCM",
     "version": version,
     "author": "Cesar Hernando",
     "author_email": "chernandodelaf@tudelft.nl",
@@ -39,12 +44,12 @@ info = {
     "long_description_content_type": "text/markdown",
     "url": "https://github.com/cesar-hernando/Master-thesis-RL-QEC",
     "license": "Apache 2.0",
-    "provides": ["adaptiveQRL"],
+    "provides": ["NeuralCM"],
     "install_requires": install_requires,
     "extras_require": extras_require,
     "packages": find_packages(where='src'),
     "package_dir": {'': 'src'},
-    "keywords": ["QEC", "Quantum", "Reinforcement Learning"],
+    "keywords": ["QEC", "Surface Code", "Reinforcement Learning"],
 }
 
 classifiers = [

@@ -15,7 +15,7 @@ import stim, pymatching
 
 ROOT = r"c:\Users\cesar\Documents\Python\master-thesis\Master-thesis-RL-QEC"
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 D, P, ALPHA_BEST = 5, 2e-4, 0.2
 

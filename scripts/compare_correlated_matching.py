@@ -37,7 +37,7 @@ import stim
 import pymatching
 import matplotlib.pyplot as plt
 
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 # Fine p grid (descending). d=3,5 use the whole thing; d=7,9 stop early.
 P_GRID = np.array([

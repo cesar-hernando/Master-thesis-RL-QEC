@@ -4,10 +4,10 @@ SAC-GNN agent on the Drifted Matching Environment.
 """
 
 import time
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.gnn_sac_agent import SACAgent, GraphReplayBuffer
-from adaptiveQRL.engine import train, train_policy_gradient, test, analyze_policy
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.gnn_sac_agent import SACAgent, GraphReplayBuffer
+from NeuralCM.engine import train, train_policy_gradient, test, analyze_policy
 
 
 if __name__ == "__main__":

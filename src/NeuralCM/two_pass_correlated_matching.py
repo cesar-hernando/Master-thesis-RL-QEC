@@ -25,7 +25,7 @@ from the base DEM: occ = base_p (marginal edge probabilities), corr = initial_co
 import numpy as np
 import pymatching
 
-from adaptiveQRL.decoding_graph import DecodingGraph
+from NeuralCM.decoding_graph import DecodingGraph
 
 
 class TwoPassCorrelatedMatching:

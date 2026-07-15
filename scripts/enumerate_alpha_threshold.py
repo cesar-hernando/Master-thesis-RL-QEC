@@ -5,7 +5,7 @@ import stim, pymatching
 
 ROOT = r"c:\Users\cesar\Documents\Python\master-thesis\Master-thesis-RL-QEC"
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 D = 5
 ALPHAS = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0]

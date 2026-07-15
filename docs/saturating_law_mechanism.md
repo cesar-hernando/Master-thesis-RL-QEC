@@ -47,6 +47,20 @@ $2\to6\to14\to54\to154\to225\to373$ as $\alpha$ goes $0.05\to1$ at $p=2\times10^
 thresholds all slide toward 0 as $p^{a/k}$. The measured shift is $\approx\sqrt{10}$ per decade, i.e.
 **$a/k\approx\tfrac12$**.
 
+**Why does $H$ depend on $p$ at all?** It looks like double counting — the occurrence probability of
+a 2-fault configuration is already factored out as $p^{\,n-1}$ — but $p$ enters through a *second
+door*: the decoder's **weight landscape**. Weights are $w=\log\frac{1-p_e}{p_e}\approx\log(1/p_e)$, so
+whether the decoder *fails* on a given configuration (the $\theta$-functions above) is decided by
+weight comparisons whose honest side scales as $\log(1/p)$. $H(\alpha,p)$ is therefore a slowly
+sliding staircase in $\log p$ — logarithmic in origin, nothing like the power-law prefactor, and no
+probability is counted twice (write it as $H(\alpha, L)$ with $L=\log(1/p)$ to make the two roles
+explicit). Empirically: at $\alpha=1$ nearly all configurations are active, so $H$ is almost
+$p$-independent (failing-pair counts $423\to268$, a factor 1.6, while $p^2$ varies by $1600$); at
+intermediate $\alpha=0.3$ it varies by a factor $\sim23$ — the $p$-dependence lives exactly where the
+threshold cloud sits. This dependence is *essential*: were $H$ $p$-independent, the optimum would
+stall just below the smallest fixed threshold and $\alpha^*(p)$ would plateau at a small constant
+instead of decaying — the sliding thresholds are what generate the $\sqrt{p}$ tail.
+
 **Benefit is $p$-independent in $\alpha$.** $B(\alpha)$ is a property of the correlation structure
 (which decisions need tipping, and by how much), not of the ambient weight scale, so its optimum $A$
 does not move with $p$. Empirical check: the fitted plateau is $L=0.775\ (d=5)$ and $0.749\ (d=7)$ —

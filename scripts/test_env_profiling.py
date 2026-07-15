@@ -19,8 +19,8 @@ from typing import Callable
 
 import numpy as np
 
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
 
 
 @dataclass

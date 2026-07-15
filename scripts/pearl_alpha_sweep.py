@@ -40,8 +40,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-from adaptiveQRL.two_pass_correlated_matching import TwoPassCorrelatedMatching
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.two_pass_correlated_matching import TwoPassCorrelatedMatching
 
 
 def parse_args():

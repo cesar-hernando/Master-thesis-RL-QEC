@@ -19,8 +19,8 @@ the measured points.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
 
 
 def build_env(distance, n_rounds, p=0.004, mismatch=30.0):

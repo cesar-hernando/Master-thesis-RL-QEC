@@ -44,8 +44,8 @@ import pymatching
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
-from adaptiveQRL.decoding_graph import DecodingGraph
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.decoding_graph import DecodingGraph
 
 
 def parse_args():

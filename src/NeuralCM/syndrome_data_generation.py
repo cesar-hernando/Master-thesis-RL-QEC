@@ -10,8 +10,8 @@ import pymatching
 import plotly.graph_objects as go
 from typing import Optional
 
-from adaptiveQRL.surface_code_stim import SurfaceCode
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.surface_code_stim import SurfaceCode
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
 
 
 class SyndromeDataGenerator:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Sweep MWPM vs correlated matching (Pearl alpha) over distance, p, and alpha.
+"""Sweep MWPM vs Regularized Correlated Matching over distance, p, and alpha.
 
 Rotated surface code Z-memory, circuit-level depolarizing noise, Tesseract
 (coordinate-aware) error decomposition. For each (distance, p) it streams shots
@@ -7,9 +7,9 @@ with COMMON random numbers across all decoders until CM (alpha=1.0) reaches
 --target-errors (or --max-shots), decoding every chunk with:
 
   * uncorrelated MWPM            (Stim native decomposition, enable_correlations=False)
-  * correlated matching          (enable_correlations=True) at alpha=1.0 (ordinary CM)
-                                  and each --alphas value (Pearl soft evidence).
-                                  1.0 is always included as the CM reference / stop rule.
+  * regularized correlated matching (enable_correlations=True) at alpha=1.0 (ordinary CM)
+                                    and each --alphas value (Pearl soft evidence).
+                                    1.0 is always included as the CM reference / stop rule.
 
 Results are written incrementally to CSV and plotted:
   * LER vs p (one panel per distance: MWPM, CM, each alpha)

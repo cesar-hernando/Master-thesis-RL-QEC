@@ -7,9 +7,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.plot_utils import plot_tracer_evolution_histograms
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.plot_utils import plot_tracer_evolution_histograms
 
 
 n_shots = 200_000

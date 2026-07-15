@@ -30,8 +30,8 @@ import stim
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
-from adaptiveQRL.two_pass_correlated_matching import TwoPassCorrelatedMatching
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.two_pass_correlated_matching import TwoPassCorrelatedMatching
 
 CLO, CHI = 1e-6, 0.499999
 

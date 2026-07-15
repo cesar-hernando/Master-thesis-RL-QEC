@@ -7,9 +7,9 @@ import numpy as np
 import torch
 from torch.profiler import profile, record_function, ProfilerActivity
 
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.gnn_sac_agent import SACAgent, GraphReplayBuffer
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.gnn_sac_agent import SACAgent, GraphReplayBuffer
 
 ######################################
 # 1. PROFILER CONFIGURATION          #

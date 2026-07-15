@@ -78,9 +78,9 @@ import torch
 from torch_geometric.data import Batch, Data
 from tqdm import tqdm
 
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.gnn_sac_agent import SACAgent
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.gnn_sac_agent import SACAgent
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
 
 # Reuse the tested accumulator + plotting from strategy_analyzer_v2.
 from strategy_analyzer_v2 import (

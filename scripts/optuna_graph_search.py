@@ -11,10 +11,10 @@ import numpy as np
 import optuna
 import torch
 
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.engine import evaluate_low_p_oracle, train, validate
-from adaptiveQRL.gnn_sac_agent import GraphReplayBuffer, SACAgent
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.engine import evaluate_low_p_oracle, train, validate
+from NeuralCM.gnn_sac_agent import GraphReplayBuffer, SACAgent
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
 from sandbox_optuna_graph_space import optuna_categorical_choices, preset_by_id, trial_presets
 
 

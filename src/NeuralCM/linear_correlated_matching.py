@@ -29,7 +29,7 @@ state (current weights, the joint-probability edge feature, the 4 coefficients).
 import numpy as np
 import pymatching
 
-from adaptiveQRL.decoding_graph import DecodingGraph
+from NeuralCM.decoding_graph import DecodingGraph
 
 
 class LinearCorrelatedMatching:

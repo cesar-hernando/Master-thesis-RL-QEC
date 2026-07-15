@@ -19,8 +19,11 @@ python -m venv .venv
 # Linux/macOS users
 source .venv/bin/activate
 
-# Install custom PyMatching backend (Windows - pre-compiled wheel)
-pip install wheels/pymatching-2.3.1-cp311-cp311-win_amd64.whl
+# Install the custom PyMatching fork (correlated matching + regularized `alpha`).
+# NOT a PyPI wheel: it is a C++ extension built from source via CMake, so a C++
+# toolchain is required (Windows: Visual Studio Build Tools + CMake). See README
+# section 3 for the Windows short-path build that avoids path-length failures.
+pip install "pymatching @ git+https://github.com/cesar-hernando/PyMatching.git@69d7c049"
 
 # Install package in development mode
 pip install -e .

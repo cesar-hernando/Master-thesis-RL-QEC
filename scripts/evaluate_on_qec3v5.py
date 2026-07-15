@@ -54,10 +54,10 @@ import numpy as np
 import pymatching
 import stim
 
-from adaptiveQRL.decompose_errors import decompose_errors_for_stim_surface_code_coords
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.gnn_sac_agent import SACAgent
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.gnn_sac_agent import SACAgent
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
 
 
 DATASET_NAME = "google_qec3v5"

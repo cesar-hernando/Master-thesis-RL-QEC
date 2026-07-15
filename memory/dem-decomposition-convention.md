@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-Across the entire codebase, build decomposed DEMs with `decompose_errors_for_stim_surface_code_coords` (from `src/adaptiveQRL/decompose_errors.py`) applied to `circuit.detector_error_model()`. Do NOT use stim's built-in `circuit.detector_error_model(decompose_errors=True)`.
+Across the entire codebase, build decomposed DEMs with `decompose_errors_for_stim_surface_code_coords` (from `src/NeuralCM/decompose_errors.py`) applied to `circuit.detector_error_model()`. Do NOT use stim's built-in `circuit.detector_error_model(decompose_errors=True)`.
 
 **Exception:** scripts/notebooks that deliberately compare the two decomposition methods may use both.
 

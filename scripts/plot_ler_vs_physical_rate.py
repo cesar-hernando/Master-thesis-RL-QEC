@@ -15,9 +15,9 @@ from typing import Dict, List
 import matplotlib.pyplot as plt
 import numpy as np
 
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.gnn_sac_agent import SACAgent
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.gnn_sac_agent import SACAgent
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
 
 
 def parse_p_values(raw: str) -> List[float]:

@@ -11,8 +11,8 @@ import plotly.graph_objects as go
 import pymatching
 import scipy.sparse as sp
 
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
-from adaptiveQRL.decoding_graph import DecodingGraph
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.decoding_graph import DecodingGraph
 
 class DriftedMatchingEnv(gym.Env):
     """

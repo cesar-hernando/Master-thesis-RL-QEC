@@ -6,9 +6,9 @@ It handles hyperparameters, execution modes, and performance visualization.
 import time
 import numpy as np
 
-from adaptiveQRL.drifted_matching_env import DriftedMatchingEnv
-from adaptiveQRL.plot_utils import *
-from adaptiveQRL.syndrome_data_generation import SyndromeDataGenerator
+from NeuralCM.drifted_matching_env import DriftedMatchingEnv
+from NeuralCM.plot_utils import *
+from NeuralCM.syndrome_data_generation import SyndromeDataGenerator
 
 
 def validate(env, agent, config):
@@ -375,7 +375,7 @@ def train_policy_gradient(env, agent, config):
     Mirrors `train()`'s episode/burn-in/bypass structure, collecting a fresh batch of
     on-policy transitions every `reinforce_batch` non-trivial shots.
     """
-    from adaptiveQRL.gnn_sac_agent import GraphReplayBuffer  # local import avoids cycle
+    from NeuralCM.gnn_sac_agent import GraphReplayBuffer  # local import avoids cycle
 
     algo = config.get('algo', 'reinforce')
     print(f"\n{'='*40}")
