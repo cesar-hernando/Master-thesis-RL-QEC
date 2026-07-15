@@ -1,22 +1,18 @@
-# Master's Thesis: *Adaptive Quantum Error Decoding Under Drift Noise via Graph Reinforcement Learning*
+# Master's Thesis: *From Neural to Regularized Correlated Matching*
+### Improving the correlation-reweighting rule of surface-code matching decoders
 
 This repository contains the codebase for my master's thesis project in the Applied Quantum Algorithms Group (Leiden University), which is part of the joint Quantum Information Science and Technology program (TU Delft & Leiden University).
 
 ## Overview
 
-This project develops an adaptive and correlation-aware quantum error correction decoder that combines Graph Neural Networks (GNN) with Soft Actor-Critic (SAC) reinforcement learning to reweight Minimum-Weight Perfect Matching (MWPM) decoders. 
+**Correlated Matching (CM)** improves Minimum-Weight Perfect Matching (MWPM) surface-code decoding with a *second pass*: after a first MWPM pass, the decoding-graph edges that share a fault-correlation with the selected edges are **reweighted**, and matching is run again — capturing the error correlations (single-qubit `Y` errors, two-qubit gate faults) that plain MWPM ignores. CM's accuracy hinges entirely on **how that reweighting is done**, and Fowler's original hard-evidence rule is *not* optimal.
 
-### Problem Statement
+This thesis studies **how to improve the correlation-reweighting rule of two-pass matching**, in two complementary ways:
 
-Standard MWPM decoders assume static, independent error models with fixed global edge weights. Real quantum devices experience slowly drifting error rates and correlations between errors.
+1. **Neural Correlated Matching — learn the rule.** A Graph Neural Network + Soft Actor-Critic (**GNN-SAC**) reinforcement-learning agent learns the second-pass reweighting directly from the decoding reward. It acts on a *correlation graph* whose nodes are decoding-graph edges, reweighting only those near the edges selected in the first pass — adding flexibility beyond CM's fixed functional form, and recovering (and exceeding) CM without being told its formula.
+2. **Regularized Correlated Matching — fix the rule analytically.** We show that full-strength CM **over-corrects at low physical error rate** — losing a unit of effective code distance and eventually falling *behind* plain MWPM — and correct it with a reweighting-strength factor `α` that scales with the physical error rate. This is implemented directly in a **custom PyMatching fork**, [**cesar-hernando/PyMatching**](https://github.com/cesar-hernando/PyMatching) (branch `feature/decode-to-edges-edge-reweights`), which adds `enable_correlations=True` and the regularized reweight strength `alpha` to matching.
 
-### Solution
-
-We use a **GNN-SAC hybrid decoder** that:
-1. **Preserves efficiency**: Builds on proven MWPM matching algorithm.
-2. **Adapts locally**: Uses GNN to predict edge reweightings only for edges correlated with error edges predicted in the 1st MWPM pass.
-3. **Learns online**: SAC agent adapts to drift and correlations during deployment.
-4. **Maintains interpretability**: Outputs continuous reweightings.)
+The central object throughout is the reweighting rule itself; robustness to slowly **drifting** noise is one of the settings in which the learned decoder is evaluated, not the headline.
 
 ---
 
@@ -161,9 +157,11 @@ Generates visualizations of learned weight distributions and edge importance.
 | Module | Purpose |
 |--------|---------|
 | [`surface_code_stim.py`](src/NeuralCM/surface_code_stim.py) | Rotated surface-code circuit builder; extracts DEM & decoding graph |
-| [`syndrome_data_generation.py`](src/NeuralCM/syndrome_data_generation.py) | Simulates drift, generates syndrome data & MWPM predictions |
-| [`drifted_matching_env.py`](src/NeuralCM/drifted_matching_env.py) | Gymnasium-compatible environment; applies local reweighting actions |
-| [`gnn_sac_agent.py`](src/NeuralCM/gnn_sac_agent.py) | GNN encoder + SAC agent + replay buffer |
+| [`two_pass_correlated_matching.py`](src/NeuralCM/two_pass_correlated_matching.py) | Analytical two-pass CM; **Regularized CM** via the reweight strength `alpha` |
+| [`neural_correlated_matching.py`](src/NeuralCM/neural_correlated_matching.py) | Trained GNN-SAC policy exposed as a two-pass decoder (**Neural CM**) |
+| [`drifted_matching_env.py`](src/NeuralCM/drifted_matching_env.py) | Gymnasium environment for RL: first pass → GNN reweighting action → second pass |
+| [`gnn_sac_agent.py`](src/NeuralCM/gnn_sac_agent.py) | GNN encoder + SAC agent + replay buffer (learns the reweighting rule) |
+| [`syndrome_data_generation.py`](src/NeuralCM/syndrome_data_generation.py) | Generates syndrome data (optional drift) & first-pass MWPM predictions |
 | [`engine.py`](src/NeuralCM/engine.py) | Training, testing, and analysis pipelines |
 
 ### Project Pipeline
@@ -253,9 +251,9 @@ python scripts/test_env_profiling.py
 If you use this code in your research, please cite:
 
 ```bibtex
-@thesis{hernando2026adaptive,
+@thesis{hernando2026correlatedmatching,
   author = {Hernando, Cesar},
-  title = {Adaptive Quantum Error Decoding Under Drift Noise via Graph Reinforcement Learning},
+  title = {From Neural to Regularized Correlated Matching: Improving the Correlation-Reweighting Rule of Surface-Code Matching Decoders},
   school = {Leiden University},
   year = {2026}
 }
