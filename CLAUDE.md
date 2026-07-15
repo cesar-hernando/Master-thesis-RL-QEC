@@ -19,7 +19,8 @@ python -m venv .venv
 # Linux/macOS users
 source .venv/bin/activate
 
-# Install the custom PyMatching fork (correlated matching + regularized `alpha`).
+# Install the custom PyMatching fork (adds the regularized `alpha` on top of
+# PyMatching's own correlated matching, enable_correlations=True).
 # NOT a PyPI wheel: it is a C++ extension built from source via CMake, so a C++
 # toolchain is required (Windows: Visual Studio Build Tools + CMake). See README
 # section 3 for the Windows short-path build that avoids path-length failures.

@@ -10,7 +10,7 @@ This repository contains the codebase for my master's thesis project in the Appl
 This thesis studies **how to improve the correlation-reweighting rule of two-pass matching**, in two complementary ways:
 
 1. **Neural Correlated Matching — learn the rule.** A Graph Neural Network + Soft Actor-Critic (**GNN-SAC**) reinforcement-learning agent learns the second-pass reweighting directly from the decoding reward. It acts on a *correlation graph* whose nodes are decoding-graph edges, reweighting only those near the edges selected in the first pass — adding flexibility beyond CM's fixed functional form, and recovering (and exceeding) CM without being told its formula.
-2. **Regularized Correlated Matching — fix the rule analytically.** We show that full-strength CM **over-corrects at low physical error rate** — losing a unit of effective code distance and eventually falling *behind* plain MWPM — and correct it with a reweighting-strength factor `α` that scales with the physical error rate. This is implemented directly in a **custom PyMatching fork**, [**cesar-hernando/PyMatching**](https://github.com/cesar-hernando/PyMatching) (branch `feature/decode-to-edges-edge-reweights`), which adds `enable_correlations=True` and the regularized reweight strength `alpha` to matching.
+2. **Regularized Correlated Matching — fix the rule analytically.** We show that full-strength CM **over-corrects at low physical error rate** — losing a unit of effective code distance and eventually falling *behind* plain MWPM — and correct it with a reweighting-strength factor `α` that scales with the physical error rate. This is implemented directly in a **custom PyMatching fork**, [**cesar-hernando/PyMatching**](https://github.com/cesar-hernando/PyMatching) (branch `feature/decode-to-edges-edge-reweights`), which adds the regularized reweight strength `alpha` on top of PyMatching's existing correlated matching (`enable_correlations=True`).
 
 The central object throughout is the reweighting rule itself; robustness to slowly **drifting** noise is one of the settings in which the learned decoder is evaluated, not the headline.
 
@@ -48,8 +48,8 @@ source .venv/bin/activate
 
 ### 3. Install Custom PyMatching Backend
 
-This project depends on a **custom fork** of PyMatching that adds correlated matching
-(`enable_correlations=True`) and a regularized reweight strength `alpha`:
+This project depends on a **custom fork** of PyMatching that adds a regularized reweight
+strength `alpha` on top of PyMatching's existing correlated matching (`enable_correlations=True`):
 
 - Fork: `https://github.com/cesar-hernando/PyMatching.git`
 - Branch: `feature/decode-to-edges-edge-reweights`, pinned to commit `69d7c049`

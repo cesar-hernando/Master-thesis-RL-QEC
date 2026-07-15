@@ -12,8 +12,9 @@ install_requires = [
     "numpy",
     "matplotlib",
     "stim",
-    # Custom fork (correlated matching: enable_correlations=True + regularized
-    # reweight strength `alpha`, @69d7c049). NOT stock PyPI — install it first
+    # Custom fork: adds a regularized reweight strength `alpha` on top of
+    # PyMatching's own correlated matching (enable_correlations=True), @69d7c049.
+    # NOT stock PyPI — install it first
     # from the fork per README section 3. Left UNPINNED here on purpose so
     # `pip install -e .` accepts the pre-installed fork wheel instead of forcing
     # a from-git source rebuild (which fails on Windows due to path length).
