@@ -250,7 +250,7 @@ python scripts/test_env_profiling.py
 If you use this code in your research, please cite:
 
 ```bibtex
-@thesis{hernando2026correlatedmatching,
+@thesis{hernando2026regcorrmatching,
   author = {Hernando, Cesar},
   title = {From Neural to Regularized Correlated Matching: Improving the Correlation-Reweighting Rule of Surface-Code Matching Decoders},
   school = {Leiden University},
@@ -261,4 +261,4 @@ If you use this code in your research, please cite:
 ## Contact
 
 **Author**: Cesar Hernando  
-**Email**: chernandodelaf@tudelft.nl  
+**Email**: chernandodelaf@tudelft.nl / cesar.hernando22@gmail.com
