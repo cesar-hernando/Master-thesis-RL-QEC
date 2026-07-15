@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=reg_cm_sweep
 #SBATCH --partition=cpu-zen4
-#SBATCH --time=3-00:00:00
+#SBATCH --time=7-00:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --array=0-17
+#SBATCH --array=0-26
 #SBATCH --output=slurm_logs/reg_cm_%A_%a.out
 #SBATCH --error=slurm_logs/reg_cm_%A_%a.err
 
@@ -30,19 +30,19 @@ export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 mkdir -p slurm_logs data/reg_cm_sweep
 
 # --- axes: the array index selects one (distance, p) pair ----------------------
-DISTANCES=(5 7)
+DISTANCES=(3 5 7)
 P_VALUES=(1e-2 7e-3 4e-3 2e-3 1e-3 7e-4 4e-4 2e-4 1e-4)
-NP=${#P_VALUES[@]}                                   # keep --array=0-(len(D)*NP-1)
+NP=${#P_VALUES[@]}                                   # keep --array=0-(len(D)*NP-1)  (3*9-1 = 26)
 
 D=${DISTANCES[$(( SLURM_ARRAY_TASK_ID / NP ))]}
 P=${P_VALUES[$(( SLURM_ARRAY_TASK_ID % NP ))]}
 
 OUT_CSV="data/reg_cm_sweep/reg_cm_d${D}_p${P}_${SLURM_ARRAY_JOB_ID}.csv"
 
-# Stop ~1h before the 3-day (259200s) walltime so the incremental CSV is flushed and
-# the task exits gracefully instead of being killed mid-write. Bump #SBATCH --time
-# (cpu-zen4 allows up to 7 days) and this value together for the slowest low-p points.
-MAX_SECONDS=255000
+# Stop ~1h before the 7-day (604800s) walltime so the incremental CSV is flushed and
+# the task exits gracefully instead of being killed mid-write. The deepest low-p d=7
+# points won't reach --target-errors even in 7 days -> seed-split those (see chat/README).
+MAX_SECONDS=601200
 
 ARGS=(
   --distances "$D"
