@@ -4,19 +4,24 @@
 #SBATCH --time=7-00:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
-#SBATCH --array=0-26
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=8G
+#SBATCH --array=0-35
 #SBATCH --output=slurm_logs/reg_cm_%A_%a.out
 #SBATCH --error=slurm_logs/reg_cm_%A_%a.err
 
-# Regularized-CM LER + latency sweep. CPU-ONLY (PyMatching); no GPU. ONE array task
-# per (distance, p) pair, 1 CPU each (decoding is single-threaded), so all points run
-# in parallel and pack densely. Each task writes its OWN CSV (no collisions);
-# concatenate afterwards (they share a header):
+# Regularized-CM LER + latency sweep. CPU-ONLY (PyMatching); no GPU. ONE array task per
+# (distance, p) pair; within a task, --n-workers seed-split processes (= cpus-per-task)
+# parallelise the sampling with CRN preserved. Each task writes its OWN CSV (no
+# collisions); concatenate afterwards (they share a header):
 #   awk 'FNR==1 && NR!=1{next} {print}' data/reg_cm_sweep/reg_cm_*.csv > data/reg_cm_sweep_all.csv
-# For the very slowest points (d=7, p<=2e-4) split across seeds instead -- see the
-# seed-splitting note in the chat / README.
+#
+# DEPENDS ON reg_cm_alpha_scan: the 4 tested alphas are chosen from the scan's best alpha
+# per (d,p) (data/reg_cm_alpha_scan/*.csv). Run the scan job first, or submit this with
+#   sbatch --dependency=afterok:<scan_jobid> job_scripts/regularized_cm_sweep.job
+# (d=9 has no scan and falls back to the d=7 scan automatically.)
+# The deepest low-p d=7/d=9 points won't reach --target-errors even in 7 days -> give them
+# more cores (raise --cpus-per-task/--n-workers) or a dedicated higher-core submission.
 
 set -euo pipefail
 echo "Job started at: $(date)"
@@ -24,15 +29,16 @@ echo "Job started at: $(date)"
 module load Python/3.11.5-GCCcore-13.2.0
 source new_cluster_venv/bin/activate         # <- adjust if your venv has a different name/path
 
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+# one worker process per core; keep each worker single-threaded (no BLAS oversubscription)
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
 mkdir -p slurm_logs data/reg_cm_sweep
 
 # --- axes: the array index selects one (distance, p) pair ----------------------
-DISTANCES=(3 5 7)
+DISTANCES=(3 5 7 9)
 P_VALUES=(1e-2 7e-3 4e-3 2e-3 1e-3 7e-4 4e-4 2e-4 1e-4)
-NP=${#P_VALUES[@]}                                   # keep --array=0-(len(D)*NP-1)  (3*9-1 = 26)
+NP=${#P_VALUES[@]}                                   # keep --array=0-(len(D)*NP-1)  (4*9-1 = 35)
 
 D=${DISTANCES[$(( SLURM_ARRAY_TASK_ID / NP ))]}
 P=${P_VALUES[$(( SLURM_ARRAY_TASK_ID % NP ))]}
@@ -53,11 +59,9 @@ ARGS=(
   --max-shots 20000000000
   --max-seconds "$MAX_SECONDS"
   --seed 12345
-  # smart per-p alpha grid (round values) centred on the damped-rule optimum:
-  --n-alphas 4
-  --Lstar 0.80
-  --p0star 7e-4
-  --mstar 0.70
+  --n-workers "$SLURM_CPUS_PER_TASK"   # seed-split across the task's cores (CRN preserved)
+  # 4 damped alphas chosen from the reg_cm_alpha_scan best alpha for this (d,p):
+  --scan-csv "data/reg_cm_alpha_scan/*.csv,data/reg_cm_alpha_scan_*.csv"
   --out-csv "$OUT_CSV"
 )
 

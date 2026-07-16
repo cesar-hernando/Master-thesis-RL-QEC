@@ -1,56 +1,49 @@
 #!/usr/bin/env python
 """Regularized Correlated Matching sweep: LER + latency vs (distance, p, alpha).
 
+For each (distance, p) it decodes streamed shots (common random numbers across all
+decoders) with MWPM, hard CM (alpha=1.0), and a small grid of ~4 damped alphas, in a
+SINGLE pass, and reports the best. The 4 alphas are chosen from the coarser
+`reg_cm_alpha_scan` results (the fixed 0.1..0.9 LER-vs-alpha curves): we look up the
+scan's best alpha a* for this (d,p) and refine around it at 0.05 resolution ->
+
+  * a* = 0.1  (scan's low edge; optimum at/below 0.1) -> [0.01, 0.05, 0.10, 0.15]
+  * a* = 0.9  (scan's high edge; optimum toward hard CM) -> [0.80, 0.85, 0.90, 0.95]
+  * interior a* -> a 0.05 grid straddling a*, leaning to the better-scoring scan
+    neighbour, e.g. a*=0.4 -> [0.35, 0.40, 0.45, 0.50] (or [0.30, 0.35, 0.40, 0.45]).
+
+Since the scan already brackets the optimum (a* beat both 0.1-spaced neighbours), the
+refined best lands on an intermediate value. For (d,p) not in the scan (e.g. d=9) it falls
+back to the nearest scanned distance at the same p (a*(p) is nearly distance-independent).
+
 Rotated surface code, Z-memory, circuit-level depolarizing noise, Tesseract
-(coordinate-aware) DEM decomposition. For every (distance, p) it decodes streamed
-shots (common random numbers across all decoders) with:
+(coordinate-aware) DEM decomposition.
 
-  * MWPM                      (enable_correlations=False)
-  * CM (hard, alpha=1.0)      (enable_correlations=True, no damping)   -- always included
-  * Regularized CM at each alpha in a SMART, per-p grid centred on the predicted
-    optimum (so we don't sweep 0..1 for every p). The centre is the Pearl-fit
-    alpha*(p) = L / (1 + (p0/p)^m) shifted UP to the damped-rule optimum via
-    alpha_d = alpha_p + (1-alpha_p)*r(p), r = median P(mu|~nu)/P(mu|nu) from the DEM
-    (the regularized rule drops Pearl's second term, so its optimum is higher; the
-    two agree as p -> 0). Disable with --no-damped-correction.
-
-Design for HPC + latency analysis:
-  * Adaptive batching: keep sampling until the BEST decoder (fewest errors) has
-    accumulated >= --target-errors logical errors, so the best-alpha LER has a
-    tight confidence interval. Stops early at --max-shots or --max-seconds.
-  * Incremental CSV: the results file is rewritten (atomically) every chunk, so a
-    job killed by a walltime limit still leaves partial, usable results.
-  * Decode timing: total wall-seconds and microseconds-per-shot are recorded per
-    decoder for a throughput / latency comparison (MWPM vs hard CM vs regularized).
-  * Flexible CLI: pass a subset of --distances / --p-values per job and a unique
-    --out-csv (auto-named by distance) to parallelise across cluster jobs.
-
-The best alpha should land on an INTERMEDIATE grid value; if the argmin sits on a
-grid endpoint the run flags it (stdout + `best_at_endpoint` CSV column) so you can
-re-run that point with a wider --alpha-span.
+Parallelism / HPC:
+  * --n-workers N spreads sampling over N independent-seed processes, pooled. CRN across
+    alphas is preserved, so one (d,p) point uses N cores (set N = cpus-per-task).
+  * Incremental atomic CSV every step; decode timing (us/shot per decoder); --max-seconds
+    wall-time budget with graceful stop; pass a subset of --distances/--p-values + a unique
+    --out-csv to parallelise across cluster array tasks.
 
 Examples:
-  # one job per distance (the default out-csv name already encodes the distance):
-  python scripts/regularized_cm_sweep.py --distances 5 --p-values 1e-2,4e-3,1e-3,4e-4,1e-4
-  # split a distance's p-values across jobs with distinct tags:
-  python scripts/regularized_cm_sweep.py --distances 7 --p-values 1e-4 --tag lowp --max-seconds 82000
-  # explicit alphas (overrides the smart grid) for all p:
-  python scripts/regularized_cm_sweep.py --distances 5 --p-values 4e-3 --alphas 0.4,0.6,0.8
+  python scripts/regularized_cm_sweep.py --distances 5 --p-values 4e-3 --n-workers 8
+  python scripts/regularized_cm_sweep.py --distances 9 --p-values 1e-3 --n-workers 16   # d=9 -> d=7 scan
+  python scripts/regularized_cm_sweep.py --distances 5 --p-values 4e-3 --alphas 0.5,0.6,0.7  # override
 """
 import argparse
 import csv
+import glob
+import math
 import os
 import sys
 import time
 
-import numpy as np
-import stim
 import pymatching
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from NeuralCM.decompose_errors import decompose_errors_for_stim_surface_code_coords
-from NeuralCM.decoding_graph import DecodingGraph
+from NeuralCM.mc_collect import collect
 
 
 # =============================================================================
@@ -66,21 +59,13 @@ def parse_args():
                     help="comma-separated physical error rates")
     ap.add_argument("--rounds", type=int, default=0, help="syndrome rounds (0 = use distance)")
 
-    # --- smart alpha grid (per p): centred on alpha*(p) = L / (1 + (p0/p)^m) ---
+    # --- alpha grid: chosen from the reg_cm_alpha_scan results ---
     ap.add_argument("--alphas", type=str, default="",
-                    help="explicit comma-separated alphas for ALL p (overrides the smart grid). "
-                         "1.0 (hard CM) is always added.")
-    ap.add_argument("--n-alphas", type=int, default=4,
-                    help="number of damped alphas per p (kept small; fewer = faster). "
-                         "Hard CM (alpha=1.0) and MWPM are always added on top.")
-    ap.add_argument("--Lstar", type=float, default=0.80, help="saturating-law plateau L (Pearl fit)")
-    ap.add_argument("--p0star", type=float, default=7e-4, help="saturating-law crossover p0 (Pearl fit)")
-    ap.add_argument("--mstar", type=float, default=0.70, help="saturating-law exponent m (Pearl fit)")
-    ap.add_argument("--alpha-min", type=float, default=0.02, help="floor for tested alphas")
-    ap.add_argument("--damped-correction", action=argparse.BooleanOptionalAction, default=True,
-                    help="shift the Pearl-fit alpha*(p) up to the DAMPED-rule optimum using "
-                         "alpha_d = alpha_p + (1-alpha_p)*r(p), r = median P(mu|~nu)/P(mu|nu) from the DEM "
-                         "(this rule drops Pearl's second term). Use --no-damped-correction for raw Pearl alpha*.")
+                    help="explicit comma-separated alphas for ALL p (overrides the scan-based "
+                         "selection). 1.0 (hard CM) is always added.")
+    ap.add_argument("--scan-csv", type=str,
+                    default="data/reg_cm_alpha_scan/*.csv,data/reg_cm_alpha_scan_*.csv",
+                    help="comma-separated glob(s) of reg_cm_alpha_scan CSVs used to pick alphas")
 
     # --- statistics / batching ---
     ap.add_argument("--target-errors", type=int, default=1000,
@@ -88,8 +73,10 @@ def parse_args():
     ap.add_argument("--chunk", type=int, default=1_000_000, help="shots per sampling+decode chunk")
     ap.add_argument("--max-shots", type=int, default=20_000_000_000, help="per-(d,p) shot cap")
     ap.add_argument("--max-seconds", type=float, default=0.0,
-                    help="wall-time budget for the WHOLE run (0 = unlimited); "
-                         "the run stops gracefully and writes results before this")
+                    help="wall-time budget for the WHOLE run (0 = unlimited); stops gracefully")
+    ap.add_argument("--n-workers", type=int, default=1,
+                    help="independent-seed worker processes per (d,p); set = cpus-per-task. "
+                         "CRN across alphas is preserved when pooling.")
     ap.add_argument("--seed", type=int, default=12345)
 
     ap.add_argument("--out-csv", type=str, default="",
@@ -100,75 +87,78 @@ def parse_args():
 
 
 # =============================================================================
-# Model + alpha grid
+# Scan-driven alpha selection
 # =============================================================================
-def make_circuit(d, rounds, p):
-    return stim.Circuit.generated(
-        "surface_code:rotated_memory_z", distance=d, rounds=rounds,
-        after_clifford_depolarization=p, before_measure_flip_probability=p,
-        after_reset_flip_probability=p, before_round_data_depolarization=p)
+def read_scan_best(globs):
+    """Parse reg_cm_alpha_scan CSVs -> {(d, p): (a_star, ler_below, ler_above)}.
+
+    a_star = argmin-LER damped alpha on the scan grid; ler_below/above are the LERs of its
+    grid neighbours (inf if a_star is on the grid edge)."""
+    files = []
+    for gp in globs:
+        files += glob.glob(gp.strip())
+    rows = {}
+    for f in sorted(set(files)):
+        try:
+            for r in csv.DictReader(open(f)):
+                if r.get("decoder") != "cm" or not r.get("alpha"):
+                    continue
+                a = float(r["alpha"])
+                if a >= 1.0:
+                    continue
+                d, p = int(r["distance"]), float(r["p"])
+                sh, ler = int(r["shots"]), float(r["ler"])
+                key = (d, p)
+                rows.setdefault(key, {})
+                # keep the entry with the most shots if an (d,p,alpha) appears in >1 file
+                if a not in rows[key] or sh > rows[key][a][1]:
+                    rows[key][a] = (ler, sh)
+        except Exception as e:
+            print(f"  [warn] could not read scan file {f}: {e}", flush=True)
+    best = {}
+    for key, bya in rows.items():
+        alphas = sorted(bya)
+        if not alphas:
+            continue
+        a_star = min(alphas, key=lambda a: bya[a][0])
+        i = alphas.index(a_star)
+        ler_lo = bya[alphas[i - 1]][0] if i > 0 else math.inf
+        ler_hi = bya[alphas[i + 1]][0] if i < len(alphas) - 1 else math.inf
+        best[key] = (round(a_star, 4), ler_lo, ler_hi)
+    return best
 
 
-def pearl_alpha_star(p, L, p0, m):
-    """Saturating law alpha*(p) = L / (1 + (p0/p)^m), fit to PEARL's rule."""
-    return L / (1.0 + (p0 / p) ** m)
+def lookup_scan(best, d, p):
+    """Return ((a_star, ler_lo, ler_hi), provenance) with distance/p fallbacks."""
+    def pmatch(pp):
+        return abs(pp - p) <= 1e-3 * p + 1e-12
+    exact = [(dd, pp) for (dd, pp) in best if dd == d and pmatch(pp)]
+    if exact:
+        return best[exact[0]], f"scan d={d} p={exact[0][1]:g}"
+    same_p = [(dd, pp) for (dd, pp) in best if pmatch(pp)]
+    if same_p:                                   # e.g. d=9 -> nearest scanned distance
+        k = min(same_p, key=lambda kv: abs(kv[0] - d))
+        return best[k], f"scan nearest d={k[0]} (p={k[1]:g})"
+    same_d = [(dd, pp) for (dd, pp) in best if dd == d]
+    if same_d:                                   # unscanned p -> nearest p (log space)
+        k = min(same_d, key=lambda kv: abs(math.log(kv[1]) - math.log(p)))
+        return best[k], f"scan d={d} nearest p={k[1]:g}"
+    if best:                                      # last resort: global nearest
+        k = min(best, key=lambda kv: abs(kv[0] - d) + abs(math.log(kv[1]) - math.log(p)))
+        return best[k], f"scan nearest d={k[0]} p={k[1]:g}"
+    return (0.5, math.inf, math.inf), "DEFAULT (no scan found)"
 
 
-def damped_correction_r(graph):
-    """Median r = P(mu|~nu) / P(mu|nu) over correlated edge pairs, from the DEM stats.
-
-    Pearl's implied prob is  alpha*P(mu|nu) + (1-alpha)*P(mu|~nu); the damped rule keeps
-    only the first term. Matching the effective boost gives the optimal-alpha shift
-    alpha_damped = alpha_pearl + (1-alpha_pearl)*r, with r ~ O(p) (so the two rules agree
-    as p -> 0 and diverge near threshold). P(mu|nu)=corr/occ_nu, P(mu|~nu)=(occ_mu-corr)/(1-occ_nu).
-    """
-    if graph.n_line_edges == 0:
-        return 0.0
-    occ, corr = graph.base_p, graph.initial_corr_tracer
-    src, dst = graph.line_edge_index
-    rs = []
-    for k in range(graph.n_line_edges):
-        a, b = int(src[k]), int(dst[k])
-        for mu, nu in ((a, b), (b, a)):
-            p_cond = corr[k] / max(occ[nu], 1e-12)
-            if p_cond <= 1e-9:
-                continue
-            p_neg = max((occ[mu] - corr[k]) / max(1.0 - occ[nu], 1e-12), 0.0)
-            rs.append(p_neg / p_cond)
-    return float(np.median(rs)) if rs else 0.0
-
-
-def smart_alphas(center, args):
-    """A small grid of ROUND alpha values bracketing `center`, plus hard CM (1.0).
-
-    Values >= 0.1 use ONE decimal (0.1, 0.2, ...); x.x5 midpoints are added only in the
-    low-alpha region (< 0.3), where 0.1-wide steps are coarse relative to alpha*; values
-    < 0.1 may be finer. The window is centred so `center` is bracketed (never a damped
-    endpoint). Fewer points => faster, so --n-alphas is kept small.
-    """
-    if args.alphas.strip():
-        grid = [float(x) for x in args.alphas.split(",")]
-    else:
-        ladder = [0.02, 0.03, 0.05, 0.07,                        # alpha < 0.1 (finer allowed)
-                  0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]   # one-decimal
-        if center < 0.30:                                        # x5 only where 0.1 steps are coarse
-            ladder += [0.15, 0.25]
-        ladder = sorted(a for a in set(ladder) if args.alpha_min <= a <= 0.95)
-        lad = np.array(ladder)
-        n = max(3, args.n_alphas)
-        i = int(np.argmin(np.abs(lad - center)))                 # nearest ladder value to alpha*
-        lo = max(0, min(i - n // 2, len(lad) - n))
-        sel = list(lad[lo:lo + n])
-        # guarantee alpha* sits strictly inside the damped grid (not an endpoint)
-        if center <= sel[0] and lo > 0:
-            sel = [ladder[lo - 1]] + sel
-        if center >= sel[-1] and lo + n < len(ladder):
-            sel = sel + [ladder[lo + n]]
-        grid = sel
-    grid = sorted(set(round(float(a), 3) for a in grid if a > 0))
-    if 1.0 not in grid:                       # always include hard CM (enable_correlations, no damping)
-        grid.append(1.0)
-    return sorted(set(grid))
+def scan_to_alphas(a_star, ler_lo, ler_hi):
+    """4 damped alphas refining around the scan's best a* (finer below 0.1)."""
+    a = round(a_star, 2)
+    if a <= 0.10:                 # scan's low edge -> explore finer below 0.1
+        return [0.01, 0.05, 0.10, 0.15]
+    if a >= 0.90:                 # scan's high edge -> explore toward hard CM (1.0 auto-added)
+        return [0.80, 0.85, 0.90, 0.95]
+    if ler_lo <= ler_hi:          # optimum leans below a*
+        return [round(a - 0.10, 2), round(a - 0.05, 2), a, round(a + 0.05, 2)]
+    return [round(a - 0.05, 2), a, round(a + 0.05, 2), round(a + 0.10, 2)]  # leans above
 
 
 # =============================================================================
@@ -184,8 +174,7 @@ def _ler_std(err, shots):
 
 
 def write_csv(path, results):
-    """results[(d,p)] = dict(rounds, shots, alphas, err={key:n}, tsec={key:s}).
-    key = ('mwpm', None) or ('cm', alpha).  Rewrites the whole file atomically."""
+    """results[(d,p)] = dict(rounds, shots, err={key:n}, tsec={key:s}). Atomic rewrite."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", newline="") as f:
@@ -194,7 +183,6 @@ def write_csv(path, results):
         for (d, p) in sorted(results):
             r = results[(d, p)]
             shots = r["shots"]
-            # best decoder = fewest errors; flag if it is a damped-alpha grid endpoint
             best_key = min(r["err"], key=lambda k: r["err"][k])
             damped = sorted(a for (dec, a) in r["err"] if dec == "cm" and a < 1.0)
             best_endpoint = 0
@@ -231,13 +219,16 @@ def main():
     distances = [int(x) for x in args.distances.split(",")]
     p_values = [float(x) for x in args.p_values.split(",")]
 
+    scan_best = {} if args.alphas.strip() else read_scan_best(args.scan_csv.split(","))
+
     out_csv = args.out_csv
     if not out_csv:
         tag = f"_{args.tag}" if args.tag else ""
         out_csv = f"data/regularized_cm_sweep_d{'-'.join(map(str, distances))}{tag}.csv"
 
     print(f"pymatching: {pymatching.__file__}")
-    print(f"distances={distances}  p_values={p_values}")
+    print(f"distances={distances}  p_values={p_values}  n_workers={args.n_workers}")
+    print(f"scan points loaded: {len(scan_best)}  (from {args.scan_csv})")
     print(f"target_errors={args.target_errors}  chunk={args.chunk:,}  "
           f"max_shots={args.max_shots:,}  max_seconds={args.max_seconds or 'inf'}")
     print(f"out_csv={out_csv}\n", flush=True)
@@ -253,76 +244,44 @@ def main():
         for p in p_values:
             if stop_all:
                 break
-            circ = make_circuit(d, rounds, p)
-            dem = decompose_errors_for_stim_surface_code_coords(
-                circ.detector_error_model(decompose_errors=False))
-            mwpm = pymatching.Matching.from_detector_error_model(dem, enable_correlations=False)
-            cm = pymatching.Matching.from_detector_error_model(dem, enable_correlations=True)
-            sampler = circ.compile_detector_sampler(seed=args.seed)
-
-            # alpha grid centred on the DAMPED-rule optimum: Pearl-fit alpha*(p), then
-            # shifted up by the (second-term) correction r(p) measured from this DEM.
-            a_pearl = pearl_alpha_star(p, args.Lstar, args.p0star, args.mstar)
-            r = 0.0
-            a_center = a_pearl
-            if args.damped_correction and not args.alphas.strip():
-                r = damped_correction_r(DecodingGraph.from_dem(dem))
-                a_center = min(a_pearl + (1.0 - a_pearl) * r, 0.98)
-            alphas = smart_alphas(a_center, args)
-
-            # keys: MWPM + one CM entry per alpha (alpha=1.0 == hard "CM, no alpha")
-            keys = [("mwpm", None)] + [("cm", a) for a in alphas]
-            err = {k: 0 for k in keys}
-            tsec = {k: 0.0 for k in keys}
-            shots = 0
-            results[(d, p)] = dict(rounds=rounds, shots=0, alphas=alphas, err=err, tsec=tsec)
-
+            deadline = (t_all + args.max_seconds) if args.max_seconds else None
             t0 = time.time()
-            print(f"=== d={d} r={rounds} p={p:.3e} | detectors={circ.num_detectors} | "
-                  f"alpha*_pearl={a_pearl:.3f} r(p)={r:.3f} -> alpha*_damped={a_center:.3f} | "
-                  f"alphas={alphas} ===", flush=True)
 
-            while shots < args.max_shots:
-                det, obs = sampler.sample(shots=args.chunk, separate_observables=True,
-                                          bit_packed=True)
-                ob = (obs[:, 0] & 1)
+            # -- pick the 4 damped alphas --
+            if args.alphas.strip():
+                damped = sorted(set(round(float(x), 4) for x in args.alphas.split(",")
+                                    if float(x) < 1.0))
+                prov = "explicit --alphas"
+            else:
+                (a_star, ler_lo, ler_hi), prov = lookup_scan(scan_best, d, p)
+                damped = [a for a in scan_to_alphas(a_star, ler_lo, ler_hi) if a > 0]
+            alphas = sorted(set([float(a) for a in damped] + [1.0]))
+            print(f"=== d={d} r={rounds} p={p:.3e} | {prov} -> alphas={alphas} ===", flush=True)
 
-                ta = time.perf_counter()
-                pm = mwpm.decode_batch(det, bit_packed_shots=True)[:, 0]
-                tsec[("mwpm", None)] += time.perf_counter() - ta
-                err[("mwpm", None)] += int(np.count_nonzero(pm != ob))
+            keys = [("mwpm", None)] + [("cm", a) for a in alphas]
+            results[(d, p)] = dict(rounds=rounds, shots=0,
+                                   err={k: 0 for k in keys}, tsec={k: 0.0 for k in keys})
 
-                for a in alphas:
-                    ta = time.perf_counter()
-                    pa = cm.decode_batch(det, bit_packed_shots=True,
-                                         enable_correlations=True, alpha=a)[:, 0]
-                    tsec[("cm", a)] += time.perf_counter() - ta
-                    err[("cm", a)] += int(np.count_nonzero(pa != ob))
-
-                shots += args.chunk
-                results[(d, p)]["shots"] = shots
-                write_csv(out_csv, results)             # incremental update every chunk
-
-                best_key = min(err, key=lambda k: err[k])
-                best_err = err[best_key]
-                ba = best_key[1] if best_key[0] == "cm" else "MWPM"
-                print(f"  shots={shots:>13,} | best={ba} err={best_err}/{args.target_errors} | "
+            def upd(err, tsec, shots, _dp=(d, p)):
+                results[_dp]["err"], results[_dp]["tsec"], results[_dp]["shots"] = err, tsec, shots
+                write_csv(out_csv, results)
+                best = min(err, key=lambda k: err[k])
+                ba = best[1] if best[0] == "cm" else "MWPM"
+                print(f"  shots={shots:>12,} best={ba} err={err[best]}/{args.target_errors} | "
                       f"MWPM={err[('mwpm', None)]} CM1={err[('cm', 1.0)]} | "
-                      f"{fmt_time(time.time() - t0)}", flush=True)
+                      f"{fmt_time(time.time()-t0)}", flush=True)
 
-                if best_err >= args.target_errors:
-                    break
-                if args.max_seconds and (time.time() - t_all) >= args.max_seconds:
-                    print("  [walltime budget reached — stopping gracefully]", flush=True)
-                    stop_all = True
-                    break
+            err, tsec, shots, reason = collect(
+                d=d, rounds=rounds, p=p, alphas=alphas,
+                target_errors=args.target_errors, n_workers=args.n_workers,
+                seed=args.seed, chunk=args.chunk, max_shots=args.max_shots,
+                deadline=deadline, on_update=upd)
 
-            # per-point summary + endpoint flag
-            damped = sorted(a for a in alphas if a < 1.0)
+            damped_a = sorted(a for a in alphas if a < 1.0)
             best_key = min(err, key=lambda k: err[k])
             best_a = best_key[1] if best_key[0] == "cm" else None
-            endpoint = (best_a is not None and best_a < 1.0 and damped
-                        and best_a in (damped[0], damped[-1]))
+            endpoint = (best_a is not None and best_a < 1.0 and damped_a
+                        and best_a in (damped_a[0], damped_a[-1]))
             l_best, _ = _ler_std(err[best_key], shots)
             l_mwpm, _ = _ler_std(err[("mwpm", None)], shots)
             l_cm1, _ = _ler_std(err[("cm", 1.0)], shots)
@@ -330,9 +289,13 @@ def main():
                   f"LER={l_best:.3e} | MWPM={l_mwpm:.3e} | CM(1)={l_cm1:.3e} | "
                   f"MWPM/shot={tsec[('mwpm',None)]/shots*1e6:.2f}us "
                   f"CM(1)/shot={tsec[('cm',1.0)]/shots*1e6:.2f}us"
-                  + ("  [BEST AT GRID ENDPOINT -> widen grid: raise --n-alphas or "
-                     "adjust --mstar/--Lstar]" if endpoint else "")
+                  + ("  [best at grid endpoint -> optimum outside "
+                     f"[{damped_a[0]:g},{damped_a[-1]:g}]]" if endpoint else "")
                   + f" | wrote {out_csv}\n", flush=True)
+
+            if reason == "deadline":
+                print("  [walltime budget reached — stopping]", flush=True)
+                stop_all = True
 
     print(f"done in {fmt_time(time.time() - t_all)}  ->  {out_csv}")
 
