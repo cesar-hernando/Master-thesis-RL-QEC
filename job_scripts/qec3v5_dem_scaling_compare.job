@@ -1,0 +1,72 @@
+#!/bin/bash
+#SBATCH --job-name=qec3v5_dscale
+#SBATCH --partition=cpu-zen4
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=16G
+#SBATCH --array=0-26
+#SBATCH --output=slurm_logs/qec3v5_dscale_%A_%a.out
+#SBATCH --error=slurm_logs/qec3v5_dscale_%A_%a.err
+
+# Noise-scaling comparison MWPM / CM / RCM across the pij / analytical / proj DEMs of the Google
+# qec3v5 d=5 experiment.  CPU-ONLY.  ONE array task per (dem, scale) pair -> 3 DEMs x 9 scales = 27
+# tasks (index 0..26).  WITHIN each task the Monte-Carlo is parallelised across the task's cores via
+# --n-workers (each worker samples+decodes an independent shot-stream; counts are summed).
+#
+# Each task samples until the RAREST decoder (MWPM / CM / RCM over alpha=0.1..1.0) sees >= 500
+# logical errors.  The deep-sub-threshold tasks (small s) are the expensive ones; give them more
+# cores if you want them faster (they scale ~linearly).  The CSV is check-pointed every round, so a
+# task that hits the walltime still saves what it accumulated.
+#
+# Each task writes its OWN one-row CSV; merge them afterwards with --combine (see the tail below),
+# or:  awk 'FNR==1 && NR!=1{next}{print}' data/qec3v5_dem_scaling/task_*.csv > data/qec3v5_dem_scaling_compare.csv
+
+set -euo pipefail
+echo "Job started at: $(date)"
+
+module load Python/3.11.5-GCCcore-13.2.0
+source new_cluster_venv/bin/activate         # <- adjust if your venv has a different name/path
+
+# one worker process per core; keep each worker single-threaded (no BLAS/OMP oversubscription)
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+mkdir -p slurm_logs data/qec3v5_dem_scaling
+
+OUT_CSV="data/qec3v5_dem_scaling/task_${SLURM_ARRAY_TASK_ID}.csv"
+
+# Stop ~30 min before the 24h (86400s) walltime so the incremental CSV is flushed cleanly.
+MAX_SECONDS=84600
+
+ARGS=(
+  --task-index "$SLURM_ARRAY_TASK_ID"
+  --n-workers "$SLURM_CPUS_PER_TASK"
+  --min-errors 500
+  --max-shots 200000000
+  --max-seconds "$MAX_SECONDS"
+  --chunk 500000
+  --seed 12345
+  --out "$OUT_CSV"
+)
+
+echo "Array task ${SLURM_ARRAY_TASK_ID}  (cpus=${SLURM_CPUS_PER_TASK})"
+echo "Output CSV: ${OUT_CSV}"
+echo "Command: python -u scripts/qec3v5_dem_scaling_compare.py ${ARGS[*]}"
+
+python -u scripts/qec3v5_dem_scaling_compare.py "${ARGS[@]}"
+
+echo "Array task finished at: $(date)"
+
+# --- Auto-combine: whichever array task finishes LAST (all 27 per-task CSVs present) merges them
+#     into the final CSV.  No dependent job / manual step needed.  --combine just overwrites the
+#     same output, so if two tasks race to the trigger it is harmless (idempotent). ----------------
+N_EXPECTED=27
+N_DONE=$(find data/qec3v5_dem_scaling -maxdepth 1 -name 'task_*.csv' | wc -l)
+echo "Per-task CSVs present: ${N_DONE}/${N_EXPECTED}"
+if [ "$N_DONE" -ge "$N_EXPECTED" ]; then
+  echo "All tasks done -> combining into data/qec3v5_dem_scaling_compare.csv"
+  python scripts/qec3v5_dem_scaling_compare.py --combine \
+      --in-dir data/qec3v5_dem_scaling --out data/qec3v5_dem_scaling_compare.csv
+fi
