@@ -1,0 +1,67 @@
+#!/bin/bash
+#SBATCH --job-name=tess_d7
+#SBATCH --partition=cpu-zen4
+#SBATCH --time=7-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=16G
+#SBATCH --array=0-8
+#SBATCH --output=slurm_logs/tess_d7_%A_%a.out
+#SBATCH --error=slurm_logs/tess_d7_%A_%a.err
+
+# Tesseract LER-vs-p at distance 7, with MWPM decoded on the SAME shots as reference.
+# CPU-ONLY.  ONE array task per p (same p-grid as reg_cm_alpha_scan d=7).  Tesseract is a slow
+# single-shot decoder, so WITHIN each (d,p) task the shot decoding is parallelised across the
+# task's cores via --n-workers (each worker decodes an independent shot-stream; counts are summed).
+#
+# Array index -> p (HIGH p first; index 0 = 1e-2 ... index 8 = 1e-4). High-p tasks reach the
+# 500-error target quickly; the deepest low-p tasks will NOT (LER ~ 1e-9 => ~5e11 shots) and will
+# just run to the walltime, saving whatever they accumulated -- the CSV is check-pointed every
+# round.  The expensive mid-p points benefit most from more cores: raise --cpus-per-task (Tesseract
+# scales ~linearly with cores) for those if you want tighter error bars.
+#
+# Requires `pip install tesseract-decoder` in the venv (Linux only).
+# Each task writes its OWN CSV; concatenate afterwards (they share a header):
+#   awk 'FNR==1 && NR!=1{next} {print}' data/ler_vs_p_tesseract_d7/tess_d7_p*_*.csv \
+#       > data/ler_vs_p_tesseract_d7_all.csv
+
+set -euo pipefail
+echo "Job started at: $(date)"
+
+module load Python/3.11.5-GCCcore-13.2.0
+source new_cluster_venv/bin/activate         # <- adjust if your venv has a different name/path
+
+# one worker process per core; keep each worker single-threaded (no BLAS/OMP oversubscription)
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+mkdir -p slurm_logs data/ler_vs_p_tesseract_d7
+
+# --- the array index selects one p on the d=7 grid ---------------------------
+OUT_CSV="data/ler_vs_p_tesseract_d7/tess_d7_p${SLURM_ARRAY_TASK_ID}_${SLURM_ARRAY_JOB_ID}.csv"
+
+# Stop ~1h before the 7-day (604800s) walltime so the incremental CSV is flushed and the task
+# exits gracefully instead of being killed mid-write.
+MAX_SECONDS=601200
+
+ARGS=(
+  --distance 7
+  --p-index "$SLURM_ARRAY_TASK_ID"          # which p on the HIGH->LOW grid
+  --n-workers "$SLURM_CPUS_PER_TASK"         # parallelise Tesseract across the task's cores
+  --min-errors 500
+  --max-shots 2000000000000
+  --max-seconds "$MAX_SECONDS"
+  --det-beam 50                              # raise for accuracy at the cost of speed
+  --chunk 20000                              # shots per worker per checkpoint round
+  --seed 12345
+  --out "$OUT_CSV"
+)
+
+echo "Array task ${SLURM_ARRAY_TASK_ID}  (cpus=${SLURM_CPUS_PER_TASK})"
+echo "Output CSV: ${OUT_CSV}"
+echo "Command: python -u scripts/ler_vs_p_tesseract_d7.py ${ARGS[*]}"
+
+python -u scripts/ler_vs_p_tesseract_d7.py "${ARGS[@]}"
+
+echo "Job finished at: $(date)"
