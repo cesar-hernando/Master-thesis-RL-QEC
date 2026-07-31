@@ -4,7 +4,7 @@ This repository contains the codebase for my master's thesis project in the Appl
 
 ## Overview
 
-**Correlated Matching (CM)** improves Minimum-Weight Perfect Matching (MWPM) surface-code decoding with a *second pass*: after a first MWPM pass, the decoding-graph edges that share a fault-correlation with the selected edges are **reweighted**, and matching is run again — capturing the error correlations (single-qubit `Y` errors, two-qubit gate faults) that plain MWPM ignores. CM's accuracy hinges entirely on **how that reweighting is done**, and Fowler's original hard-evidence rule is *not* optimal.
+**Correlated Matching (CM)** improves Minimum-Weight Perfect Matching (MWPM) surface-code decoding with a *second pass*: after a first MWPM pass, the decoding-graph edges that share a fault-correlation with the selected edges are **reweighted**, and matching is run again — capturing the error correlations (single-qubit `Y` errors, two-qubit gate faults) that uncorrelated MWPM ignores.
 
 This thesis studies **how to improve the correlation-reweighting rule of two-pass matching**, in two complementary ways:
 
