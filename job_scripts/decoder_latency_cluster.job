@@ -1,0 +1,105 @@
+#!/bin/bash
+#SBATCH --job-name=decoder_latency
+#SBATCH --partition=cpu-zen4
+#SBATCH --time=3-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --array=0-2
+#SBATCH --output=slurm_logs/decoder_latency_%A_%a.out
+#SBATCH --error=slurm_logs/decoder_latency_%A_%a.err
+
+# Full decoder-latency benchmark (MWPM / CM / RCM / Belief Matching / Tesseract, p=1e-3,
+# rounds=5 -- matches data/decoder_latency_d{3,5,7}.csv) on a dedicated CPU node instead of a
+# shared laptop, for clean timing free of the confounds that CSV was collected under (OS
+# jitter, concurrent NCM sweeps, battery throttling). ONE array task per distance.
+#
+# Deliberately single-threaded: this measures per-shot DECODE LATENCY, so adding worker
+# processes would only add contention and corrupt the very thing being timed.
+# --cpus-per-task=4 is headroom against a noisy neighbour on a shared node, not parallelism.
+#
+# Requires tesseract-decoder and beliefmatching pip-installed in the venv alongside the custom
+# PyMatching fork (see requirements.txt) -- tesseract-decoder already works from this same
+# Python/venv per job_scripts/ler_vs_p_tesseract_d7.job, no separate env needed here (unlike
+# this repo's WSL setup, where the workaround venv exists only because default WSL Ubuntu's
+# Python was too new for tesseract-decoder's wheel, not because tesseract needs a specific
+# Python version).
+#
+# TWO PHASES per task, sequential (decoder_latency_benchmark.py's own docstring: a
+# same-sample-size comparison needs every decoder at the SAME N, calibrated by Tesseract, the
+# least error-tolerant/most-accurate decoder):
+#   1) MWPM + Tesseract together, adaptive mode, sampled until 100 logical errors each.
+#      MWPM is included here (cheap) purely so the script's mandatory "need an MWPM row to
+#      normalise against" check passes and Tesseract's row -- and its n_shots -- actually gets
+#      written to the CSV; running Tesseract alone would hit that check's sys.exit before
+#      writing anything (this is what happened in the local WSL runs; N had to be scraped from
+#      the console log instead of the CSV, which isn't something you want to rely on in an
+#      unattended array job). Phase 2 overwrites this throwaway MWPM row with the real one.
+#   2) MWPM + CM + RCM + Belief Matching, --fixed-shots N (the N Tesseract needed in phase 1).
+#
+# Writes to data/decoder_latency_d${D}_cluster.csv, NOT data/decoder_latency_d${D}.csv, so
+# this can't clobber already-good local results -- compare and merge by hand once both exist.
+#
+# alpha=0.5 (RCM) is the value already verified optimal at p=1e-3 for these distances in
+# data/reg_cm_alpha_scan_new_combined.csv -- checked, not guessed; re-verify from that file if
+# you change --p.
+set -euo pipefail
+echo "Job started at: $(date)"
+
+module load Python/3.11.5-GCCcore-13.2.0
+source new_cluster_venv/bin/activate     # <- adjust if your venv has a different name/path
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+mkdir -p slurm_logs data plots
+
+# --- axes: the array index selects one distance ---------------------------------------------
+DISTANCES=(3 5 7)
+# Phase-2 wall-clock safety valve, per distance -- Belief Matching's per-shot cost dominates
+# and is by far the most variable of the four. d=3/d=5's fixed N (~130K / ~1.49M shots
+# historically) comfortably finish well under 7200s. d=7's fixed N (~14.9M shots) is the one
+# that matters: left effectively uncapped here per an explicit "no time cap" request for that
+# point, so it runs to completion rather than landing another truncated sample -- this is why
+# --time above is generously long. Tighten this back down (e.g. 5400) if you'd rather have a
+# bounded, possibly-truncated d=7 Belief Matching row than risk a multi-day task.
+MAX_SECONDS_STEP2=(7200 7200 999999)
+
+D=${DISTANCES[$SLURM_ARRAY_TASK_ID]}
+MS2=${MAX_SECONDS_STEP2[$SLURM_ARRAY_TASK_ID]}
+
+OUT_CSV="data/decoder_latency_d${D}_cluster.csv"
+OUT_PLOT="plots/decoder_latency_d${D}_cluster.png"
+
+COMMON_ARGS=(
+  --distance "$D"
+  --rounds 5
+  --p 1e-3
+  --alpha 0.5
+  --bp-iters 5
+  --tesseract-det-beam 50
+  --batch-repeats 21
+  --seed 12345
+  --out-csv "$OUT_CSV"
+  --out-plot "$OUT_PLOT"
+)
+
+echo "=== [d=${D}] phase 1: MWPM + Tesseract, adaptive, 100 errors each ==="
+python -u scripts/regularized_cm/decoder_latency_benchmark.py \
+  "${COMMON_ARGS[@]}" \
+  --decoders mwpm,tesseract \
+  --min-errors 100 \
+  --max-seconds 21600
+
+N=$(python scripts/regularized_cm/get_n_shots.py --csv "$OUT_CSV" --decoder tesseract)
+echo "Tesseract calibration settled on N=${N} shots"
+
+echo "=== [d=${D}] phase 2: MWPM + CM + RCM + Belief Matching at fixed N=${N} ==="
+python -u scripts/regularized_cm/decoder_latency_benchmark.py \
+  "${COMMON_ARGS[@]}" \
+  --decoders mwpm,cm,rcm,belief \
+  --fixed-shots "$N" \
+  --max-seconds "$MS2"
+
+echo "Job finished at: $(date)"
