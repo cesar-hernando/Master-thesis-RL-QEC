@@ -1,0 +1,88 @@
+#!/bin/bash
+#SBATCH --job-name=ncm_sweep_par
+#SBATCH --partition=gpu-l4-24g
+#SBATCH --time=2-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G
+#SBATCH --gres=gpu:1
+#SBATCH --array=0-6
+#SBATCH --output=slurm_logs/ncm_sweep_par_%A_%a.out
+#SBATCH --error=slurm_logs/ncm_sweep_par_%A_%a.err
+
+# Parallel completion of the still-missing points in data/ncm_ler_sweep_d3d5d7.csv -- the ones
+# the serial sweep (scripts/ler_comparison/ncm_ler_sweep_d3d5d7.py) hadn't reached, or had
+# deferred, when it was last stopped. ONE array task per (distance, p) point, one GPU each,
+# fully independent -- no shared state, so all 7 can run at once instead of queueing behind
+# each other like the serial sweep does.
+#
+# The 7 (d, p) pairs below are the master CSV's gaps as of 2026-08-15, checked against its
+# ACTUAL canonical grid (--p-hi 1e-2 --p-lo 2e-4 --n-p 9 -- reverse-engineered from the CSV's
+# own p-values/log-step, NOT ncm_ler_sweep_d3d5d7.py's own default of --p-lo 1e-4; see
+# ncm_ler_sweep_task.py's docstring). If the serial sweep has advanced further since, some of
+# these may already be done -- harmless, merge_ncm_sweep_results.py skips anything already in
+# the master CSV.
+#
+# --max-minutes 0 (uncapped) below matches how the REST of data/ncm_ler_sweep_d3d5d7.csv was
+# produced -- every existing row has target_reached=1; none were accepted as capped/partial.
+# That means the ONLY thing that can stop a point early is this job's own --time. Extrapolating
+# the d=5 cost trend already in the CSV (~2.3-2.5x shots per grid step), the two lowest-p d=7
+# points (array indices 5-6, p=3.26e-4/2.00e-4) are plausibly multi-day even on an L4 -- check
+# your cluster's actual max walltime for gpu-l4-24g (e.g. `sinfo -p gpu-l4-24g -o "%l"`) and
+# raise --time above if it allows more than 2 days. A task killed by --time writes NOTHING for
+# its point (run_point never returns to append_row) -- just resubmit that one index, e.g.:
+#   sbatch --array=5,6 job_scripts/ncm_ler_sweep_parallel.job
+set -euo pipefail
+echo "Job started at: $(date)"
+
+module load Python/3.11.5-GCCcore-13.2.0
+source cluster_venv/bin/activate       # <- adjust if your venv has a different name/path
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+mkdir -p slurm_logs data/ncm_ler_sweep_parallel
+
+# --- axes: the array index selects one (distance, p) point ---------------------------------
+DISTANCES=(5 5 7 7 7 7 7)
+P_VALUES=(3.2613788179066197e-04 2.0000000000000004e-04 1.4142135623730952e-03 8.6724887928280362e-04 5.3182958969449890e-04 3.2613788179066197e-04 2.0000000000000004e-04)
+
+D=${DISTANCES[$SLURM_ARRAY_TASK_ID]}
+P=${P_VALUES[$SLURM_ARRAY_TASK_ID]}
+
+MODEL_PATH="models/best_ncm_model/slowgpu_v2_qec_graph_optuna_run_d5_trial_0040_best.pth"
+OUT_CSV="data/ncm_ler_sweep_parallel/ncm_sweep_d${D}_p${P}_${SLURM_ARRAY_JOB_ID}.csv"
+
+ARGS=(
+  --distance "$D"
+  --p "$P"
+  --p-hi 1e-2
+  --p-lo 2e-4
+  --n-p 9
+  --model-path "$MODEL_PATH"
+  --target-errors 500
+  --max-shots 1000000000
+  --max-minutes 0
+  --chunk-shots 200000
+  --seed 42
+  --p-gate-zz 0.0
+  --action-scale 5.0
+  --bypass-threshold 2
+  --local-action-hops 1
+  --hidden-dim 256
+  --n-layers 1
+  --lr 1e-4
+  --alpha 0.01
+  --no-use-endpoint-firing
+  --start-from-oracle
+  --out-csv "$OUT_CSV"
+)
+
+echo "Array task ${SLURM_ARRAY_TASK_ID}: distance=${D}, p=${P}"
+echo "Output CSV: ${OUT_CSV}"
+echo "Command: python -u scripts/ler_comparison/ncm_ler_sweep_task.py ${ARGS[*]}"
+
+python -u scripts/ler_comparison/ncm_ler_sweep_task.py "${ARGS[@]}"
+
+echo "Job finished at: $(date)"
