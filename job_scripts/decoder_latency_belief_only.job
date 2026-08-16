@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH --job-name=belief_latency
+#SBATCH --partition=cpu-zen4
+#SBATCH --time=3-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --array=0-2
+#SBATCH --output=slurm_logs/belief_latency_%A_%a.out
+#SBATCH --error=slurm_logs/belief_latency_%A_%a.err
+
+# Fills in the Belief Matching row that job_scripts/decoder_latency_cluster.job's runs
+# silently skipped (the `beliefmatching` package wasn't installed in the venv at the time --
+# see the "pip install" step below). ONE array task per distance, each reading its N from the
+# already-complete MWPM/CM/RCM/Tesseract rows in its own CSV and running ONLY Belief Matching
+# at that same fixed N, via decoder_latency_belief_only.py -- the other four rows in each CSV
+# are left untouched.
+#
+# Deliberately single-threaded, same reasoning as decoder_latency_cluster.job: this measures
+# per-shot DECODE LATENCY, so extra worker processes would only add contention and corrupt the
+# very thing being timed. --cpus-per-task=4 is headroom against a noisy neighbour, not
+# parallelism.
+#
+# --max-seconds is left at decoder_latency_belief_only.py's own default (effectively
+# uncapped) -- this repo's established preference has been a full, uncapped sample over a
+# fast-but-truncated one. Belief Matching is by far the slowest, highest-variance decoder
+# here, so expect d=7 in particular (N=18.2M shots) to plausibly run for many hours; --time
+# above is generously long, but if a task still gets killed by it, NOTHING is written for that
+# distance (the row only gets merged in when the run finishes normally) -- just resubmit that
+# one index, e.g.:
+#   sbatch --array=2 job_scripts/decoder_latency_belief_only.job
+set -euo pipefail
+echo "Job started at: $(date)"
+
+module load Python/3.11.5-GCCcore-13.2.0
+source new_cluster_venv/bin/activate     # <- adjust if your venv has a different name/path
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+mkdir -p slurm_logs plots
+
+# --- axes: the array index selects one distance / CSV --------------------------------------
+DISTANCES=(3 5 7)
+CSVS=(
+  data/latency/decoder_latency_d3_cluster.csv
+  data/latency/decoder_latency_d5_cluster.csv
+  data/latency/decoder_latency_d7_cluster.csv
+)
+
+D=${DISTANCES[$SLURM_ARRAY_TASK_ID]}
+CSV=${CSVS[$SLURM_ARRAY_TASK_ID]}
+
+echo "Array task ${SLURM_ARRAY_TASK_ID}: distance=${D}, csv=${CSV}"
+echo "Command: python -u scripts/regularized_cm/decoder_latency_belief_only.py --distance ${D} --csv ${CSV}"
+
+python -u scripts/regularized_cm/decoder_latency_belief_only.py --distance "$D" --csv "$CSV"
+
+echo "Job finished at: $(date)"
