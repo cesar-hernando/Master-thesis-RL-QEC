@@ -1,4 +1,4 @@
-# *From Neural to Regularized Correlated Matching: Discovering improved reweighting rules for surface code matching decoders with graph reinforcement learning*
+# *From Neural to Regularized Correlated Matching: Discovering improved reweighting rules for surface code matching decoders*
 
 This repository contains the codebase for my master's thesis project in the Applied Quantum Algorithms Group (Leiden University), which is part of the joint Quantum Information Science and Technology program (TU Delft & Leiden University).
 
